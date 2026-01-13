@@ -501,6 +501,115 @@ public class Semantics implements Serializable {
         return evaluateSMPropositionOverAllFeasibleAssemblies(assembly, negatedProp);
     }
 
+    // ==================== Deadlock Detection ====================
+
+    /**
+     * Computes the set of configurations that are reachable from the given configuration
+     * via autonomous transitions in the assembly's component machines.
+     * <p>
+     * A configuration C1 can reach configuration C2 if there exists an autonomous transition
+     * in some component machine M that changes M's state from S1 to S2, where C1 contains M.S1
+     * and C2 is the result of replacing M.S1 with M.S2 in C1.
+     *
+     * @param startConfig the starting configuration
+     * @param assembly the Assembly containing component machines with autonomous transitions
+     * @return set of configurations reachable from startConfig via autonomous transitions
+     */
+    public static Set<Configuration> computeReachableConfigurations(Configuration startConfig, Assembly assembly) {
+        Set<Configuration> reachable = new HashSet<>();
+        Set<Configuration> visited = new HashSet<>();
+        Deque<Configuration> worklist = new ArrayDeque<>();
+        
+        worklist.add(startConfig);
+        visited.add(startConfig);
+        
+        while (!worklist.isEmpty()) {
+            Configuration current = worklist.poll();
+            
+            // For each component machine, check autonomous transitions
+            for (Map.Entry<String, StateMachine> entry : assembly.getStateMachines().entrySet()) {
+                String machineId = entry.getKey();
+                StateMachine machine = entry.getValue();
+                
+                // Get current state for this machine in the configuration
+                String currentStateName = current.getStateName(machineId);
+                if (currentStateName == null) continue;
+                
+                // Check all autonomous transitions from the current state
+                for (TransitionInterface ti : machine.getTransitions()) {
+                    Transition t = (Transition) ti;
+                    if (t.isAutonomous() && t.getSource().getName().equals(currentStateName)) {
+                        // This autonomous transition can fire
+                        String targetStateName = t.getTarget().getName();
+                        Configuration nextConfig = current.replaceConstraint(machineId, targetStateName);
+                        
+                        if (nextConfig != null && !visited.contains(nextConfig)) {
+                            visited.add(nextConfig);
+                            reachable.add(nextConfig);
+                            worklist.add(nextConfig);
+                        }
+                    }
+                }
+            }
+        }
+        
+        return reachable;
+    }
+
+    /**
+     * Identifies "deadlock" configurations within this Semantics.
+     * <p>
+     * A configuration is considered a deadlock if it cannot reach ALL other configurations
+     * in this Semantics via autonomous transitions of the component machines.
+     * <p>
+     * This is important for PWS semantics: all configurations should be connected through
+     * autonomous transitions. A configuration that cannot reach all others represents a potential
+     * deadlock state where the system could get stuck.
+     *
+     * @param assembly the Assembly containing component machines with autonomous transitions
+     * @return set of configurations that are deadlocks (cannot reach all other configurations)
+     */
+    public Set<Configuration> findDeadlockConfigurations(Assembly assembly) {
+        Set<Configuration> deadlocks = new HashSet<>();
+        
+        if (configurations.size() <= 1) {
+            // With 0 or 1 configuration, there's nothing to connect to
+            return deadlocks;
+        }
+        
+        for (Configuration config : configurations) {
+            Set<Configuration> reachable = computeReachableConfigurations(config, assembly);
+            
+            // Check if this configuration can reach ALL other configurations in this Semantics
+            boolean canReachAll = true;
+            for (Configuration other : configurations) {
+                if (!other.equals(config) && !reachable.contains(other)) {
+                    canReachAll = false;
+                    break;
+                }
+            }
+            
+            if (!canReachAll) {
+                deadlocks.add(config);
+            }
+        }
+        
+        return deadlocks;
+    }
+
+    /**
+     * Checks if this Semantics has full connectivity via autonomous transitions.
+     * <p>
+     * Full connectivity means every configuration can reach every other configuration
+     * (possibly through intermediate configurations) via autonomous transitions.
+     *
+     * @param assembly the Assembly containing component machines
+     * @return true if all configurations are mutually reachable; false otherwise
+     */
+    public boolean isFullyConnected(Assembly assembly) {
+        return findDeadlockConfigurations(assembly).isEmpty();
+    }
+
     // ==================== Factory Methods ====================
 
     /**

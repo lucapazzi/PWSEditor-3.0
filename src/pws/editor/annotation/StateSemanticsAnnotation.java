@@ -156,6 +156,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         for (Object cfg : stateConfigs) {
             cfgStrs.add(cfg.toString());
         }
+        // Compute deadlock configurations (configurations that cannot reach others via autonomous transitions)
+        Set<String> deadlockCfgStrs = new HashSet<>();
+        if (state.getStateSemantics() != null && asm != null) {
+            Set<pws.editor.semantics.Configuration> deadlocks = 
+                state.getStateSemantics().findDeadlockConfigurations(asm);
+            for (pws.editor.semantics.Configuration dc : deadlocks) {
+                deadlockCfgStrs.add(dc.toString());
+            }
+        }
         int totalWidth = 0;
         for (String s : cfgStrs) {
             totalWidth += fm.stringWidth(s) + fm.charWidth(' ');
@@ -166,9 +175,19 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             boolean isGreen = state.isPseudoState() || constraintStrs.contains(s);
             g2d.setColor(isGreen ? Color.GREEN.darker() : Color.RED);
             g2d.drawString(s, x, y);
-            // underline if covered by a guard
-            if (coveredCfgStrs.contains(s)) {
+            // Determine underline: red for deadlock, green if covered by guard, none otherwise
+            boolean isDeadlock = deadlockCfgStrs.contains(s);
+            boolean isCovered = coveredCfgStrs.contains(s);
+            if (isDeadlock) {
+                // Deadlock configurations always get a red underline (draw 2 lines for visibility)
                 int sw = fm.stringWidth(s);
+                g2d.setColor(Color.RED);
+                g2d.drawLine(x, y + 1, x + sw, y + 1);
+                g2d.drawLine(x, y + 2, x + sw, y + 2);  // double line for emphasis
+            } else if (isCovered) {
+                // Covered non-deadlock configurations get a green underline
+                int sw = fm.stringWidth(s);
+                g2d.setColor(Color.GREEN.darker());
                 g2d.drawLine(x, y + 1, x + sw, y + 1);
             }
             x += fm.stringWidth(s) + fm.charWidth(' ');
@@ -239,6 +258,11 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                         break;
                     }
                 }
+            }
+            // 3) Check for deadlock configurations (configurations that cannot reach others)
+            if (allOk && !deadlockCfgStrs.isEmpty()) {
+                // Any deadlock configuration is a problem
+                allOk = false;
             }
             // Set the border based on overall OK status
             Color borderColor = allOk ? Color.GREEN.darker() : Color.RED;
