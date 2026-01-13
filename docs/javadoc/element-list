@@ -1,0 +1,11 @@
+assembly
+editor
+machinery
+pws
+pws.editor
+pws.editor.annotation
+pws.editor.semantics
+serializer
+smalgebra
+smalgebra.DEMO
+utility
