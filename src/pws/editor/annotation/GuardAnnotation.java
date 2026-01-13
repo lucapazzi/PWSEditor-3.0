@@ -2,6 +2,7 @@ package pws.editor.annotation;
 
 import assembly.Assembly;
 import assembly.AssemblyInterface;
+import smalgebra.AndProposition;
 import smalgebra.SMProposition;
 import smalgebra.TrueProposition;
 import smalgebra.BasicStateProposition;
@@ -9,6 +10,7 @@ import smalgebra.BasicStateProposition;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseEvent;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -178,6 +180,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 }
             }
         } else {
+            // Guard is already set - show "Remove guard" and options to extend with AND
             JMenuItem removeItem = new JMenuItem("Remove guard");
             removeItem.addActionListener(ev -> {
                 SMProposition defaultGuard = new TrueProposition();
@@ -186,8 +189,76 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 repaint();
             });
             popup.add(removeItem);
+            
+            // Add separator before extend options
+            popup.addSeparator();
+            
+            // Get all available guards
+            List list = assembly.getAssemblyGuards();
+            List<SMProposition> guards = (List<SMProposition>) list;
+            
+            // Extract already used machine IDs from current guard
+            Set<String> usedMachineIds = extractMachineIds(content);
+            
+            // Filter guards to show only those not already in the conjunction
+            // and that refer to different machines
+            boolean hasExtendOptions = false;
+            for (SMProposition guardOption : guards) {
+                if (!(guardOption instanceof BasicStateProposition bsp)) continue;
+                
+                // Skip if this machine is already used in the guard
+                if (usedMachineIds.contains(bsp.getMachineId())) continue;
+                
+                JMenuItem item = new JMenuItem("Add: " + guardOption.toString());
+                item.addActionListener(ev -> {
+                    // Create AND proposition with existing guard and new proposition
+                    SMProposition newGuard = new AndProposition(content, guardOption);
+                    setContent(newGuard);
+                    updateCallback.accept(newGuard);
+                    revalidate();
+                    repaint();
+                    if (getParent() != null) {
+                        getParent().revalidate();
+                        getParent().repaint();
+                    }
+                });
+                popup.add(item);
+                hasExtendOptions = true;
+            }
+            
+            if (!hasExtendOptions) {
+                JMenuItem none = new JMenuItem("No additional guards available");
+                none.setEnabled(false);
+                popup.add(none);
+            }
         }
         popup.show(this, e.getX(), e.getY());
+    }
+    
+    /**
+     * Extracts all machine IDs used in the given proposition.
+     * Recursively traverses AND propositions to collect all BasicStateProposition machine IDs.
+     *
+     * @param prop the proposition to analyze
+     * @return set of machine IDs found in the proposition
+     */
+    private Set<String> extractMachineIds(SMProposition prop) {
+        Set<String> machineIds = new HashSet<>();
+        extractMachineIdsRecursive(prop, machineIds);
+        return machineIds;
+    }
+    
+    /**
+     * Recursive helper to extract machine IDs from a proposition.
+     */
+    private void extractMachineIdsRecursive(SMProposition prop, Set<String> machineIds) {
+        if (prop instanceof BasicStateProposition bsp) {
+            machineIds.add(bsp.getMachineId());
+        } else if (prop instanceof AndProposition and) {
+            extractMachineIdsRecursive(and.getLeft(), machineIds);
+            extractMachineIdsRecursive(and.getRight(), machineIds);
+        }
+        // TrueProposition and other types don't contribute machine IDs
     }
 
 //    @Override
