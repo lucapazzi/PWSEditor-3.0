@@ -14,6 +14,7 @@ import java.io.IOException;
 import serializer.BinaryModelSerializer;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
+/** Panel for listing and importing machines in the library. */
 public class MachineLibraryPanel extends JPanel {
 
     private final Assembly assembly;

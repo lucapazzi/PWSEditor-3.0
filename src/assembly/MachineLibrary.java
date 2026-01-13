@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+/** Repository of reusable state machines keyed by id and name. */
 public class MachineLibrary implements Serializable {
 
     private static final long serialVersionUID = -1532645742427132404L;

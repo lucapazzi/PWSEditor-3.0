@@ -7,6 +7,8 @@ import pws.editor.semantics.Semantics;
 import smalgebra.BasicStateProposition;
 
 import java.util.*;
+
+/** Represents a PWS assembly and its state machines, guards, actions, and formulas. */
 public class Assembly implements AssemblyInterface {
     private String assemblyId;
     private Map<String, StateMachine> stateMachines;

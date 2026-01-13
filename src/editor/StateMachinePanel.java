@@ -15,6 +15,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+/** Canvas panel for drawing and editing state machines. */
 public class StateMachinePanel extends JPanel implements MouseListener, MouseMotionListener {
 
     protected StateMachine stateMachine;

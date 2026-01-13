@@ -11,6 +11,7 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.util.List;
 
+/** Dialog for creating, validating, and editing LTL formulas. */
 public class LTLFormulaEditorDialog extends JDialog {
     private final AssemblyInterface assembly;
     private DefaultListModel<LTLFormula> formulasModel = new DefaultListModel<>();

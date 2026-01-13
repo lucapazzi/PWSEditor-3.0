@@ -8,6 +8,7 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
+/** PWS-specific editor frame that wires the custom state machine panel. */
 public class PWSStateMachineEditor extends StateMachineEditor {
 
     public PWSStateMachineEditor(PWSStateMachine stateMachine, String title) {

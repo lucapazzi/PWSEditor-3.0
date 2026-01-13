@@ -4,6 +4,7 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
+/** State node with position and incoming/outgoing transitions. */
 public class State implements StateInterface {
     private String name;
 //    private boolean initial = false;

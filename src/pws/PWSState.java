@@ -11,6 +11,7 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.HashSet;
 
+/** PWS-specific state with semantics, constraints, and UI annotation. */
 public class PWSState extends State {
     private transient StateSemanticsAnnotation annotation;
     private boolean annotationVisible = false; // Di default nascosta.

@@ -28,6 +28,7 @@ import pws.editor.PWSStateMachineEditor;
 import pws.editor.PWSStateMachinePanel;
 import javax.swing.JCheckBoxMenuItem;
 
+/** Main Swing application window for the PWS editor. */
 public class PWSEditor extends JFrame {
 
     // private Assembly assembly;

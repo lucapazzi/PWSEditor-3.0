@@ -9,6 +9,7 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
+/** Dialog for editing a machine instance within an assembly. */
 public class AssemblyMachineEditDialog extends JDialog {
 
     private boolean confirmed = false;

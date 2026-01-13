@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/** Swing dialogs used by the editor for guard/action selection. */
 public class PWSDialogs {
 
     /**

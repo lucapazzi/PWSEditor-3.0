@@ -7,6 +7,7 @@ import smalgebra.TrueProposition;
 import java.io.Serializable;
 import java.util.*;
 
+/** Represents a configuration as a set of basic state propositions. */
 public class Configuration implements Serializable {
     private String assemblyId;
     private List<BasicStateProposition> propositions;

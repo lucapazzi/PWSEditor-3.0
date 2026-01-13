@@ -9,6 +9,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.io.*;
 
+/** Swing editor frame for a state machine and its canvas. */
 public class StateMachineEditor extends JFrame {
 
     protected StateMachine stateMachine;

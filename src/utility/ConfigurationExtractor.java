@@ -13,7 +13,7 @@ import java.util.*;
  * La classe ConfigurationExtractor trasforma una SMProposition (formula logica)
  * in un insieme di configurazioni possibili.
  *
- * Ogni configurazione è rappresentata come una mappa (Map<String, String>)
+ * Ogni configurazione è rappresentata come una mappa ({@code Map<String, String>})
  * che associa a ciascuna macchina il nome dello stato in cui essa si trova.
  *
  * L'algoritmo prevede:

@@ -9,6 +9,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.io.Serializable;
 
+/** Modal dialog for selecting machines from the library. */
 public class MachineLibraryDialog extends JDialog implements Serializable {
 
     private String selectedKey = null;

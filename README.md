@@ -44,3 +44,14 @@ manually:
 
 ```sh
 javac -d out $(find src -name '*.java')
+```
+
+## Generating Javadoc
+
+You can generate API documentation with the helper script:
+
+```sh
+scripts/generate-javadoc.sh
+```
+
+The output is written to `docs/javadoc/index.html`.

@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * Simple recursive-descent LTL parser producing an AST and detailed parse errors.
- * Supports atoms of the form `machineId.stateName` and operators: !, X, G, F, U, R, &, |, ->
+ * Supports atoms of the form `machineId.stateName` and operators: !, X, G, F, U, R, {@literal &}, {@literal |}, {@code ->}
  */
 public class LTLParser {
 

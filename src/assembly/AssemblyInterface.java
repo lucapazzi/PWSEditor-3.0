@@ -8,6 +8,7 @@ import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 
+/** Defines the core API for assemblies and their analysis. */
 public interface AssemblyInterface extends Serializable {
     Map<String, StateMachine> getStateMachines();
     void addStateMachine(String identifier, StateMachine machine);

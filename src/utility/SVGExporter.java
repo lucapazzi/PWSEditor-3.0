@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream;
 import javax.imageio.ImageIO;
 import java.util.Base64;
 
+/** Exports Swing components to SVG using an embedded raster image. */
 public class SVGExporter {
 
     public static void exportPanelToSVG(JPanel panel) {

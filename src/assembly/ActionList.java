@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 
+/** Serializable list of actions associated with a transition. */
 public class ActionList extends ArrayList<Action> implements Serializable {
 
     public ActionList() {

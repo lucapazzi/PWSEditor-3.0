@@ -12,6 +12,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.Map;
 
+/** Panel for browsing assembly machines and opening editors. */
 public class PWSPanel extends JPanel {
 
     private Assembly assembly;

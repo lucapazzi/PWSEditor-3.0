@@ -14,6 +14,7 @@ import smalgebra.TrueProposition;
 
 import java.io.Serializable;
 
+/** PWS transition with guard, actions, and semantics annotations. */
 public class PWSTransition extends Transition implements Serializable {
     // Nuovi campi semantici
     private Assembly assembly;

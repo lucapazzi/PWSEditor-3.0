@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
+/** PWS state machine with assembly-level semantics helpers. */
 public class PWSStateMachine extends StateMachine {
     // Field to hold the Assembly that belongs to this PWSStateMachine.
     private Assembly assembly;

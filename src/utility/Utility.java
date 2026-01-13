@@ -8,6 +8,7 @@ import machinery.StateMachine;
 import machinery.TransitionInterface;
 import smalgebra.*;
 
+/** Utility methods for transforming propositions and extracting guards/actions. */
 public class Utility {
     /**
      * Questo metodo statico trasforma una SMProposition

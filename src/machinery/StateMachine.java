@@ -5,6 +5,7 @@ import java.io.Serializable;
 import java.util.*;
 import java.util.List;
 
+/** Mutable state machine with states, transitions, and current state. */
 public class StateMachine implements StateMachineInterface, Cloneable {
     private String name;
     protected List<StateInterface> states;

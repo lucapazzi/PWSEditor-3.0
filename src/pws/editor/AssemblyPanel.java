@@ -8,6 +8,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.Map;
 
+/** Panel for viewing and editing an assembly's machines. */
 public class AssemblyPanel extends JPanel {
     private AssemblyInterface assembly;
     private DefaultListModel<String> listModel;

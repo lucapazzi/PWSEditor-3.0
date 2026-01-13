@@ -2,6 +2,7 @@ package assembly;
 
 import java.io.Serializable;
 
+/** Action emitted by a machine, identified by machine id and event name. */
 public class Action implements Serializable {
     private String id;
     private String event;

@@ -3,6 +3,7 @@ package machinery;
 import java.awt.*;
 import java.io.Serializable;
 
+/** Interface for a transition between two states. */
 public interface TransitionInterface extends Serializable {
     StateInterface getSource();
     StateInterface getTarget();

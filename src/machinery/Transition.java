@@ -3,7 +3,7 @@ package machinery;
 import java.awt.*;
 import java.util.UUID;
 
-
+/** Transition between two states with trigger/guard metadata and geometry. */
 public class Transition implements TransitionInterface {
 
     private String id;

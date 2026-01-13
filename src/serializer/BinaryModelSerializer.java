@@ -2,6 +2,7 @@ package serializer;
 
 import java.io.*;
 
+/** Binary serializer for saving and loading editor models. */
 public class BinaryModelSerializer {
 
     public static void saveModel(Serializable model, String filename) throws IOException {

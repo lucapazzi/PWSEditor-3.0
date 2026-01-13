@@ -5,6 +5,7 @@ import java.io.Serializable;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/** Interface for a state node in a state machine. */
 public interface StateInterface extends Serializable {
     String getName();
     void setName(String newName);

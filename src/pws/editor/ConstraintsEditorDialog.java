@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.HashSet;
 
+/** Dialog for editing constraint semantics of a PWS state. */
 public class ConstraintsEditorDialog extends JDialog {
     private JTextArea textArea;
     private JButton applyButton, cancelButton;

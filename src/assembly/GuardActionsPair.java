@@ -4,6 +4,7 @@ import smalgebra.SMProposition;
 
 import java.util.List;
 
+/** Pair of guard proposition and actions to emit. */
 public class GuardActionsPair {
     private SMProposition guard;
     private List<Action> actions;
