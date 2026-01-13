@@ -13,6 +13,9 @@ import java.util.Map;
 
 /** Swing dialogs used by the editor for guard/action selection. */
 public class PWSDialogs {
+    /** Utility class; do not instantiate. */
+    private PWSDialogs() {
+    }
 
     /**
      * Mostra un dialogo per la scelta della guardia e delle azioni.

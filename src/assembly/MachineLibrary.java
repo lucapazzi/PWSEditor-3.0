@@ -16,6 +16,18 @@ public class MachineLibrary implements Serializable {
     // Map machine name -> key to enforce unique names and allow lookup by name
     private Map<String, String> nameToKey = new LinkedHashMap<>();
 
+    /**
+     * Creates an empty machine library.
+     */
+    public MachineLibrary() {
+    }
+
+    /**
+     * Adds a machine and generates a unique key.
+     *
+     * @param m machine to add
+     * @return generated key, or null if machine is null
+     */
     public String addMachine(StateMachine m) {
         if (m == null) return null;
         String name = m.getName();
@@ -30,6 +42,12 @@ public class MachineLibrary implements Serializable {
         return key;
     }
 
+    /**
+     * Adds a machine with an explicit key.
+     *
+     * @param key machine key
+     * @param m machine to add
+     */
     public void addMachine(String key, StateMachine m) {
         if (m == null || key == null) return;
         machines.put(key, m);
@@ -38,10 +56,21 @@ public class MachineLibrary implements Serializable {
         nameToKey.put(name, key);
     }
 
+    /**
+     * Returns the machine for the given key.
+     *
+     * @param key machine key
+     * @return machine or null if not found
+     */
     public StateMachine get(String key) {
         return machines.get(key);
     }
 
+    /**
+     * Removes a machine by key.
+     *
+     * @param key machine key
+     */
     public void remove(String key) {
         StateMachine removed = machines.remove(key);
         if (removed != null) {
@@ -57,6 +86,10 @@ public class MachineLibrary implements Serializable {
     /**
      * Rename the machine identified by key to newName.
      * Returns true if rename succeeded, false if newName is already used or key not found.
+     *
+     * @param key machine key
+     * @param newName new machine name
+     * @return true if rename succeeded
      */
     public boolean renameMachine(String key, String newName) {
         if (key == null || newName == null) return false;
@@ -79,6 +112,11 @@ public class MachineLibrary implements Serializable {
         return true;
     }
 
+    /**
+     * Returns the map of machines by key.
+     *
+     * @return map of machines by key
+     */
     public Map<String, StateMachine> getMachines() {
         return machines;
     }
@@ -91,16 +129,33 @@ public class MachineLibrary implements Serializable {
         nameToKey.clear();
     }
 
+    /**
+     * Returns the key for a machine name.
+     *
+     * @param name machine name
+     * @return key or null if not found
+     */
     public String getKeyByName(String name) {
         if (name == null) name = "";
         return nameToKey.get(name);
     }
 
+    /**
+     * Returns a machine by name.
+     *
+     * @param name machine name
+     * @return machine or null if not found
+     */
     public StateMachine getByName(String name) {
         String k = getKeyByName(name);
         return k != null ? get(k) : null;
     }
 
+    /**
+     * Returns the set of known machine names.
+     *
+     * @return set of known machine names
+     */
     public java.util.Set<String> getNames() {
         return nameToKey.keySet();
     }
@@ -109,6 +164,9 @@ public class MachineLibrary implements Serializable {
      * Synchronize the nameToKey mapping for a machine instance.
      * Call this after external code changes a machine's name directly.
      * Returns the key if found, null otherwise.
+     *
+     * @param machine machine instance
+     * @return key for the machine, or null if not found
      */
     public String syncMachineName(StateMachine machine) {
         if (machine == null) return null;

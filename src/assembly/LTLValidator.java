@@ -12,9 +12,20 @@ import java.util.regex.Pattern;
  * Returns null when the formula is valid, otherwise an error message.
  */
 public class LTLValidator {
+    /** Utility class; do not instantiate. */
+    private LTLValidator() {
+    }
+
     // Pattern to find atomic propositions like machineId.stateName
     private static final Pattern ATOM = Pattern.compile("([A-Za-z0-9_]+)\\.([A-Za-z0-9_]+)");
 
+    /**
+     * Validates an LTL formula string.
+     *
+     * @param formula formula text
+     * @param asm assembly context
+     * @return null if valid, otherwise an error message
+     */
     public static String validate(String formula, AssemblyInterface asm) {
         if (formula == null || formula.trim().isEmpty()) {
             return "Formula is empty";

@@ -17,11 +17,21 @@ public class Assembly implements AssemblyInterface {
     // Optional storage for LTL formulas associated with this assembly
     private java.util.List<LTLFormula> ltlFormulas = new java.util.ArrayList<>();
 
+    /**
+     * Creates an assembly with the given identifier.
+     *
+     * @param assemblyId assembly identifier
+     */
     public Assembly(String assemblyId) {
         this.assemblyId = assemblyId;
         stateMachines = new LinkedHashMap<>();
     }
 
+    /**
+     * Returns the machine library for this assembly.
+     *
+     * @return machine library
+     */
     public MachineLibrary getMachineLibrary() {
         return machineLibrary;
     }
@@ -31,6 +41,11 @@ public class Assembly implements AssemblyInterface {
         return stateMachines;
     }
 
+    /**
+     * Returns the assembly identifier.
+     *
+     * @return assembly identifier
+     */
     public String getAssemblyId() {
         return assemblyId;
     }
@@ -54,6 +69,8 @@ public class Assembly implements AssemblyInterface {
      *
      * Esempio: se l'assembly contiene macchine "t1" e "t2" con trigger {e, f},
      * verrà restituita la lista: [ t1.e, t1.f, t2.e, t2.f ].
+     *
+     * @return elenco delle azioni possibili
      */
     public List<Action> getAllPossibleActions() {
         List<Action> actions = new ArrayList<>();
@@ -173,6 +190,8 @@ public class Assembly implements AssemblyInterface {
     /**
      * Generates the universe of fully-specified configurations for the given assemblyId.
      * It retrieves the Assembly instance using a registry (assumed to be available).
+     *
+     * @return set of all configurations in the assembly universe
      */
     public Set<Configuration> generateUniverse() {
         Set<Configuration> universe = new HashSet<>();

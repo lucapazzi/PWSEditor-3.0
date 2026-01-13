@@ -14,6 +14,11 @@ public class AssemblyPanel extends JPanel {
     private DefaultListModel<String> listModel;
     private JList<String> stateMachineList;
 
+    /**
+     * Creates a panel for editing an assembly's machines.
+     *
+     * @param assembly assembly to display
+     */
     public AssemblyPanel(AssemblyInterface assembly) {
         this.assembly = assembly;
         setLayout(new BorderLayout());

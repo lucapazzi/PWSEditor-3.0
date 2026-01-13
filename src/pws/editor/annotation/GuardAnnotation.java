@@ -19,11 +19,19 @@ import pws.editor.semantics.Semantics;
 import machinery.StateMachine;
 import machinery.TransitionInterface;
 
+/** Annotation widget for editing guard propositions. */
 public class GuardAnnotation extends Annotation<SMProposition> {
     private Assembly assembly;
     private Consumer<SMProposition> updateCallback;
     private TransitionInterface associatedTransition;
 
+    /**
+     * Creates a guard annotation.
+     *
+     * @param content initial guard proposition
+     * @param assembly assembly context
+     * @param updateCallback callback to update the model
+     */
     public GuardAnnotation(SMProposition content, Assembly assembly, Consumer<SMProposition> updateCallback) {
         super(content);
         this.assembly = assembly;
@@ -31,6 +39,14 @@ public class GuardAnnotation extends Annotation<SMProposition> {
         this.associatedTransition = null;
     }
 
+    /**
+     * Creates a guard annotation attached to a specific transition.
+     *
+     * @param content initial guard proposition
+     * @param assembly assembly context
+     * @param updateCallback callback to update the model
+     * @param associatedTransition transition associated with this annotation
+     */
     public GuardAnnotation(SMProposition content, Assembly assembly, Consumer<SMProposition> updateCallback, TransitionInterface associatedTransition) {
         super(content);
         this.assembly = assembly;

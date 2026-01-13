@@ -19,6 +19,11 @@ public class PWSPanel extends JPanel {
     private DefaultListModel<String> listModel;
     private JList<String> machineList;
 
+    /**
+     * Creates a panel bound to the given assembly.
+     *
+     * @param assembly assembly context
+     */
     public PWSPanel(Assembly assembly) {
         this.assembly = assembly;
         setLayout(new BorderLayout());
@@ -82,20 +87,48 @@ public class PWSPanel extends JPanel {
         add(buttonPanel, BorderLayout.SOUTH);
     }
 
-    // Callback interface to notify when a machine is selected (double-clicked)
+    /** Callback interface to notify when a machine is selected (double-clicked). */
     public interface MachineSelectionListener {
+        /**
+         * Called when a machine is selected.
+         *
+         * @param id machine id
+         */
         void machineSelected(String id);
+        /**
+         * Called when a machine is removed.
+         *
+         * @param id machine id
+         */
         void machineRemoved(String id);
+        /**
+         * Called when a machine is added to the library.
+         *
+         * @param key library key
+         */
         void machineAddedToLibrary(String key);
+        /**
+         * Called when a machine is edited.
+         *
+         * @param id machine id
+         */
         void machineEdited(String id);
     }
 
     private MachineSelectionListener selectionListener = null;
 
+    /**
+     * Sets the selection listener.
+     *
+     * @param l listener to set
+     */
     public void setMachineSelectionListener(MachineSelectionListener l) {
         this.selectionListener = l;
     }
 
+    /**
+     * Refreshes the list of machines shown in the panel.
+     */
     public void refreshList() {
         listModel.clear();
         MachineLibrary lib = assembly.getMachineLibrary();

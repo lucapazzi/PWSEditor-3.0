@@ -23,12 +23,17 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
  * the project's `lib/` directory and include them when compiling/running).
  */
 public class PDFExporter {
+    /** Utility class; do not instantiate. */
+    private PDFExporter() {
+    }
 
     // If true, attempt vector rendering first. Default: false => raster-first high-quality.
     private static boolean preferVector = false;
 
     /**
      * Toggle preference for vector rendering. Default is false (raster-first).
+     *
+     * @param v true to prefer vector rendering
      */
     public static void setPreferVector(boolean v) { preferVector = v; }
 
@@ -36,6 +41,10 @@ public class PDFExporter {
      * Export a JPanel to a PDF file.
      * Renders the panel to a BufferedImage and embeds it in a single PDF page,
      * or uses a vector PDFGraphics2D renderer when preferred and available.
+     *
+     * @param panel panel to export
+     * @param file output PDF file
+     * @throws IOException if the file cannot be written
      */
     public static void exportPanelToPDF(JPanel panel, File file) throws IOException {
         if (panel == null) throw new IllegalArgumentException("panel is null");

@@ -11,9 +11,26 @@ import java.util.Deque;
  * - Otherwise => OTHER
  */
 public class LTLAnalyzer {
+    /** Utility class; do not instantiate. */
+    private LTLAnalyzer() {
+    }
 
-    public enum Kind { SAFETY, LIVENESS, OTHER }
+    /** Classification kinds for LTL formulas. */
+    public enum Kind {
+        /** Safety property. */
+        SAFETY,
+        /** Liveness property. */
+        LIVENESS,
+        /** Other or unclassified property. */
+        OTHER
+    }
 
+    /**
+     * Classifies an LTL AST by a simple heuristic.
+     *
+     * @param root AST root
+     * @return classification kind
+     */
     public static Kind classify(LTLParser.Node root) {
         if (root == null) return Kind.OTHER;
         // Depth-first search

@@ -14,6 +14,13 @@ public class AssemblyMachineEditDialog extends JDialog {
 
     private boolean confirmed = false;
 
+    /**
+     * Creates a dialog to edit a machine inside an assembly.
+     *
+     * @param owner dialog owner
+     * @param assembly assembly containing the machine
+     * @param machineId identifier of the machine to edit
+     */
     public AssemblyMachineEditDialog(Window owner, Assembly assembly, String machineId) {
         super(owner, "Edit assembly machine", ModalityType.APPLICATION_MODAL);
         StateMachine machine = assembly.getStateMachines().get(machineId);
@@ -87,6 +94,11 @@ public class AssemblyMachineEditDialog extends JDialog {
         setLocationRelativeTo(owner);
     }
 
+    /**
+     * Returns whether the user confirmed the dialog.
+     *
+     * @return true if the user confirmed the dialog
+     */
     public boolean isConfirmed() {
         return confirmed;
     }

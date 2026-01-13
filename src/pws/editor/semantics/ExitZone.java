@@ -33,6 +33,14 @@ public class ExitZone implements Serializable {
     private BasicStateProposition source = null;
     private BasicStateProposition target = null;
 
+    /**
+     * Creates an exit-zone for an autonomous transition.
+     *
+     * @param stateMachineId machine identifier
+     * @param transition autonomous transition
+     * @param source source proposition
+     * @param target target proposition
+     */
     public ExitZone(String stateMachineId, Transition transition, BasicStateProposition source, BasicStateProposition target) {
         this.stateMachineId = stateMachineId;
         this.transition = transition;
@@ -40,34 +48,74 @@ public class ExitZone implements Serializable {
         this.target = target;
     }
 
+    /**
+     * Returns the machine identifier.
+     *
+     * @return machine identifier
+     */
     public String getStateMachineId() {
         return stateMachineId;
     }
 
+    /**
+     * Sets the machine identifier.
+     *
+     * @param stateMachineId machine identifier
+     */
     public void setStateMachineId(String stateMachineId) {
         this.stateMachineId = stateMachineId;
     }
 
+    /**
+     * Sets the autonomous transition.
+     *
+     * @param transition autonomous transition
+     */
     public void setTransition(Transition transition) {
         this.transition = transition;
     }
 
+    /**
+     * Returns the autonomous transition.
+     *
+     * @return autonomous transition
+     */
     public Transition getTransition() {
         return transition;
     }
 
+    /**
+     * Sets the source proposition.
+     *
+     * @param source source proposition
+     */
     public void setSource(BasicStateProposition source) {
         this.source = source;
     }
 
+    /**
+     * Sets the target proposition.
+     *
+     * @param target target proposition
+     */
     public void setTarget(BasicStateProposition target) {
         this.target = target;
     }
 
+    /**
+     * Returns the source proposition.
+     *
+     * @return source proposition
+     */
     public BasicStateProposition getSource() {
         return source;
     }
 
+    /**
+     * Returns the target proposition.
+     *
+     * @return target proposition
+     */
     public BasicStateProposition getTarget() {
         return target;
     }

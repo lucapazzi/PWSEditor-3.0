@@ -20,6 +20,10 @@ import java.util.Map;
  * configuration of current states across all its state machines.
  */
 public class AssemblyGenerator {
+    /** Utility class; do not instantiate. */
+    private AssemblyGenerator() {
+    }
+
 
     /**
      * Generates all possible Assembly instances given the provided Assembly template.

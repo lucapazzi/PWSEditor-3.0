@@ -11,13 +11,30 @@ import java.util.Set;
 public interface SMProposition extends Cloneable, Serializable {
 
 
+    /**
+     * Returns a deep copy of this proposition.
+     *
+     * @return a deep copy of this proposition
+     */
     SMProposition clone();
 
+    /**
+     * Evaluates the proposition on the given assembly.
+     *
+     * @param assembly assembly context
+     * @return true if the proposition holds
+     */
     boolean evaluate(AssemblyInterface assembly);
 
     /**
      * Trasforma l'espressione sostituendo, per la macchina data, lo stato fromState con toState.
      * (Non viene più controllata l'ontologica validità dell'espressione.)
+     *
+     * @param machineId machine identifier
+     * @param fromState state to replace
+     * @param toState replacement state
+     * @param assembly assembly context
+     * @return transformed proposition
      */
     default SMProposition transform(String machineId, String fromState, String toState, AssemblyInterface assembly) {
         if (this instanceof BasicStateProposition) {
@@ -48,6 +65,10 @@ public interface SMProposition extends Cloneable, Serializable {
 
     /**
      * A livello ontologico, A ontoImplies B se per ogni configurazione in cui A è vera, B è vera.
+     *
+     * @param other other proposition
+     * @param assembly assembly context
+     * @return true if this ontologically implies other
      */
     default boolean ontoImplies(SMProposition other, AssemblyInterface assembly) {
         for (AssemblyInterface conf : assembly.getAllConcreteAssemblies()) {
@@ -60,6 +81,10 @@ public interface SMProposition extends Cloneable, Serializable {
 
     /**
      * A livello ontologico, A ontoEquiv B se A ontoImplies B e B ontoImplies A.
+     *
+     * @param other other proposition
+     * @param assembly assembly context
+     * @return true if propositions are ontologically equivalent
      */
     default boolean ontoEquiv(SMProposition other, AssemblyInterface assembly) {
         return this.ontoImplies(other, assembly) && other.ontoImplies(this, assembly);
@@ -75,6 +100,10 @@ public interface SMProposition extends Cloneable, Serializable {
 
     /**
      * A livello ontologico, A ontoEquiv B se A ontoImplies B e B ontoImplies A.
+     *
+     * @param other other proposition
+     * @param assembly assembly context
+     * @return true if propositions are ontologically equivalent
      */
     default boolean ontoEquiv(SMProposition other, Assembly assembly) {
         return this.ontoImplies(other, assembly) && other.ontoImplies(this, assembly);
@@ -83,6 +112,8 @@ public interface SMProposition extends Cloneable, Serializable {
     /**
      * Converte l'espressione nella forma normale negativa (NNF)
      * in cui le negazioni appaiono solo direttamente davanti agli atomi.
+     *
+     * @return proposition in NNF
      */
     default SMProposition toNNF() {
         if (this instanceof BasicStateProposition) {
@@ -119,6 +150,8 @@ public interface SMProposition extends Cloneable, Serializable {
 
     /**
      * Converte l'espressione in forma normale congiuntiva (CNF).
+     *
+     * @return proposizione in CNF
      */
     default SMProposition toCNF() {
         SMProposition nnf = this.toNNF();
@@ -127,6 +160,8 @@ public interface SMProposition extends Cloneable, Serializable {
 
     /**
      * Converte l'espressione in forma normale disgiuntiva (DNF).
+     *
+     * @return proposizione in DNF
      */
     default SMProposition toDNF() {
         SMProposition nnf = this.toNNF();
@@ -136,6 +171,9 @@ public interface SMProposition extends Cloneable, Serializable {
     /**
      * Distribuisce l'OR sull'AND per ottenere la CNF.
      * Implementa la regola: A ∨ (B ∧ C) = (A ∨ B) ∧ (A ∨ C)
+     *
+     * @param expr espressione da trasformare
+     * @return espressione trasformata
      */
     static SMProposition distributeOrOverAnd(SMProposition expr) {
         if (expr instanceof OrProposition) {
@@ -171,6 +209,9 @@ public interface SMProposition extends Cloneable, Serializable {
     /**
      * Distribuisce l'AND sull'OR per ottenere la DNF.
      * Implementa la regola: A ∧ (B ∨ C) = (A ∧ B) ∨ (A ∧ C)
+     *
+     * @param expr espressione da trasformare
+     * @return espressione trasformata
      */
     static SMProposition distributeAndOverOr(SMProposition expr) {
         if (expr instanceof AndProposition) {
@@ -207,6 +248,10 @@ public interface SMProposition extends Cloneable, Serializable {
      * Evaluates the SMProposition on a given fully-specified configuration by creating an ad hoc Assembly.
      * It creates an Assembly with the assemblyId from the configuration and sets each machine's current state
      * according to the BasicStatePropositions in the configuration, then calls evaluate(AssemblyInterface).
+     *
+     * @param config configuration to evaluate
+     * @param properAssembly assembly context with state machines
+     * @return true if the proposition holds for the configuration
      */
     default boolean evaluateConfiguration(Configuration config, AssemblyInterface properAssembly) {
         // Use the provided fully-initialized assembly instead of creating a new one.

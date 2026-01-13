@@ -20,7 +20,7 @@ if [[ -d "$LIB_DIR" ]]; then
   fi
 fi
 
-cmd=(javadoc -d "$OUT_DIR" -sourcepath "$SRC_DIR" -subpackages assembly:machinery:editor:pws:serializer:smalgebra:utility)
+cmd=(javadoc -Xdoclint:all,-missing -d "$OUT_DIR" -sourcepath "$SRC_DIR" -subpackages assembly:machinery:editor:pws:serializer:smalgebra:utility)
 if [[ -n "$CLASSPATH" ]]; then
   cmd+=(-classpath "$CLASSPATH")
 fi

@@ -17,6 +17,12 @@ public class BasicStateProposition implements SMProposition {
     private final String machineId;
     private final String stateName;
 
+    /**
+     * Creates a basic state proposition.
+     *
+     * @param machineId machine identifier
+     * @param stateName state name
+     */
     public BasicStateProposition(String machineId, String stateName) {
         this.machineId = machineId;
         this.stateName = stateName;
@@ -35,9 +41,20 @@ public class BasicStateProposition implements SMProposition {
         return current.getName().equals(stateName);
     }
 
+    /**
+     * Returns the machine identifier.
+     *
+     * @return machine identifier
+     */
     public String getMachineId() {
         return machineId;
     }
+
+    /**
+     * Returns the state name.
+     *
+     * @return state name
+     */
     public String getStateName() {
         return stateName;
     }

@@ -18,12 +18,20 @@ import pws.editor.semantics.Semantics;
 import smalgebra.BasicStateProposition;
 import machinery.StateMachine;
 
+/** Annotation widget for editing a list of actions. */
 public class ActionAnnotation extends Annotation<ActionList> {
     private AssemblyInterface assembly;
     private Consumer<ActionList> updateCallback; // Callback per aggiornare il modello
     // Optional associated transition (when this annotation is attached to a transition)
     private machinery.TransitionInterface associatedTransition;
 
+    /**
+     * Creates an action annotation.
+     *
+     * @param content initial action list
+     * @param assembly assembly context
+     * @param updateCallback callback to update the model
+     */
     public ActionAnnotation(ActionList content, AssemblyInterface assembly, Consumer<ActionList> updateCallback) {
         super(content);
         this.assembly = assembly;
@@ -32,7 +40,12 @@ public class ActionAnnotation extends Annotation<ActionList> {
     }
 
     /**
-     * Constructor for annotations attached to a specific transition.
+     * Creates an action annotation attached to a specific transition.
+     *
+     * @param content initial action list
+     * @param assembly assembly context
+     * @param updateCallback callback to update the model
+     * @param associatedTransition transition associated with this annotation
      */
     public ActionAnnotation(ActionList content, AssemblyInterface assembly, Consumer<ActionList> updateCallback, machinery.TransitionInterface associatedTransition) {
         super(content);

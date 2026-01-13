@@ -10,6 +10,12 @@ public class AndProposition implements SMProposition {
     private final SMProposition left;
     private final SMProposition right;
 
+    /**
+     * Creates a conjunction of two propositions.
+     *
+     * @param left left operand
+     * @param right right operand
+     */
     public AndProposition(SMProposition left, SMProposition right) {
         this.left = left;
         this.right = right;
@@ -20,10 +26,20 @@ public class AndProposition implements SMProposition {
         return left.evaluate(assembly) && right.evaluate(assembly);
     }
 
+    /**
+     * Returns the left operand.
+     *
+     * @return left operand
+     */
     public SMProposition getLeft() {
         return left;
     }
 
+    /**
+     * Returns the right operand.
+     *
+     * @return right operand
+     */
     public SMProposition getRight() {
         return right;
     }

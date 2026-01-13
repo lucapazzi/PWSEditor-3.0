@@ -9,6 +9,12 @@ public class OrProposition implements SMProposition {
     private final SMProposition left;
     private final SMProposition right;
 
+    /**
+     * Creates a disjunction of two propositions.
+     *
+     * @param left left operand
+     * @param right right operand
+     */
     public OrProposition(SMProposition left, SMProposition right) {
         this.left = left;
         this.right = right;
@@ -19,10 +25,20 @@ public class OrProposition implements SMProposition {
         return left.evaluate(assembly) || right.evaluate(assembly);
     }
 
+    /**
+     * Returns the left operand.
+     *
+     * @return left operand
+     */
     public SMProposition getLeft() {
         return left;
     }
 
+    /**
+     * Returns the right operand.
+     *
+     * @return right operand
+     */
     public SMProposition getRight() {
         return right;
     }

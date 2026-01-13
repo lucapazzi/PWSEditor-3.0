@@ -17,6 +17,12 @@ public class MachineLibraryDialog extends JDialog implements Serializable {
     private final DefaultListModel<String> listModel = new DefaultListModel<>();
     private final JList<String> list;
 
+    /**
+     * Creates a modal dialog for selecting a machine from the library.
+     *
+     * @param owner dialog owner
+     * @param assembly assembly context
+     */
     public MachineLibraryDialog(Window owner, Assembly assembly) {
         super(owner, "Machine Library", ModalityType.APPLICATION_MODAL);
         this.assembly = assembly;
@@ -123,6 +129,11 @@ public class MachineLibraryDialog extends JDialog implements Serializable {
         dispose();
     }
 
+    /**
+     * Returns the selected machine key.
+     *
+     * @return selected key or null if none
+     */
     public String getSelectedKey() {
         return selectedKey;
     }

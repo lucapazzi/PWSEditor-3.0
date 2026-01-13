@@ -22,6 +22,10 @@ import java.util.Map;
  *    and 0 in all other positions.
  */
 public class AssemblyTruthTableMapper {
+    /** Utility class; do not instantiate. */
+    private AssemblyTruthTableMapper() {
+    }
+
 
     /**
      * Maps the current state of each state machine in the Assembly to a truth table string.

@@ -2,6 +2,15 @@ package editor;
 
 /** Entry point for quick IDE runs. */
 public class Main {
+    /** Utility class; do not instantiate. */
+    private Main() {
+    }
+
+    /**
+     * Simple demo entry point.
+     *
+     * @param args ignored
+     */
     public static void main(String[] args) {
         System.out.printf("Hello and welcome!");
 

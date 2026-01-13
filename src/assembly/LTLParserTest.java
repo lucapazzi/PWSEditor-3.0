@@ -4,9 +4,20 @@ package assembly;
  * Minimal test runner for LTL parser/analyzer/validator.
  * Run as: java -cp out assembly.LTLParserTest
  */
+/** Simple CLI test harness for the LTL parser and classifier. */
 public class LTLParserTest {
+    /** Utility class; do not instantiate. */
+    private LTLParserTest() {
+    }
+
+    /** Test case tuple. */
     public static record TestCase(String formula, String expectedKind, boolean shouldParse) {}
 
+    /**
+     * Runs the test cases and prints results.
+     *
+     * @param args ignored
+     */
     public static void main(String[] args) {
         TestCase[] tests = new TestCase[] {
             new TestCase("G (!m1.s1)", "safety", true),

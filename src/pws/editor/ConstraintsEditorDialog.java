@@ -20,6 +20,12 @@ public class ConstraintsEditorDialog extends JDialog {
     private PWSState state;  // the state whose constraint semantics we're editing
     private Assembly assembly; // Added field
 
+    /**
+     * Creates a dialog to edit constraint semantics for a state.
+     *
+     * @param state state whose constraints are edited
+     * @param assembly assembly context
+     */
     public ConstraintsEditorDialog(PWSState state, Assembly assembly) { // Modified constructor
         this.state = state;
         this.assembly = assembly;

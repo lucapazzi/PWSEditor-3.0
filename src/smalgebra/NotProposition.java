@@ -8,6 +8,11 @@ import assembly.AssemblyInterface;
 public class NotProposition implements SMProposition {
     private final SMProposition proposition;
 
+    /**
+     * Creates a negation of the given proposition.
+     *
+     * @param proposition inner proposition
+     */
     public NotProposition(SMProposition proposition) {
         this.proposition = proposition;
     }
@@ -17,6 +22,11 @@ public class NotProposition implements SMProposition {
         return !proposition.evaluate(assembly);
     }
 
+    /**
+     * Returns the inner proposition.
+     *
+     * @return inner proposition
+     */
     public SMProposition getProposition() {
         return proposition;
     }

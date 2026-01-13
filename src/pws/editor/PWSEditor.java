@@ -45,6 +45,11 @@ public class PWSEditor extends JFrame {
     private JToggleButton btnLibraryToggle; // Library toggle button reference
 
     // The main PWSEditor window uses a fixed title, e.g. "PWSEditor"
+    /**
+     * Creates the main editor window for a PWS state machine.
+     *
+     * @param machine state machine to edit
+     */
     public PWSEditor(PWSStateMachine machine) {
         super("PWSEditor");
         // Use the specialized PWSStateMachine:
@@ -863,6 +868,11 @@ public class PWSEditor extends JFrame {
     }
 
 
+    /**
+     * Launches the editor application.
+     *
+     * @param args ignored
+     */
     public static void main(String[] args) {
         // Simplify logs: only show the message text
         System.setProperty("java.util.logging.SimpleFormatter.format", "%5$s%n");

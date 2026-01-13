@@ -8,10 +8,22 @@ import java.io.Serializable;
 
 import editor.StateMachinePanel;
 
+/**
+ * Base draggable annotation component bound to a piece of model content.
+ *
+ * @param <T> type of the annotated content
+ */
 public class Annotation<T> extends JComponent implements Serializable {
-    protected T content; // Generic content field.
+    /** Model content displayed by the annotation. */
+    protected T content;
+    /** Mouse drag offset used while repositioning the annotation. */
     protected Point dragOffset;
 
+    /**
+     * Creates an annotation with the given content.
+     *
+     * @param content model content to display
+     */
     public Annotation(T content) {
         this.content = content;
 //        setOpaque(true);
@@ -79,10 +91,20 @@ public class Annotation<T> extends JComponent implements Serializable {
         addMouseMotionListener(ma);
     }
 
+    /**
+     * Returns the current annotation content.
+     *
+     * @return current annotation content
+     */
     public T getContent() {
         return content;
     }
 
+    /**
+     * Updates the annotation content and recalculates its size.
+     *
+     * @param content new model content
+     */
     public void setContent(T content) {
         this.content = content;
         // calls setSize(getPreferredSize()) after updating the content
@@ -95,6 +117,8 @@ public class Annotation<T> extends JComponent implements Serializable {
     /**
      * Method to build the text for display.
      * Subclasses can override this to add extra formatting.
+     *
+     * @return display text for the annotation
      */
     protected String buildDisplayText() {
         return (content == null ? "" : content.toString());
@@ -117,7 +141,11 @@ public class Annotation<T> extends JComponent implements Serializable {
         return new Dimension(width, height);
     }
 
-    // Default popup behavior: do nothing.
+    /**
+     * Default popup behavior: no menu is shown.
+     *
+     * @param e triggering mouse event
+     */
     protected void showPopup(MouseEvent e) {
         // No popup defined in base class.
     }

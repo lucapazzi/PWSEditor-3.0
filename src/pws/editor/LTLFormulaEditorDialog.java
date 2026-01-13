@@ -20,6 +20,12 @@ public class LTLFormulaEditorDialog extends JDialog {
     private JList<BasicStateProposition> alphabetList;
     private JComboBox<String> kindCombo;
 
+    /**
+     * Creates a dialog for editing LTL formulas.
+     *
+     * @param owner dialog owner
+     * @param assembly assembly context
+     */
     public LTLFormulaEditorDialog(Window owner, AssemblyInterface assembly) {
         super(owner, "LTL Formula Editor", ModalityType.APPLICATION_MODAL);
         this.assembly = assembly;

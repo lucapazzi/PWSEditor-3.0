@@ -12,17 +12,29 @@ public class Configuration implements Serializable {
     private String assemblyId;
     private List<BasicStateProposition> propositions;
 
+    /**
+     * Creates an empty configuration for the given assembly.
+     *
+     * @param assemblyId assembly identifier
+     */
     public Configuration(String assemblyId) {
         this.assemblyId = assemblyId;
         this.propositions = new ArrayList<>();
     }
 
+    /**
+     * Returns the assembly identifier.
+     *
+     * @return assembly identifier
+     */
     public String getAssemblyId() {
         return assemblyId;
     }
 
     /**
      * Aggiunge una BasicStateProposition mantenendo l'ordine (ordinamento lessicografico in base all'id).
+     *
+     * @param bsp proposition to add
      */
     public void addBasicStateProposition(BasicStateProposition bsp) {
         // Inserimento ordinato in base a bsp.getId()
@@ -33,6 +45,11 @@ public class Configuration implements Serializable {
         propositions.add(index, bsp);
     }
 
+    /**
+     * Returns an immutable list of basic state propositions.
+     *
+     * @return immutable list of basic state propositions
+     */
     public List<BasicStateProposition> getBasicStatePropositions() {
         return Collections.unmodifiableList(propositions);
     }
@@ -40,6 +57,10 @@ public class Configuration implements Serializable {
     /**
      * Costruisce una Configuration a partire da una lista di BasicStateProposition.
      * Le proposizioni vengono inserite in ordine.
+     *
+     * @param assemblyId assembly identifier
+     * @param props propositions to include
+     * @return new configuration instance
      */
     public static Configuration fromBasicStatePropositions(String assemblyId, List<BasicStateProposition> props) {
         Configuration config = new Configuration(assemblyId);
@@ -49,6 +70,12 @@ public class Configuration implements Serializable {
         return config;
     }
 
+    /**
+     * Returns the intersection of two configurations or null if conflicting.
+     *
+     * @param other other configuration
+     * @return intersected configuration or null when constraints conflict
+     */
     public Configuration intersect(Configuration other) {
         if (!this.assemblyId.equals(other.getAssemblyId())) {
             throw new IllegalArgumentException("Assemblies do not match.");
@@ -76,6 +103,12 @@ public class Configuration implements Serializable {
         return Configuration.fromBasicStatePropositions(this.assemblyId, resultList);
     }
 
+    /**
+     * Returns true if this configuration implies the other.
+     *
+     * @param other other configuration
+     * @return true if this implies other
+     */
     public boolean implies(Configuration other) {
         if (!this.assemblyId.equals(other.getAssemblyId())) {
             throw new IllegalArgumentException("Assemblies do not match.");
@@ -140,6 +173,11 @@ public class Configuration implements Serializable {
         return "(" + joiner.toString() + ")";
     }
 
+    /**
+     * Returns this configuration as a conjunction of basic propositions.
+     *
+     * @return this configuration as a conjunction of basic propositions
+     */
     public SMProposition toSMProposition() {
         // Start with the identity element for AND: TrueProposition.
         SMProposition conj = new TrueProposition();

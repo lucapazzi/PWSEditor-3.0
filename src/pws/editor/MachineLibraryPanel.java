@@ -21,15 +21,41 @@ public class MachineLibraryPanel extends JPanel {
     private final DefaultListModel<String> listModel = new DefaultListModel<>();
     private final JList<String> list;
 
+    /** Listener for library selection and lifecycle events. */
     public interface LibrarySelectionListener {
+        /**
+         * Called when a library entry is selected.
+         *
+         * @param key machine key
+         */
         void librarySelected(String key);
+        /**
+         * Called when a library entry is removed.
+         *
+         * @param key machine key
+         */
         void libraryRemoved(String key);
+        /**
+         * Called when a library entry is renamed.
+         *
+         * @param key machine key
+         */
         void libraryRenamed(String key);
+        /**
+         * Called when a library entry is loaded from disk.
+         *
+         * @param key machine key
+         */
         void libraryLoaded(String key);
     }
 
     private LibrarySelectionListener listener = null;
 
+    /**
+     * Creates a panel bound to the given assembly.
+     *
+     * @param assembly assembly context
+     */
     public MachineLibraryPanel(Assembly assembly) {
         this.assembly = assembly;
         setLayout(new BorderLayout());
@@ -97,10 +123,18 @@ public class MachineLibraryPanel extends JPanel {
         add(buttons, BorderLayout.SOUTH);
     }
 
+    /**
+     * Sets the selection listener.
+     *
+     * @param l listener to set
+     */
     public void setLibrarySelectionListener(LibrarySelectionListener l) {
         this.listener = l;
     }
 
+    /**
+     * Refreshes the list of machines from the library.
+     */
     public void refreshList() {
         listModel.clear();
         MachineLibrary lib = assembly.getMachineLibrary();

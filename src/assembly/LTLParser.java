@@ -9,42 +9,92 @@ import java.util.List;
  */
 public class LTLParser {
 
+    /** Base AST node for LTL formulas. */
     public static abstract class Node {
+        /** Creates a node. */
+        protected Node() {
+        }
         public abstract String toString();
     }
 
+    /** Atomic proposition node. */
     public static class Atom extends Node {
+        /** Atom name. */
         public final String name;
+        /**
+         * Creates an atom.
+         *
+         * @param name atom name
+         */
         public Atom(String name) { this.name = name; }
         public String toString() { return name; }
     }
 
+    /** Unary operator node. */
     public static class Unary extends Node {
+        /** Operator symbol. */
         public final String op;
+        /** Operand node. */
         public final Node child;
+        /**
+         * Creates a unary node.
+         *
+         * @param op operator symbol
+         * @param child operand node
+         */
         public Unary(String op, Node child) { this.op = op; this.child = child; }
         public String toString() { return op + "(" + child + ")"; }
     }
 
+    /** Binary operator node. */
     public static class Binary extends Node {
+        /** Operator symbol. */
         public final String op;
+        /** Left operand. */
         public final Node left, right;
+        /**
+         * Creates a binary node.
+         *
+         * @param op operator symbol
+         * @param left left operand
+         * @param right right operand
+         */
         public Binary(String op, Node left, Node right) { this.op = op; this.left = left; this.right = right; }
         public String toString() { return "(" + left + " " + op + " " + right + ")"; }
     }
 
+    /** Parse error with position information. */
     public static class ParseException extends Exception {
+        /** Error position in the input string. */
         public final int pos;
+        /**
+         * Creates a parse exception.
+         *
+         * @param msg error message
+         * @param pos error position
+         */
         public ParseException(String msg, int pos) { super(msg); this.pos = pos; }
     }
 
     private final String input;
     private int p = 0;
 
+    /**
+     * Creates a parser for the given input.
+     *
+     * @param input input formula text
+     */
     public LTLParser(String input) {
         this.input = input == null ? "" : input.trim();
     }
 
+    /**
+     * Parses an input string into an AST.
+     *
+     * @param s input formula
+     * @return parsed AST root
+     * @throws ParseException if parsing fails
+     */
     public static Node parse(String s) throws ParseException {
         LTLParser p = new LTLParser(s);
         Node n = p.parseImpl();
