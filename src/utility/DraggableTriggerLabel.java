@@ -12,6 +12,12 @@ public class DraggableTriggerLabel extends JLabel {
     private Point initialClick;
     private TransitionInterface associatedTransition;
 
+    /**
+     * Creates a draggable label for the given transition.
+     *
+     * @param text label text
+     * @param associatedTransition transition whose trigger offset is updated
+     */
     public DraggableTriggerLabel(String text, TransitionInterface associatedTransition) {
         super("<html><b><u>" + text + "</u></b></html>");
         setOpaque(false);
@@ -19,6 +25,11 @@ public class DraggableTriggerLabel extends JLabel {
         initDrag();
     }
 
+    /**
+     * Creates a draggable label without an associated transition.
+     *
+     * @param text label text
+     */
     public DraggableTriggerLabel(String text) {
         this(text, null);
     }

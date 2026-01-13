@@ -93,12 +93,6 @@ public class StateMachine implements StateMachineInterface, Cloneable {
     }
 
 //    @Override
-//    public void initializeCurrentState() {
-//        List<StateInterface> initialStates = getInitialStates();
-//        if (!initialStates.isEmpty()) {
-//            this.currentState = initialStates.get(0);
-//        }
-//    }
 
     @Override
     public Set<String> getEvents() {

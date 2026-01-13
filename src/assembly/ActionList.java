@@ -7,10 +7,16 @@ import java.util.Collection;
 /** Serializable list of actions associated with a transition. */
 public class ActionList extends ArrayList<Action> implements Serializable {
 
+    /** Creates an empty action list. */
     public ActionList() {
         super();
     }
 
+    /**
+     * Creates an action list initialized with the given collection.
+     *
+     * @param c initial actions
+     */
     public ActionList(Collection<? extends Action> c) {
         super(c);
     }

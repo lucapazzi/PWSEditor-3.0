@@ -131,17 +131,6 @@ public class Configuration implements Serializable {
         return Objects.hash(assemblyId, propositions);
     }
 
-//    @Override
-//    public String toString() {
-//        StringJoiner joiner = new StringJoiner(", ");
-//        for (BasicStateProposition bsp : propositions) {
-//            joiner.add(bsp.toString());
-//        }
-//        return "Configuration{" +
-//                "assemblyId='" + assemblyId + "', propositions=[" + joiner.toString() + "]" +
-//                "}";
-//    }
-
     @Override
     public String toString() {
         StringJoiner joiner = new StringJoiner(",");

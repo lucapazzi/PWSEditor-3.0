@@ -7,7 +7,6 @@ import java.util.List;
 /** State node with position and incoming/outgoing transitions. */
 public class State implements StateInterface {
     private String name;
-//    private boolean initial = false;
     private List<TransitionInterface> outgoingTransitions;
     private List<TransitionInterface> incomingTransitions;
 
@@ -35,11 +34,6 @@ public class State implements StateInterface {
     public void setName(String newName) {
         this.name = newName;
     }
-
-//    @Override
-//    public boolean isInitial() {
-//        return initial;
-//    }
 
     @Override
     public List<TransitionInterface> getOutgoingTransitions() {

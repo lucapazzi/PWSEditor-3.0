@@ -203,10 +203,6 @@ public interface SMProposition extends Cloneable, Serializable {
         return expr;
     }
 
-//    default Semantics toSem() {
-//        return ConfigurationExtractor.ConvertToSemantics(this);
-//    }
-
     /**
      * Evaluates the SMProposition on a given fully-specified configuration by creating an ad hoc Assembly.
      * It creates an Assembly with the assemblyId from the configuration and sets each machine's current state

@@ -1,7 +1,5 @@
 package pws;
 
-import pws.PWSState;
-import pws.PWSTransition;
 import pws.editor.semantics.ExitZone;
 import smalgebra.TrueProposition;
 import assembly.Action;
@@ -23,14 +21,6 @@ public class PWSStateMachine extends StateMachine {
 
     private static final long serialVersionUID = 1L;
 
-    // Default constructor.
-    // public PWSStateMachine() {
-    //     super();
-    //     // Automatically instantiate a default assembly.
-    //     this.setAssembly(new Assembly("PWSEditorAssembly"));
-    //     fixPseudoState();
-    // }
-
     // Constructor that accepts a name.
     public PWSStateMachine(String name) {
         super(name);
@@ -38,23 +28,6 @@ public class PWSStateMachine extends StateMachine {
         this.setAssembly(new Assembly("PWSEditorAssembly"));
         fixPseudoState();
     }
-
-    // Constructor that accepts a name and an Assembly.
-    // public PWSStateMachine(String name, Assembly assembly) {
-    //     super();
-    //     this.setName(name);
-    //     // Use the provided assembly.
-    //     this.setAssembly(assembly);
-    //     fixPseudoState();
-    // }
-
-    // Constructor that accepts an Assembly.
-    // public PWSStateMachine(Assembly assembly) {
-    //     super();
-    //     // Instantiate with the provided assembly.
-    //     this.setAssembly(assembly);
-    //     fixPseudoState();
-    // }
 
     // Getter for the assembly.
     public Assembly getAssembly() {
@@ -273,30 +246,6 @@ public class PWSStateMachine extends StateMachine {
             return computeReactiveTransitionSemantics(t, base);
         }
     }
-
-//    public Semantics computeStateSemantics(PWSState s) {
-//        Semantics orSem = Semantics.bottom(assembly.getAssemblyId());
-//
-//        // Calcola la semantica dalle transizioni entranti
-//        List<TransitionInterface> incoming = s.getIncomingTransitions();
-//        if (incoming != null) {
-//            for (TransitionInterface t : incoming) {
-//                if (t instanceof PWSTransition) {
-//                    Semantics ts = computeTransitionSemantics((PWSTransition) t);
-//                    orSem = (orSem.getConfigurations().isEmpty()) ? ts : orSem.OR(ts);
-//                }
-//            }
-//        }
-//
-//        // Calcola la semantica autonoma separatamente
-//        HashSet<ExitZone> reactiveSem = computeReactiveSemantics(orSem);
-//
-//        // Potrebbe essere utile assegnare le nuove semantiche al PWSState, per esempio:
-//        s.setReactiveSemantics(reactiveSem);
-//        // Per quanto riguarda le constraints, potremmo aggiungere una logica simile in futuro.
-//
-//        return orSem;
-//    }
 
     /**
      * Computes the reactive exit-zones for this state machine given a base semantics.

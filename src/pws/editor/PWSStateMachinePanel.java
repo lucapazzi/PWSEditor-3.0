@@ -37,8 +37,6 @@ import java.io.IOException;
 import java.awt.BasicStroke;
 import java.awt.Stroke;
 
-// ... rest of your imports ...
-
 /** PWS-specific canvas with guard, action, and semantics annotations. */
 public class PWSStateMachinePanel extends StateMachinePanel {
     /** Whether to render state‐semantics annotations at all */

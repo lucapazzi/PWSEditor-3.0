@@ -171,54 +171,6 @@ public class Assembly implements AssemblyInterface {
     }
 
     /**
-     * Mostra un dialogo per la scelta della guardia e delle azioni.
-     * Il dialogo presenta:
-     * - Un JComboBox per selezionare una guardia (BasicStateProposition) dalla lista restituita da getAssemblyGuards().
-     * - Un JList per selezionare una o più azioni (Action) dalla lista restituita da getAssemblyActions().
-     *
-     * Restituisce un oggetto GuardActionsPair contenente la guardia scelta e la lista delle azioni selezionate.
-     */
-//    public GuardActionsPair askForGuardAndActions() {
-//        List<BasicStateProposition> guardOptions = getAssemblyGuards();
-//        List<Action> actionOptions = getAssemblyActions();
-//
-//        JPanel panel = new JPanel(new GridBagLayout());
-//        GridBagConstraints gbc = new GridBagConstraints();
-//        gbc.insets = new Insets(5, 5, 5, 5);
-//
-//        // Selezione della guardia
-//        gbc.gridx = 0;
-//        gbc.gridy = 0;
-//        panel.add(new JLabel("Seleziona una guardia (m.S):"), gbc);
-//        gbc.gridx = 1;
-//        JComboBox<BasicStateProposition> guardCombo = new JComboBox<>(guardOptions.toArray(new BasicStateProposition[0]));
-//        guardCombo.setPreferredSize(new Dimension(200, 25));
-//        panel.add(guardCombo, gbc);
-//
-//        // Selezione delle azioni (lista multipla)
-//        gbc.gridx = 0;
-//        gbc.gridy = 1;
-//        panel.add(new JLabel("Seleziona azioni (m.e):"), gbc);
-//        gbc.gridx = 1;
-//        JList<Action> actionList = new JList<>(actionOptions.toArray(new Action[0]));
-//        actionList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-//        JScrollPane scroll = new JScrollPane(actionList);
-//        scroll.setPreferredSize(new Dimension(200, 100));
-//        panel.add(scroll, gbc);
-//
-//        int result = JOptionPane.showConfirmDialog(null, panel, "Seleziona Guardia e Azioni",
-//                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-//        if (result == JOptionPane.OK_OPTION) {
-//            BasicStateProposition selectedGuard = (BasicStateProposition) guardCombo.getSelectedItem();
-//            List<Action> selectedActions = actionList.getSelectedValuesList();
-//            return new GuardActionsPair(selectedGuard, selectedActions);
-//        } else {
-//            return new GuardActionsPair(null, new ArrayList<>());
-//        }
-//    }
-
-
-    /**
      * Generates the universe of fully-specified configurations for the given assemblyId.
      * It retrieves the Assembly instance using a registry (assumed to be available).
      */
@@ -238,7 +190,7 @@ public class Assembly implements AssemblyInterface {
             }
             machineStates.put(machineId, stateNames);
         }
-// Build a list of lists of BasicStateProposition for each machine.
+        // Build a list of lists of BasicStateProposition for each machine.
         List<List<BasicStateProposition>> listOfPropLists = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : machineStates.entrySet()) {
             String machineId = entry.getKey();

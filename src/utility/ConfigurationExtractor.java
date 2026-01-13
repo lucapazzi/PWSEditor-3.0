@@ -1,13 +1,11 @@
 package utility;
 
-import pws.editor.semantics.Configuration;
-import pws.editor.semantics.Semantics;
 import smalgebra.AndProposition;
-import smalgebra.BasicStateProposition;
 import smalgebra.OrProposition;
 import smalgebra.SMProposition;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * La classe ConfigurationExtractor trasforma una SMProposition (formula logica)
@@ -24,47 +22,10 @@ import java.util.*;
  *   4. L'insieme dei termini "validi" viene restituito come insieme di configurazioni.
  */
 public class ConfigurationExtractor {
+    private ConfigurationExtractor() {
+        // Utility class.
+    }
 
-//    public static Semantics ConvertToSemantics(SMProposition proposition) {
-//        // Convertiamo la formula in DNF (forma disgiuntiva di congiunzioni)
-//        SMProposition dnf = proposition.toDNF();
-//        // Appiattiamo la disgiunzione: se la DNF è una OR, otteniamo tutti i termini
-//        List<SMProposition> terms = flattenOr(dnf);
-//        Set<Configuration> configSet = new LinkedHashSet<>();
-//
-//        // Per ciascun termine, estraiamo i literali e costruiamo la configurazione
-//        for (SMProposition term : terms) {
-//            Map<String, String> configMapping = new HashMap<>();
-//            boolean valid = true;
-//            // Se il termine è una congiunzione, lo appiattiamo in una lista di literali;
-//            // altrimenti, consideriamo il termine stesso come letterale
-//            List<SMProposition> literals = flattenAnd(term);
-//            for (SMProposition lit : literals) {
-//                // Assumiamo che ogni letterale sia una BasicStateProposition
-//                if (lit instanceof BasicStateProposition) {
-//                    BasicStateProposition bsp = (BasicStateProposition) lit;
-//                    String machineId = bsp.getMachineId();
-//                    String stateName = bsp.getStateName();
-//                    // Se per la stessa macchina sono presenti valori diversi, il termine è incoerente
-//                    if (configMapping.containsKey(machineId)) {
-//                        if (!configMapping.get(machineId).equals(stateName)) {
-//                            valid = false;
-//                            break;
-//                        }
-//                    } else {
-//                        configMapping.put(machineId, stateName);
-//                    }
-//                } else {
-//                    valid = false;
-//                    break;
-//                }
-//            }
-//            if (valid) {
-//                configSet.add(new Configuration(configMapping));
-//            }
-//        }
-//        return new Semantics(configSet);
-//    }
 
     /**
      * Appiattisce una formula OR in una lista di termini.
@@ -98,4 +59,5 @@ public class ConfigurationExtractor {
             result.add(expr);
         }
         return result;
-    }}
+    }
+}

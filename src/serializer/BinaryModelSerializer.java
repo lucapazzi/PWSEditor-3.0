@@ -5,6 +5,12 @@ import java.io.*;
 /** Binary serializer for saving and loading editor models. */
 public class BinaryModelSerializer {
 
+    /**
+     * Saves a single serializable model to disk.
+     *
+     * @param model model to save
+     * @param filename output file path
+     */
     public static void saveModel(Serializable model, String filename) throws IOException {
         try (FileOutputStream fos = new FileOutputStream(filename);
              ObjectOutputStream oos = new ObjectOutputStream(fos)) {
@@ -46,6 +52,12 @@ public class BinaryModelSerializer {
         }
     }
 
+    /**
+     * Loads a single model saved with {@link #saveModel}.
+     *
+     * @param filename input file path
+     * @return deserialized model object
+     */
     public static Object loadModel(String filename) throws IOException, ClassNotFoundException {
         try (FileInputStream fis = new FileInputStream(filename);
              ObjectInputStream ois = new ObjectInputStream(fis)) {
