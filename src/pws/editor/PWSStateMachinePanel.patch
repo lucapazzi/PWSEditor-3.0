@@ -1,0 +1,101 @@
+diff --git a/src/pws/editor/PWSStateMachinePanel.java b/src/pws/editor/PWSStateMachinePanel.java
+--- a/src/pws/editor/PWSStateMachinePanel.java
++++ b/src/pws/editor/PWSStateMachinePanel.java
+@@ -605,12 +605,12 @@
+-        JPopupMenu popup = new JPopupMenu();
+-
+-        // Elemento per eliminare la transizione
+-        JMenuItem deleteItem = new JMenuItem("Elimina Transizione");
++        JPopupMenu popup = new JPopupMenu();
++
++        // Elemento per eliminare la transizione
++        JMenuItem deleteItem = new JMenuItem("Delete Transition");
+         deleteItem.addActionListener(ae -> {
+             int confirm = JOptionPane.showConfirmDialog(
+                     this,
+-                    "Sei sicuro di voler cancellare la transizione?",
+-                    "Conferma cancellazione",
++                    "Are you sure you want to delete the transition?",
++                    "Confirm deletion",
+                     JOptionPane.YES_NO_OPTION);
+             if(confirm == JOptionPane.YES_OPTION) {
+                 deleteTransition(t); // Metodo helper che rimuove la transizione e i suoi riferimenti.
+@@ -676,11 +676,11 @@
+-    protected  void showPopupMenuForState(MouseEvent e, StateInterface state) {
+-        System.out.println("showPopupMenuForState: Stato rilevato: " + state.getName()
+-                + " - Tipo: " + state.getClass().getName());
++    protected  void showPopupMenuForState(MouseEvent e, StateInterface state) {
++        System.out.println("showPopupMenuForState: Detected state: " + state.getName()
++                + " - Type: " + state.getClass().getName());
+         JPopupMenu popup = new JPopupMenu();
+@@ -685,13 +685,13 @@
+-        if (state instanceof PWSState && ((PWSState) state).isPseudoState()) {
++        if (state instanceof PWSState && ((PWSState) state).isPseudoState()) {
+             PWSState pwsState = (PWSState) state;
+             // Usa un menu item di toggle per il pseudostato
+-            String toggleText = pwsState.isAnnotationVisible() ? "Nascondi annotazione" : "Mostra annotazione";
++            String toggleText = pwsState.isAnnotationVisible() ? "Hide annotation" : "Show annotation";
+             JMenuItem toggleAnnotItem = new JMenuItem(toggleText);
+             toggleAnnotItem.addActionListener(ae -> {
+                 if (!pwsState.isAnnotationVisible()) {
+-                    System.out.println("Mostra annotazione pseudostato invoked");
++                    System.out.println("Show pseudo-state annotation invoked");
+                     // Crea l'annotazione se non esiste e la rende visibile
+@@ -699,21 +699,21 @@
+                         // Posiziona l'annotazione vicino al pseudostato
+                         Point pos = ((machinery.State) pwsState).getPosition();
+                         annot.setBounds(pos.x, pos.y - 40, 120, 30);
+                         pwsState.setAnnotation(annot);
+                         add(annot);
+-                        System.out.println("Creato nuovo StateAnnotation per " + pwsState.getName());
++                        System.out.println("Created new StateAnnotation for " + pwsState.getName());
+                     } else {
+                         annot.setVisible(true);
+-                        System.out.println("Impostata visibilità StateAnnotation a true");
++                        System.out.println("Set StateAnnotation visibility to true");
+                     }
+                     pwsState.setAnnotationVisible(true);
+                 } else {
+                     // Se l'annotazione è visibile, la nasconde
+                     if (pwsState.getAnnotation() != null) {
+                         pwsState.getAnnotation().setVisible(false);
+-                        System.out.println("Annotazione pseudostato nascosta");
++                        System.out.println("Pseudo-state annotation hidden");
+                     }
+                     pwsState.setAnnotationVisible(false);
+                 }
+                 revalidate();
+@@ -721,17 +721,17 @@
+                 repaint();
+             });
+             popup.add(toggleAnnotItem);
+
+-            JMenuItem infoItem = new JMenuItem("Pseudostato non eliminabile");
++            JMenuItem infoItem = new JMenuItem("Pseudo-state cannot be deleted");
+             infoItem.setEnabled(false);
+             popup.add(infoItem);
+         } else {
+             // Caso stato normale
+-            JMenuItem editItem = new JMenuItem("Modifica");
++            JMenuItem editItem = new JMenuItem("Edit");
+             editItem.addActionListener(ae -> {
+-                String newName = JOptionPane.showInputDialog(this, "Nuovo nome per lo stato:", state.getName());
++                String newName = JOptionPane.showInputDialog(this, "New name for the state:", state.getName());
+                 if (newName != null && !newName.trim().isEmpty()) {
+                     ((machinery.State) state).setName(newName);
+                     repaint();
+                 }
+             });
+@@ -757,7 +757,7 @@
+                     if (newVisible) {
+                         if (pwsState.getAnnotation() == null) {
+                             StateSemanticsAnnotation annot = new StateSemanticsAnnotation(pwsState);
+                             Point pos = ((machinery.State) pwsState).getPosition();
+                             annot.setBounds(pos.x, pos.y - 40, 120, 30);
+                             pwsState.setAnnotation(annot);
+                             add(annot);
+-                            System.out.println("Creato nuova Annotation per " + pwsState.getName());
++                            System.out.println("Created new Annotation for " + pwsState.getName());
+                         } else {
+                             pwsState.getAnnotation().setVisible(true);
+                         }

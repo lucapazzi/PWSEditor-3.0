@@ -1,0 +1,193 @@
+*** Begin Patch
+*** Update File: src/pws/editor/PWSEditor.java
+@@ private JMenuBar createMenuBar() {
+-        JMenuItem saveAllItem = new JMenuItem("Salva Tutto");
++        JMenuItem saveAllItem = new JMenuItem("Save All");
+@@
+-        JMenuItem loadAllItem = new JMenuItem("Carica Tutto");
++        JMenuItem loadAllItem = new JMenuItem("Load All");
+@@
+-        JMenuItem exportSVGItem = new JMenuItem("Esporta come SVG");
++        JMenuItem exportSVGItem = new JMenuItem("Export as SVG");
+@@
+-        JMenuItem exitItem = new JMenuItem("Esci");
++        JMenuItem exitItem = new JMenuItem("Exit");
+@@
+-        JMenu editMenu = new JMenu("Modifica");
++        JMenu editMenu = new JMenu("Edit");
+@@
+-        JMenuItem addStateItem = new JMenuItem("Aggiungi Stato");
++        JMenuItem addStateItem = new JMenuItem("Add State");
+@@
+-        JMenuItem addInitialTransitionItem = new JMenuItem("Aggiungi transizione iniziale");
++        JMenuItem addInitialTransitionItem = new JMenuItem("Add initial transition");
+@@
+-        JMenuItem linkModeItem = new JMenuItem("Crea transizione (modalità collega)");
++        JMenuItem linkModeItem = new JMenuItem("Create transition (link mode)");
+@@
+-        JCheckBoxMenuItem editModeItem = new JCheckBoxMenuItem("Modalità modifica", true);
++        JCheckBoxMenuItem editModeItem = new JCheckBoxMenuItem("Edit mode", true);
+
+*** End Patch
+
+*** Update File: src/editor/StateMachineEditor.java
+@@ protected JMenuBar createMenuBar() {
+-        JMenuItem loadMachineItem = new JMenuItem("Carica Macchina Singola");
++        JMenuItem loadMachineItem = new JMenuItem("Load Single Machine");
+@@
+-        fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("File Macchina (sm)", "sm"));
++        fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Machine File (sm)", "sm"));
+@@
+-        JOptionPane.showMessageDialog(StateMachineEditor.this,
+-                             "Macchina caricata correttamente: " + clonedMachine.getName());
++        JOptionPane.showMessageDialog(StateMachineEditor.this,
++                             "Machine loaded successfully: " + clonedMachine.getName());
+@@
+-        JOptionPane.showMessageDialog(StateMachineEditor.this,
+-                             "Errore nel caricamento della macchina: " + ex.getMessage());
++        JOptionPane.showMessageDialog(StateMachineEditor.this,
++                             "Error loading machine: " + ex.getMessage());
+@@
+-        JMenuItem saveMachineItem = new JMenuItem("Salva Macchina Singola");
++        JMenuItem saveMachineItem = new JMenuItem("Save Single Machine");
+@@
+-        fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("File Macchina (sm)", "sm"));
++        fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Machine File (sm)", "sm"));
+@@
+-        JOptionPane.showMessageDialog(StateMachineEditor.this,
+-                             "Macchina salvata: " + stateMachine.getName());
++        JOptionPane.showMessageDialog(StateMachineEditor.this,
++                             "Machine saved: " + stateMachine.getName());
+@@
+-        JOptionPane.showMessageDialog(StateMachineEditor.this,
+-                             "Errore nel salvataggio della macchina: " + ex.getMessage());
++        JOptionPane.showMessageDialog(StateMachineEditor.this,
++                             "Error saving machine: " + ex.getMessage());
+@@
+-        JMenuItem exitItem = new JMenuItem("Esci");
++        JMenuItem exitItem = new JMenuItem("Exit");
+@@
+-        JMenuItem exportSVGItem = new JMenuItem("Esporta come SVG");
++        JMenuItem exportSVGItem = new JMenuItem("Export as SVG");
+@@
+-        JMenu editMenu = new JMenu("Modifica");
++        JMenu editMenu = new JMenu("Edit");
+@@
+-        JMenuItem addStateItem = new JMenuItem("Aggiungi Stato");
++        JMenuItem addStateItem = new JMenuItem("Add State");
+@@
+-        addStateItem.addActionListener(e -> {
+-            String name = JOptionPane.showInputDialog(this, "Inserisci il nome dello stato:");
++        addStateItem.addActionListener(e -> {
++            String name = JOptionPane.showInputDialog(this, "Enter state name:");
+@@
+-        JMenuItem addInitialTransitionItem = new JMenuItem("Aggiungi transizione iniziale");
++        JMenuItem addInitialTransitionItem = new JMenuItem("Add initial transition");
+@@
+-        JMenuItem linkModeItem = new JMenuItem("Crea transizione (modalità collega)");
++        JMenuItem linkModeItem = new JMenuItem("Create transition (link mode)");
+@@
+-        JCheckBoxMenuItem editModeItem = new JCheckBoxMenuItem("Modalità modifica", true);
++        JCheckBoxMenuItem editModeItem = new JCheckBoxMenuItem("Edit mode", true);
+@@
+-            JOptionPane.showMessageDialog(this, "Valore non valido", "Errore", JOptionPane.ERROR_MESSAGE);
++            JOptionPane.showMessageDialog(this, "Invalid value", "Error", JOptionPane.ERROR_MESSAGE);
+
+*** End Patch
+
+*** Update File: src/pws/editor/PWSPanel.java
+@@ public PWSPanel(Assembly assembly) {
+-        JButton addButton = new JButton("Aggiungi");
+-        JButton editButton = new JButton("Modifica");
+-        JButton removeButton = new JButton("Rimuovi");
++        JButton addButton = new JButton("Add");
++        JButton editButton = new JButton("Edit");
++        JButton removeButton = new JButton("Remove");
+@@ private void onAdd() {
+-        String id = JOptionPane.showInputDialog(this, "Inserisci un identificatore univoco:");
++        String id = JOptionPane.showInputDialog(this, "Enter a unique identifier:");
+@@
+-        String name = JOptionPane.showInputDialog(this, "Inserisci il nome della macchina:");
++        String name = JOptionPane.showInputDialog(this, "Enter the machine name:");
+@@ private void onEdit() {
+-        String newName = JOptionPane.showInputDialog(this, "Modifica il nome della macchina:",
++        String newName = JOptionPane.showInputDialog(this, "Edit the machine name:",
+@@ private void onRemove() {
+-        int confirm = JOptionPane.showConfirmDialog(this,
+-                "Sei sicuro di voler rimuovere la macchina con identificatore " + id + "?",
+-                "Conferma", JOptionPane.YES_NO_OPTION);
++        int confirm = JOptionPane.showConfirmDialog(this,
++                "Are you sure you want to remove the machine with identifier " + id + "?",
++                "Confirm", JOptionPane.YES_NO_OPTION);
+
+*** End Patch
+
+*** Update File: src/pws/editor/AssemblyPanel.java
+@@ public AssemblyPanel(AssemblyInterface assembly) {
+-        JButton addButton = new JButton("Aggiungi");
+-        JButton editButton = new JButton("Modifica");
+-        JButton removeButton = new JButton("Rimuovi");
++        JButton addButton = new JButton("Add");
++        JButton editButton = new JButton("Edit");
++        JButton removeButton = new JButton("Remove");
+@@ private void onAdd() {
+-        String id = JOptionPane.showInputDialog(this, "Inserisci un identificatore univoco:");
++        String id = JOptionPane.showInputDialog(this, "Enter a unique identifier:");
+@@ private void onAdd() {
+-        int option = JOptionPane.showOptionDialog(this,
+-                "Vuoi creare una nuova macchina o selezionare una già presente?",
+-                "Aggiungi StateMachine",
+-                JOptionPane.YES_NO_OPTION,
+-                JOptionPane.QUESTION_MESSAGE,
+-                null,
+-                new Object[] {"Nuova", "Esistente"},
+-                "Nuova");
++        int option = JOptionPane.showOptionDialog(this,
++                "Do you want to create a new machine or select an existing one?",
++                "Add StateMachine",
++                JOptionPane.YES_NO_OPTION,
++                JOptionPane.QUESTION_MESSAGE,
++                null,
++                new Object[] {"New", "Existing"},
++                "New");
+@@
+-            String name = JOptionPane.showInputDialog(this, "Inserisci il nome della macchina:");
++            String name = JOptionPane.showInputDialog(this, "Enter the machine name:");
+@@ else if(option == JOptionPane.NO_OPTION) {
+-            if(machines.isEmpty()){
+-                JOptionPane.showMessageDialog(this, "Non ci sono macchine esistenti. Verrà creata una nuova macchina.");
+-                String name = JOptionPane.showInputDialog(this, "Inserisci il nome della macchina:");
++            if(machines.isEmpty()){
++                JOptionPane.showMessageDialog(this, "No existing machines. A new machine will be created.");
++                String name = JOptionPane.showInputDialog(this, "Enter the machine name:");
+@@
+-                String selectedId = (String) JOptionPane.showInputDialog(this, "Seleziona una macchina:",
+-                        "Macchine esistenti", JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
++                String selectedId = (String) JOptionPane.showInputDialog(this, "Select a machine:",
++                        "Existing machines", JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
+@@ private void onEdit() {
+-        String newName = JOptionPane.showInputDialog(this, "Modifica il nome della macchina:",
++        String newName = JOptionPane.showInputDialog(this, "Edit the machine name:",
+@@ private void onRemove() {
+-        int confirm = JOptionPane.showConfirmDialog(this,
+-                "Sei sicuro di voler rimuovere la macchina con identificatore " + id + "?",
+-                "Conferma", JOptionPane.YES_NO_OPTION);
++        int confirm = JOptionPane.showConfirmDialog(this,
++                "Are you sure you want to remove the machine with identifier " + id + "?",
++                "Confirm", JOptionPane.YES_NO_OPTION);
+
+*** End Patch
+
+*** Update File: src/utility/PWSDialogs.java
+@@ public static String[] askForGuardAndAction(AssemblyInterface assembly) {
+-        panel.add(new JLabel("Seleziona una guard (m.S):"), gbc);
++        panel.add(new JLabel("Select a guard (m.S):"), gbc);
+@@
+-            panel.add(new JLabel("Azione per " + machineId + ":"), gbc);
++            panel.add(new JLabel("Action for " + machineId + ":"), gbc);
+@@
+-        int result = JOptionPane.showConfirmDialog(null, panel, "Seleziona Guard e Azione",
+-                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
++        int result = JOptionPane.showConfirmDialog(null, panel, "Select Guard and Action",
++                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+*** End Patch
