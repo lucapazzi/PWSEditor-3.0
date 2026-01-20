@@ -46,6 +46,19 @@ public class PWSEditor extends JFrame {
     private CardLayout topCardsLayout;      // CardLayout for assembly/library switch
     private JPanel topSwitchPanel;          // Panel containing assembly/library cards
     private JToggleButton btnLibraryToggle; // Library toggle button reference
+    // Whether the left-hand controller editor should be shown.
+    private boolean controllerEditorVisible = false;
+    // Menu items that depend on the controller/editor being present
+    private JMenuItem saveItem;
+    private JMenuItem saveAsItem;
+    private JMenuItem closeItem;
+    private JMenuItem exportPDFItem;
+    private JCheckBoxMenuItem editModeItem;
+    private JCheckBoxMenuItem showStateAnn;
+    private JCheckBoxMenuItem showGridItem;
+    private JCheckBoxMenuItem snapToGridItem;
+    private JMenuItem gridSizeItem;
+    private JMenuItem ltlEditorItem;
 
     // The main PWSEditor window uses a fixed title, e.g. "PWSEditor"
     /**
@@ -58,13 +71,18 @@ public class PWSEditor extends JFrame {
         // Use the specialized PWSStateMachine:
         if (machine instanceof PWSStateMachine) {
             this.pwsStateMachine = ((PWSStateMachine) machine).clone();
-        } else {
+        } else if (machine != null) {
             this.pwsStateMachine = new PWSStateMachine(machine.getName());
+        } else {
+            this.pwsStateMachine = null;
         }
+        // By default we start WITHOUT showing the controller editor; it will be
+        // enabled when the user issues New/Open from the File menu.
+        this.controllerEditorVisible = false;
         initComponents();
-        // Initialize file manager and document wrapper
+        // Initialize file manager. Document will be created when New/Open is used.
         this.fileManager = new PWSFileManager(this);
-        this.currentDocument = new PWSDocument(this.pwsStateMachine, this.pwsStateMachine.getAssembly().getMachineLibrary());
+        this.currentDocument = null;
         updateWindowTitle();
     }
 
@@ -84,9 +102,16 @@ public class PWSEditor extends JFrame {
         // setJMenuBar(createMenuBar());
 
         // Left editor area (wrapped with a header)
-        baseEditor = new PWSStateMachineEditor(pwsStateMachine, "PWSMachine");
         JPanel editorInner = new JPanel(new BorderLayout());
-        editorInner.add(baseEditor.getContentPane(), BorderLayout.CENTER);
+        if (controllerEditorVisible && pwsStateMachine != null) {
+            baseEditor = new PWSStateMachineEditor(pwsStateMachine, "PWSMachine");
+            editorInner.add(baseEditor.getContentPane(), BorderLayout.CENTER);
+        } else {
+            // Placeholder shown until user creates/loads a document
+            JLabel placeholderCtrl = new JLabel("No controller loaded. Use File -> New or Open.", SwingConstants.CENTER);
+            placeholderCtrl.setBorder(BorderFactory.createEmptyBorder(12,12,12,12));
+            editorInner.add(placeholderCtrl, BorderLayout.CENTER);
+        }
 
         JPanel leftWrapper = new JPanel(new BorderLayout());
         
@@ -105,7 +130,7 @@ public class PWSEditor extends JFrame {
         leftWrapper.add(editorInner, BorderLayout.CENTER);
 
         // Ensure clicks anywhere on the left editor area transfer focus to the controller's panel
-        Component controllerPanel = baseEditor.getStateMachinePanel();
+        Component controllerPanel = (baseEditor != null) ? baseEditor.getStateMachinePanel() : null;
         java.awt.event.MouseAdapter focusRequester = new java.awt.event.MouseAdapter() {
             private void requestCtrlFocus() {
                 if (controllerPanel == null) return;
@@ -519,19 +544,19 @@ public class PWSEditor extends JFrame {
         });
         fileMenu.add(openItem);
 
-        JMenuItem saveItem = new JMenuItem("Save");
+        saveItem = new JMenuItem("Save");
         saveItem.addActionListener(e -> {
             fileManager.save();
         });
         fileMenu.add(saveItem);
 
-        JMenuItem saveAsItem = new JMenuItem("Save As...");
+        saveAsItem = new JMenuItem("Save As...");
         saveAsItem.addActionListener(e -> {
             fileManager.saveAs();
         });
         fileMenu.add(saveAsItem);
 
-        JMenuItem closeItem = new JMenuItem("Close");
+        closeItem = new JMenuItem("Close");
         closeItem.addActionListener(e -> {
             if (currentDocument != null && currentDocument.isDirty()) {
                 Object[] options = new Object[] {"No", "Yes"};
@@ -564,7 +589,7 @@ public class PWSEditor extends JFrame {
         });
         fileMenu.add(preferVectorItem);
 
-        JMenuItem exportPDFItem = new JMenuItem("Export as PDF");
+        exportPDFItem = new JMenuItem("Export as PDF");
         exportPDFItem.addActionListener(e -> {
             JFileChooser fileChooser = new JFileChooser();
             fileChooser.setFileFilter(
@@ -659,16 +684,20 @@ public class PWSEditor extends JFrame {
 //        });
 //        editMenu.add(addTransitionItem);
 
-        JCheckBoxMenuItem editModeItem = new JCheckBoxMenuItem("Edit mode", true);
-        editModeItem.addActionListener(e -> baseEditor.getStateMachinePanel().setEditMode(editModeItem.isSelected()));
+        editModeItem = new JCheckBoxMenuItem("Edit mode", true);
+        editModeItem.addActionListener(e -> {
+            if (baseEditor == null) return;
+            baseEditor.getStateMachinePanel().setEditMode(editModeItem.isSelected());
+        });
         editMenu.add(editModeItem);
 
         menuBar.add(editMenu);
 
         // --- View menu: toggle state dashboards ---
         JMenu viewMenu = new JMenu("View");
-        JCheckBoxMenuItem showStateAnn = new JCheckBoxMenuItem("Show state dashboards", true);
+        showStateAnn = new JCheckBoxMenuItem("Show state dashboards", true);
         showStateAnn.addActionListener(e -> {
+            if (baseEditor == null) return;
             boolean show = showStateAnn.isSelected();
             // Retrieve the PWSStateMachinePanel and toggle annotations/dashboards
             PWSStateMachinePanel panel =
@@ -691,8 +720,9 @@ public class PWSEditor extends JFrame {
             // Ignore if panel is not yet ready
         }
 
-        JCheckBoxMenuItem showGridItem = new JCheckBoxMenuItem("Show grid", true);
+        showGridItem = new JCheckBoxMenuItem("Show grid", true);
         showGridItem.addActionListener(e -> {
+            if (baseEditor == null) return;
             PWSStateMachinePanel panel =
                 (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
             panel.setShowGrid(showGridItem.isSelected());
@@ -700,16 +730,18 @@ public class PWSEditor extends JFrame {
         });
         viewMenu.add(showGridItem);
 
-        JCheckBoxMenuItem snapToGridItem = new JCheckBoxMenuItem("Snap to grid", true);
+        snapToGridItem = new JCheckBoxMenuItem("Snap to grid", true);
         snapToGridItem.addActionListener(e -> {
+            if (baseEditor == null) return;
             PWSStateMachinePanel panel =
                 (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
             panel.setSnapToGrid(snapToGridItem.isSelected());
         });
         viewMenu.add(snapToGridItem);
 
-        JMenuItem gridSizeItem = new JMenuItem("Set grid size...");
+        gridSizeItem = new JMenuItem("Set grid size...");
         gridSizeItem.addActionListener(e -> {
+            if (baseEditor == null) return;
             PWSStateMachinePanel panel =
                 (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
             String input = JOptionPane.showInputDialog(this, "Grid size (pixels):", panel.getGridSize());
@@ -728,7 +760,7 @@ public class PWSEditor extends JFrame {
         viewMenu.add(gridSizeItem);
 
         // LTL Formula editor for the current assembly
-        JMenuItem ltlEditorItem = new JMenuItem("LTL Editor...");
+        ltlEditorItem = new JMenuItem("LTL Editor...");
         ltlEditorItem.addActionListener(e -> {
             pws.editor.LTLFormulaEditorDialog dlg = new pws.editor.LTLFormulaEditorDialog(PWSEditor.this, pwsStateMachine.getAssembly());
             dlg.setVisible(true);
@@ -736,6 +768,9 @@ public class PWSEditor extends JFrame {
         // Disabled by default (grayed out)
         ltlEditorItem.setEnabled(false);
         viewMenu.add(ltlEditorItem);
+
+        // Ensure menu items reflect initial state
+        updateMenuItemsEnabledState();
 
         menuBar.add(viewMenu);
         return menuBar;
@@ -754,6 +789,31 @@ public class PWSEditor extends JFrame {
     public void setDocument(PWSDocument doc) {
         this.currentDocument = doc;
         updateWindowTitle();
+        updateMenuItemsEnabledState();
+    }
+
+    /** Control whether the left-hand controller editor is shown. */
+    public void setControllerEditorVisible(boolean visible) {
+        this.controllerEditorVisible = visible;
+        updateMenuItemsEnabledState();
+    }
+
+    private void updateMenuItemsEnabledState() {
+        boolean ctrl = controllerEditorVisible && baseEditor != null;
+        // Save/SaveAs/Close require a document
+        boolean hasDoc = (currentDocument != null);
+        if (saveItem != null) saveItem.setEnabled(hasDoc);
+        if (saveAsItem != null) saveAsItem.setEnabled(hasDoc);
+        if (closeItem != null) closeItem.setEnabled(hasDoc);
+
+        if (exportPDFItem != null) exportPDFItem.setEnabled(ctrl);
+
+        if (editModeItem != null) editModeItem.setEnabled(ctrl);
+        if (showStateAnn != null) showStateAnn.setEnabled(ctrl);
+        if (showGridItem != null) showGridItem.setEnabled(ctrl);
+        if (snapToGridItem != null) snapToGridItem.setEnabled(ctrl);
+        if (gridSizeItem != null) gridSizeItem.setEnabled(ctrl);
+        if (ltlEditorItem != null) ltlEditorItem.setEnabled(ctrl);
     }
 
     public PWSDocument getDocument() { return this.currentDocument; }

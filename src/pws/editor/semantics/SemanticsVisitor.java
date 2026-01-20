@@ -60,10 +60,15 @@ public class SemanticsVisitor {
         Deque<PWSState> worklist = new ArrayDeque<>();
         worklist.add(pseudo);
 
+        int step = 0;
         // Chaotic iteration until fixed-point
         while (!worklist.isEmpty()) {
             PWSState src = worklist.poll();
+            step++;
             Semantics base = semMap.get(src);
+
+            logger.info(String.format("--> Step %d: processing state '%s' (worklist size %d) base=%s",
+                    step, src.getName(), worklist.size(), base));
 
             for (TransitionInterface ti : machine.getTransitions()) {
                 if (!(ti instanceof PWSTransition)) continue;
@@ -71,18 +76,34 @@ public class SemanticsVisitor {
                 if (t.getSource() != src || !t.isEnabled()) continue;
 
                 Semantics contrib = machine.computeTransitionContribution(t, base);
+                if (contrib == null || contrib.ISEMPTY()) {
+                    logger.fine(String.format("    transition '%s' -> '%s' contributed no configs",
+                            t.getSource().getName(), t.getTarget().getName()));
+                    continue;
+                }
+
                 PWSState tgt = (PWSState) t.getTarget();
                 Semantics oldSem = semMap.get(tgt);
                 Semantics combined = oldSem.OR(contrib);
                 if (!combined.equals(oldSem)) {
                     semMap.put(tgt, combined);
                     worklist.add(tgt);
+                    logger.info(String.format("    transition '%s' -> '%s' added %d configs: %d -> %d (enqueued '%s')",
+                            t.getSource().getName(),
+                            tgt.getName(),
+                            contrib.getConfigurations().size(),
+                            oldSem.getConfigurations().size(),
+                            combined.getConfigurations().size(),
+                            tgt.getName()));
+                } else {
+                    logger.fine(String.format("    transition '%s' -> '%s' produced no new configurations",
+                            t.getSource().getName(), tgt.getName()));
                 }
             }
         }
 
         // (Removed POST-FIXPOINT EXIT-ZONE UPDATE)
-        logger.info("Completed worklist semantics computation for machine '" + machine.getName() + "'.");
+        logger.info("Completed worklist semantics computation for machine '" + machine.getName() + "' in " + step + " steps.");
         return semMap;
     }
 

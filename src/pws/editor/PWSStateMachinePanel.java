@@ -774,7 +774,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         if (clickedState != null) {
             if (transitionSourceState == null) {
                 transitionSourceState = clickedState;
-                System.out.println("Link mode: Source state selected: " + transitionSourceState.getName());
+                // Debug: link mode source selection (commented out)
+                // System.out.println("Link mode: Source state selected: " + transitionSourceState.getName());
             } else {
                 // Prevent pseudostate as target
                 if (clickedState instanceof PWSState p && p.isPseudoState()) {
@@ -793,9 +794,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 // The user can later modify them by clicking on the corresponding annotations.
 
                 stateMachine.addTransition(newTransition);
-                System.out.println("Link mode: Transition created from " +
-                    transitionSourceState.getName() + " to " + clickedState.getName() +
-                    (clickedState == transitionSourceState ? " (self-loop)" : ""));
+                // Debug: transition creation in link mode (commented out)
+                // System.out.println("Link mode: Transition created from " +
+                //    transitionSourceState.getName() + " to " + clickedState.getName() +
+                //    (clickedState == transitionSourceState ? " (self-loop)" : ""));
                 linkMode = false;
                 transitionSourceState = null;
                 java.awt.Window w = SwingUtilities.getWindowAncestor(this);
@@ -803,7 +805,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             }
             repaint();
         } else {
-            System.out.println("Link mode: No state found at " + e.getPoint());
+            // System.out.println("Link mode: No state found at " + e.getPoint());
         }
     }
 
@@ -1032,7 +1034,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             // Caso stato normale
             // Create transition item - only if state is not the pseudostate
             if (!(state instanceof PWSState p && p.isPseudoState())) {
-                JMenuItem createTransItem = new JMenuItem("Create transition");
+                JMenuItem createTransItem = new JMenuItem("Create transition: choose arrival state");
                 createTransItem.addActionListener(ae -> {
                     enableLinkModeWithSource(state);
                 });

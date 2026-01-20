@@ -22,6 +22,8 @@ public class PWSFileManager {
         // New documents should start clean (no unsaved changes)
         doc.setDirty(false);
         editor.setDocument(doc);
+        // Ensure the controller editor is shown for the newly created model
+        editor.setControllerEditorVisible(true);
         editor.rebuildUIForNewModel(model);
         editor.updateWindowTitle();
     }
@@ -41,6 +43,8 @@ public class PWSFileManager {
                     doc.setFile(file);
                     doc.setDirty(false);
                     editor.setDocument(doc);
+                    // Show controller editor when loading a model
+                    editor.setControllerEditorVisible(true);
                     editor.rebuildUIForNewModel(model);
 
                     // Attempt to restore annotations. The file format may contain the annotations

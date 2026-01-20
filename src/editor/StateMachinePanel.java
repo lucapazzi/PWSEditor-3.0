@@ -465,7 +465,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         if (!hasFocus()) {
             requestFocusInWindow();
         }
-        System.out.println("mousePressed: button=" + e.getButton() + ", point=" + p + ", isPopupTrigger=" + e.isPopupTrigger());
+        // Debug: mouse press details — commented out to reduce console noise
+        // System.out.println("mousePressed: button=" + e.getButton() + ", point=" + p + ", isPopupTrigger=" + e.isPopupTrigger());
         if (e.getButton() == MouseEvent.BUTTON1) {
             for (TransitionInterface t : stateMachine.getTransitions()) {
                 Point cp = ((Transition) t).getControlPoint();
@@ -600,7 +601,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 if (!exists) {
                     TransitionInterface newTransition = new Transition(pseudo, clickedState, true, "");
                     stateMachine.addTransition(newTransition);
-                    System.out.println("Initial transition created: PseudoState -> " + clickedState.getName());
+                    // Debug: initial transition creation (commented out)
+                    // System.out.println("Initial transition created: PseudoState -> " + clickedState.getName());
                 } else {
                     JOptionPane.showMessageDialog(this, "An initial transition for this state already exists.");
                 }
@@ -617,9 +619,10 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     private void handleLinkMode(MouseEvent e) {
         StateInterface clickedState = getStateAt(e.getPoint());
         if (clickedState != null) {
-            if (transitionSourceState == null) {
+                if (transitionSourceState == null) {
                 transitionSourceState = clickedState;
-                System.out.println("Link mode: Source state selected: " + transitionSourceState.getName());
+                // Debug: link mode source selection (commented out)
+                // System.out.println("Link mode: Source state selected: " + transitionSourceState.getName());
             } else {
                 if (clickedState != transitionSourceState) {
                     // Prevent pseudostate as target
@@ -634,10 +637,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                             (trigger == null || trigger.trim().isEmpty());
                     TransitionInterface newTransition = new Transition(transitionSourceState, clickedState, autonomous, trigger);
                     stateMachine.addTransition(newTransition);
-                    System.out.println("Link mode: Transition created from " +
-                            transitionSourceState.getName() + " to " + clickedState.getName());
+                    // Debug: transition creation in link mode (commented out)
+                    // System.out.println("Link mode: Transition created from " +
+                    //        transitionSourceState.getName() + " to " + clickedState.getName());
                 } else {
-                    System.out.println("Link mode: Target same as source. Ignored.");
+                    // System.out.println("Link mode: Target same as source. Ignored.");
                 }
                 linkMode = false;
                 transitionSourceState = null;
@@ -730,7 +734,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     }
 
     private void showPopupMenuForState(MouseEvent e, StateInterface state) {
-        System.out.println("showPopupMenuForState invoked for state: " + state.getName());
+        // Debug: showPopupMenuForState invoked (commented out)
+        // System.out.println("showPopupMenuForState invoked for state: " + state.getName());
         JPopupMenu popup = new JPopupMenu();
 
         if (state.getName().equals("PseudoState")) {
@@ -747,7 +752,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         } else {
             // Normal state menu
             // Create transition item - only if state is not the pseudostate
-            JMenuItem createTransItem = new JMenuItem("Create transition from this state");
+            JMenuItem createTransItem = new JMenuItem("Create transition: choose arrival state");
             createTransItem.addActionListener(ae -> {
                 enableLinkModeWithSource(state);
             });
@@ -772,7 +777,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             });
             popup.add(deleteItem);
         }
-        System.out.println("Showing popup menu for state: " + state.getName());
+        // Debug: showing popup menu (commented out)
+        // System.out.println("Showing popup menu for state: " + state.getName());
         popup.show(this, e.getX(), e.getY());
     }
 
