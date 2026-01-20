@@ -16,6 +16,7 @@ import pws.editor.annotation.StateSemanticsAnnotation;
 import pws.editor.annotation.TransitionSemanticsAnnotation;
 import pws.editor.semantics.Semantics;
 import smalgebra.SMProposition;
+import smalgebra.TrueProposition;
 
 import javax.swing.*;
 import java.awt.*;
@@ -470,6 +471,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             }
             GuardAnnotation guardAnnot = new GuardAnnotation(guardProp, assembly, newGuard -> {
                 pt.setGuardProposition(newGuard);
+                java.awt.Window w = SwingUtilities.getWindowAncestor(PWSStateMachinePanel.this);
+                if (w instanceof PWSEditor pe) {
+                    pe.markDocumentDirty();
+                    pe.scheduleSemanticsRecalculation();
+                }
             }, pt);
             guardAnnot.setBounds(guardX, guardY, 120, 20);
             // For both reactive and triggerable transitions, pass guardProp directly.
@@ -709,6 +715,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             if (newName != null && !newName.trim().isEmpty()) {
                 ((machinery.State) state).setName(newName.trim());
                 repaint();
+                java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+                if (win instanceof pws.editor.PWSEditor) {
+                    ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+                }
             }
         }
     }
@@ -749,6 +759,28 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     // I campi della transizione (guardProposition, actionList, transitionSemantics) sono
                     // inizializzati ai valori di default (TrueProposition, lista vuota, TrueProposition).
                     stateMachine.addTransition(newTransition);
+                    // Create a (transient) ActionAnnotation but keep it hidden for autonomous transitions
+                    try {
+                        ActionAnnotation actionAnnot = new ActionAnnotation(newTransition.getActionList(), ((PWSStateMachine)stateMachine).getAssembly(), newActions -> newTransition.setActionList(newActions), newTransition);
+                        // place roughly on the curve (0.5)
+                        machinery.State sourceState = (machinery.State) newTransition.getSource();
+                        machinery.State targetState = (machinery.State) newTransition.getTarget();
+                        Point sourcePos = sourceState.getPosition();
+                        Point targetPos = targetState.getPosition();
+                        int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                        int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                        Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                        Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                        Point cp = ((Transition) newTransition).getControlPoint();
+                        if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                        Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                        Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                        Point actionPoint = computePointOnCurve(p0, cp, p2, 0.5);
+                        actionAnnot.setBounds(actionPoint.x - 75, actionPoint.y - 10, 150, 20);
+                        newTransition.setActionAnnotation(actionAnnot);
+                        add(actionAnnot);
+                        actionAnnot.setVisible(false);
+                    } catch (Exception ignored) {}
                     System.out.println("Initial transition created: PseudoState -> " + clickedState.getName());
                     java.awt.Window w = SwingUtilities.getWindowAncestor(this);
                     if (w instanceof PWSEditor pe) pe.markDocumentDirty();
@@ -794,6 +826,29 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 // The user can later modify them by clicking on the corresponding annotations.
 
                 stateMachine.addTransition(newTransition);
+                // If autonomous (no trigger) create hidden action annotation by default
+                if (newTransition.isAutonomous()) {
+                    try {
+                        ActionAnnotation actionAnnot = new ActionAnnotation(newTransition.getActionList(), ((PWSStateMachine)stateMachine).getAssembly(), newActions -> newTransition.setActionList(newActions), newTransition);
+                        machinery.State sourceState = (machinery.State) newTransition.getSource();
+                        machinery.State targetState = (machinery.State) newTransition.getTarget();
+                        Point sourcePos = sourceState.getPosition();
+                        Point targetPos = targetState.getPosition();
+                        int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                        int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                        Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                        Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                        Point cp = ((Transition) newTransition).getControlPoint();
+                        if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                        Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                        Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                        Point actionPoint = computePointOnCurve(p0, cp, p2, 0.5);
+                        actionAnnot.setBounds(actionPoint.x - 75, actionPoint.y - 10, 150, 20);
+                        newTransition.setActionAnnotation(actionAnnot);
+                        add(actionAnnot);
+                        actionAnnot.setVisible(false);
+                    } catch (Exception ignored) {}
+                }
                 // Debug: transition creation in link mode (commented out)
                 // System.out.println("Link mode: Transition created from " +
                 //    transitionSourceState.getName() + " to " + clickedState.getName() +
@@ -923,40 +978,133 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         if (t instanceof PWSTransition) {
             PWSTransition pt = (PWSTransition) t;
 
-            // Toggle per la Guard Annotation
-            JMenuItem toggleGuardItem = new JMenuItem("Toggle Guard Annotation");
-            toggleGuardItem.addActionListener(ae -> {
-                if (pt.getGuardAnnotation() != null) {
-                    pt.getGuardAnnotation().setVisible(!pt.getGuardAnnotation().isVisible());
+            // Show/Hide Guard Annotation
+            String guardText = (pt.getGuardAnnotation() != null && pt.getGuardAnnotation().isVisible()) ? "Hide Guard Annotation" : "Show Guard Annotation";
+            JMenuItem guardItem = new JMenuItem(guardText);
+            guardItem.addActionListener(ae -> {
+                if (pt.getGuardAnnotation() == null) {
+                    // create guard annotation and attach
+                    GuardAnnotation guardAnnot = new GuardAnnotation(pt.getGuardProposition(), ((PWSStateMachine)stateMachine).getAssembly(), newGuard -> {
+                        pt.setGuardProposition(newGuard);
+                        java.awt.Window w = SwingUtilities.getWindowAncestor(PWSStateMachinePanel.this);
+                        if (w instanceof PWSEditor pe) {
+                            pe.markDocumentDirty();
+                            pe.scheduleSemanticsRecalculation();
+                        }
+                    }, pt);
+                    // default placement along the curve (0.2)
+                    try {
+                        machinery.State sourceState = (machinery.State) pt.getSource();
+                        machinery.State targetState = (machinery.State) pt.getTarget();
+                        Point sourcePos = sourceState.getPosition();
+                        Point targetPos = targetState.getPosition();
+                        int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                        int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                        Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                        Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                        Point cp = ((Transition) pt).getControlPoint();
+                        if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                        Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                        Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                        Point guardPoint = computePointOnCurve(p0, cp, p2, 0.2);
+                        guardAnnot.setBounds(guardPoint.x - 60, guardPoint.y - 10, 120, 20);
+                    } catch (Exception ignored) {
+                        guardAnnot.setBounds(10, 10, 120, 20);
+                    }
+                    pt.setGuardAnnotation(guardAnnot);
+                    add(guardAnnot);
+                    guardAnnot.setVisible(true);
+                    revalidate();
+                    repaint();
+                    java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                    if (w instanceof PWSEditor pe) pe.markDocumentDirty();
+                } else {
+                    // toggle visibility explicitly
+                    boolean newVis = !pt.getGuardAnnotation().isVisible();
+                    pt.getGuardAnnotation().setVisible(newVis);
                     revalidate();
                     repaint();
                     java.awt.Window w = SwingUtilities.getWindowAncestor(this);
                     if (w instanceof PWSEditor pe) pe.markDocumentDirty();
                 }
             });
-            popup.add(toggleGuardItem);
+            popup.add(guardItem);
 
-            // Toggle per l'Action Annotation
-            JMenuItem toggleActionItem = new JMenuItem("Toggle Action Annotation");
-            toggleActionItem.addActionListener(ae -> {
-                if (pt.getActionAnnotation() != null) {
-                    pt.getActionAnnotation().setVisible(!pt.getActionAnnotation().isVisible());
+            // Show/Hide Action Annotation
+            String actionText = (pt.getActionAnnotation() != null && pt.getActionAnnotation().isVisible()) ? "Hide Action Annotation" : "Show Action Annotation";
+            JMenuItem actionItem = new JMenuItem(actionText);
+            actionItem.addActionListener(ae -> {
+                if (pt.getActionAnnotation() == null) {
+                    ActionAnnotation actionAnnot = new ActionAnnotation(pt.getActionList(), ((PWSStateMachine)stateMachine).getAssembly(), newActions -> pt.setActionList(newActions), pt);
+                    try {
+                        machinery.State sourceState = (machinery.State) pt.getSource();
+                        machinery.State targetState = (machinery.State) pt.getTarget();
+                        Point sourcePos = sourceState.getPosition();
+                        Point targetPos = targetState.getPosition();
+                        int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                        int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                        Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                        Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                        Point cp = ((Transition) pt).getControlPoint();
+                        if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                        Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                        Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                        Point actionPoint = computePointOnCurve(p0, cp, p2, 0.5);
+                        actionAnnot.setBounds(actionPoint.x - 75, actionPoint.y - 10, 150, 20);
+                    } catch (Exception ignored) {
+                        actionAnnot.setBounds(10, 10, 150, 20);
+                    }
+                    pt.setActionAnnotation(actionAnnot);
+                    add(actionAnnot);
+                    actionAnnot.setVisible(true);
+                    revalidate();
+                    repaint();
+                } else {
+                    boolean newVis = !pt.getActionAnnotation().isVisible();
+                    pt.getActionAnnotation().setVisible(newVis);
                     revalidate();
                     repaint();
                 }
             });
-            popup.add(toggleActionItem);
+            popup.add(actionItem);
 
-            // Toggle per la Transition Semantics Annotation
-            JMenuItem toggleSemanticsItem = new JMenuItem("Toggle Semantics contribution");
-            toggleSemanticsItem.addActionListener(ae -> {
-                if (pt.getSemanticsAnnotation() != null) {
-                    pt.getSemanticsAnnotation().setVisible(!pt.getSemanticsAnnotation().isVisible());
+            // Show/Hide Transition Semantics Annotation
+            String semText = (pt.getSemanticsAnnotation() != null && pt.getSemanticsAnnotation().isVisible()) ? "Hide Semantics Annotation" : "Show Semantics Annotation";
+            JMenuItem semItem = new JMenuItem(semText);
+            semItem.addActionListener(ae -> {
+                if (pt.getSemanticsAnnotation() == null) {
+                    TransitionSemanticsAnnotation semAnnot = new TransitionSemanticsAnnotation(pt.getTransitionSemantics());
+                    try {
+                        machinery.State sourceState = (machinery.State) pt.getSource();
+                        machinery.State targetState = (machinery.State) pt.getTarget();
+                        Point sourcePos = sourceState.getPosition();
+                        Point targetPos = targetState.getPosition();
+                        int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                        int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                        Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                        Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                        Point cp = ((Transition) pt).getControlPoint();
+                        if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                        Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                        Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                        Point semPoint = computePointOnCurve(p0, cp, p2, 0.8);
+                        semAnnot.setBounds(semPoint.x - 75, semPoint.y - 10, 150, 20);
+                    } catch (Exception ignored) {
+                        semAnnot.setBounds(10, 10, 150, 20);
+                    }
+                    pt.setSemanticsAnnotation(semAnnot);
+                    add(semAnnot);
+                    semAnnot.setVisible(true);
+                    revalidate();
+                    repaint();
+                } else {
+                    boolean newVis = !pt.getSemanticsAnnotation().isVisible();
+                    pt.getSemanticsAnnotation().setVisible(newVis);
                     revalidate();
                     repaint();
                 }
             });
-            popup.add(toggleSemanticsItem);
+            popup.add(semItem);
 
             // Toggle enable/disable transition
             String toggleText = pt.isEnabled() ? "Disable Transition" : "Enable Transition";
@@ -1001,12 +1149,21 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                         annot.setBounds(annotCenterX - 60, annotCenterY - 15, 120, 30);
                         pwsState.setAnnotation(annot);
                         add(annot);
+                        java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+                        if (win instanceof pws.editor.PWSEditor) {
+                            ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+                        }
                         System.out.println("Created new StateAnnotation for " + pwsState.getName());
                     } else {
                         annot.setVisible(true);
                         System.out.println("Set StateAnnotation visibility to true");
                     }
                     pwsState.setAnnotationVisible(true);
+                    // Showed dashboard — ensure semantics up-to-date
+                    java.awt.Container win2 = javax.swing.SwingUtilities.getWindowAncestor(this);
+                    if (win2 instanceof pws.editor.PWSEditor) {
+                        ((pws.editor.PWSEditor) win2).scheduleSemanticsRecalculation();
+                    }
                 } else {
                     // Se l'annotazione è visibile, la nasconde
                     if (pwsState.getAnnotation() != null) {
@@ -1064,9 +1221,17 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                             annot.setBounds(annotCenterX - 60, annotCenterY - 15, 120, 30);
                             pwsState.setAnnotation(annot);
                             add(annot);
+                            java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+                            if (win instanceof pws.editor.PWSEditor) {
+                                ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+                            }
                             System.out.println("Created new Annotation for " + pwsState.getName());
                         } else {
                             pwsState.getAnnotation().setVisible(true);
+                            java.awt.Container win2 = javax.swing.SwingUtilities.getWindowAncestor(this);
+                            if (win2 instanceof pws.editor.PWSEditor) {
+                                ((pws.editor.PWSEditor) win2).scheduleSemanticsRecalculation();
+                            }
                         }
                     } else {
                         if (pwsState.getAnnotation() != null) {
@@ -1374,7 +1539,14 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                         if (guardBounds != null) {
                             if (pt.getGuardAnnotation() == null) {
                                 SMProposition guardProp = pt.getGuardProposition();
-                                GuardAnnotation guardAnnot = new GuardAnnotation(guardProp, ((PWSStateMachine)stateMachine).getAssembly(), newGuard -> pt.setGuardProposition(newGuard), pt);
+                                GuardAnnotation guardAnnot = new GuardAnnotation(guardProp, ((PWSStateMachine)stateMachine).getAssembly(), newGuard -> {
+                                    pt.setGuardProposition(newGuard);
+                                    java.awt.Window w = SwingUtilities.getWindowAncestor(PWSStateMachinePanel.this);
+                                    if (w instanceof PWSEditor pe) {
+                                        pe.markDocumentDirty();
+                                        pe.scheduleSemanticsRecalculation();
+                                    }
+                                }, pt);
                                 if (guardOffsetX != Integer.MIN_VALUE) {
                                     machinery.State sourceState = (machinery.State) pt.getSource();
                                     machinery.State targetState = (machinery.State) pt.getTarget();

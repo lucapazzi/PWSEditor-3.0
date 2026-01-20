@@ -39,6 +39,16 @@ public class PWSFileManager {
                 Object libOrAnn = pair[1];
                 if (loadedModel instanceof PWSStateMachine) {
                     PWSStateMachine model = (PWSStateMachine) loadedModel;
+                    // Normalize model name to the file name (without extension) so logs
+                    // and UI reflect the loaded workspace identity.
+                    try {
+                        String fname = file.getName();
+                        if (fname != null && !fname.trim().isEmpty()) {
+                            int dot = fname.lastIndexOf('.');
+                            String base = (dot > 0) ? fname.substring(0, dot) : fname;
+                            model.setName(base);
+                        }
+                    } catch (Exception ignored) {}
                     PWSDocument doc = new PWSDocument(model, model.getAssembly().getMachineLibrary());
                     doc.setFile(file);
                     doc.setDirty(false);

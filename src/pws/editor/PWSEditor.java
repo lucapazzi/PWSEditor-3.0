@@ -816,6 +816,47 @@ public class PWSEditor extends JFrame {
         if (ltlEditorItem != null) ltlEditorItem.setEnabled(ctrl);
     }
 
+    /** Schedule an asynchronous semantics recalculation for the current model. */
+    public void scheduleSemanticsRecalculation() {
+        if (this.pwsStateMachine == null) return;
+        // Indicate busy state
+        Cursor oldCursor = getCursor();
+        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+        SwingWorker<Void,Void> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                try {
+                    ((pws.PWSStateMachine) PWSEditor.this.pwsStateMachine).recalculateSemantics();
+                } catch (Exception ex) {
+                    throw ex;
+                }
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    get();
+                    try {
+                        if (baseEditor != null) {
+                            PWSStateMachinePanel panel = (PWSStateMachinePanel) ((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+                            panel.setShowStateAnnotations(true);
+                            panel.restoreVisibleStateAnnotations();
+                            panel.repaint();
+                        }
+                    } catch (Exception ignore) {}
+                    if (currentDocument != null) currentDocument.setDirty(true);
+                    updateWindowTitle();
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(PWSEditor.this, "Automatic semantics recalculation failed: " + ex.getMessage(), "Warning", JOptionPane.WARNING_MESSAGE);
+                } finally {
+                    setCursor(oldCursor);
+                }
+            }
+        };
+        worker.execute();
+    }
+
     public PWSDocument getDocument() { return this.currentDocument; }
 
     // Helper for PWSFileManager to access the base editor

@@ -582,6 +582,10 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             if (newName != null && !newName.trim().isEmpty()) {
                 ((State) state).setName(newName.trim());
                 repaint();
+                java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+                if (win instanceof pws.editor.PWSEditor) {
+                    ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+                }
             }
         }
     }
@@ -601,6 +605,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 if (!exists) {
                     TransitionInterface newTransition = new Transition(pseudo, clickedState, true, "");
                     stateMachine.addTransition(newTransition);
+                        // Schedule semantics recalculation if inside PWSEditor
+                        java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+                        if (win instanceof pws.editor.PWSEditor) {
+                            ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+                        }
                     // Debug: initial transition creation (commented out)
                     // System.out.println("Initial transition created: PseudoState -> " + clickedState.getName());
                 } else {
@@ -637,6 +646,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                             (trigger == null || trigger.trim().isEmpty());
                     TransitionInterface newTransition = new Transition(transitionSourceState, clickedState, autonomous, trigger);
                     stateMachine.addTransition(newTransition);
+                    // Schedule semantics recalculation if inside PWSEditor
+                    java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+                    if (win instanceof pws.editor.PWSEditor) {
+                        ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+                    }
                     // Debug: transition creation in link mode (commented out)
                     // System.out.println("Link mode: Transition created from " +
                     //        transitionSourceState.getName() + " to " + clickedState.getName());
@@ -692,6 +706,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         }
         Point topLeft = new Point(centerX - radius, centerY - radius);
         stateMachine.addState(new State(name, topLeft));
+        // Schedule semantics recalculation if running inside the PWSEditor
+        java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+        if (win instanceof pws.editor.PWSEditor) {
+            ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+        }
         repaint();
     }
 
@@ -719,6 +738,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         deleteItem.addActionListener(ae -> {
             // Utilizza il metodo helper per rimuovere la transizione e tutti i riferimenti associati
             deleteTransition(t);
+            // Schedule semantics recalculation if inside PWSEditor
+            java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+            if (win instanceof pws.editor.PWSEditor) {
+                ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+            }
             revalidate();
             repaint();
         });
@@ -760,7 +784,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
 
             JMenuItem deleteItem = new JMenuItem("Delete");
             deleteItem.addActionListener(ae -> {
-                System.out.println("Delete menu item clicked for state: " + state.getName());
+                    System.out.println("Delete menu item clicked for state: " + state.getName());
                 int confirm = JOptionPane.showConfirmDialog(this,
                     "Are you sure you want to delete state: " + state.getName() + "?",
                     "Confirm deletion", JOptionPane.YES_NO_OPTION);
@@ -772,7 +796,12 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                     } else {
                         System.out.println("Error: state not found in the structure.");
                     }
-                    repaint();
+                        // Schedule semantics recalculation if inside PWSEditor
+                        java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+                        if (win instanceof pws.editor.PWSEditor) {
+                            ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+                        }
+                        repaint();
                 }
             });
             popup.add(deleteItem);
@@ -815,6 +844,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         StateInterface target = t.getTarget();
         if (target != null && target.getIncomingTransitions() != null) {
             target.getIncomingTransitions().remove(t);
+        }
+        // Schedule semantics recalculation if inside PWSEditor
+        java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+        if (win instanceof pws.editor.PWSEditor) {
+            ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
         }
     }
 
