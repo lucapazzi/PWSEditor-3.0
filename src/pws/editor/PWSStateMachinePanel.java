@@ -673,8 +673,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             Point snappedCenter = snap(center);
             // nuova posizione top-left
             Point newPos = new Point(snappedCenter.x - r, snappedCenter.y - r);
-
             st.setPosition(newPos);
+            java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+            if (w instanceof PWSEditor pe) pe.markDocumentDirty();
         }
 
         // qui lasci invariato lo snap del control point:
@@ -690,6 +691,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         draggingSelfLoopStart = false;
         draggingSelfLoopEnd = false;
         repaint();
+        java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+        if (w instanceof PWSEditor pe) pe.markDocumentDirty();
     }
 
     @Override
@@ -747,6 +750,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     // inizializzati ai valori di default (TrueProposition, lista vuota, TrueProposition).
                     stateMachine.addTransition(newTransition);
                     System.out.println("Initial transition created: PseudoState -> " + clickedState.getName());
+                    java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                    if (w instanceof PWSEditor pe) pe.markDocumentDirty();
                 } else {
                     JOptionPane.showMessageDialog(this, "An initial transition for this state already exists.");
                 }
@@ -789,10 +794,12 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
                 stateMachine.addTransition(newTransition);
                 System.out.println("Link mode: Transition created from " +
-                        transitionSourceState.getName() + " to " + clickedState.getName() +
-                        (clickedState == transitionSourceState ? " (self-loop)" : ""));
+                    transitionSourceState.getName() + " to " + clickedState.getName() +
+                    (clickedState == transitionSourceState ? " (self-loop)" : ""));
                 linkMode = false;
                 transitionSourceState = null;
+                java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                if (w instanceof PWSEditor pe) pe.markDocumentDirty();
             }
             repaint();
         } else {
@@ -852,6 +859,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         PWSState newState = new PWSState(name, topLeft, pwsMachine.getAssembly());
         pwsMachine.addState(newState);
         repaint();
+        // mark document dirty
+        java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+        if (w instanceof PWSEditor pe) pe.markDocumentDirty();
     }
 
     private String generateDefaultStateName(PWSStateMachine machine) {
@@ -918,6 +928,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     pt.getGuardAnnotation().setVisible(!pt.getGuardAnnotation().isVisible());
                     revalidate();
                     repaint();
+                    java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                    if (w instanceof PWSEditor pe) pe.markDocumentDirty();
                 }
             });
             popup.add(toggleGuardItem);
@@ -1161,6 +1173,20 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 // persist whether the state dashboard was visible
                 boolean stateVisible = pState.isAnnotationVisible();
                 oos.writeBoolean(stateVisible);
+                // Also write a position offset relative to the state center for more robust restore
+                if (annotBounds != null) {
+                    Point pos = ((machinery.State) pState).getPosition();
+                    int d = pState.getName().equals("PseudoState") ? PSEUDO_DIAMETER : DIAMETER;
+                    int stateCenterX = pos.x + d / 2;
+                    int stateCenterY = pos.y + d / 2;
+                    int offsetX = annotBounds.x - stateCenterX;
+                    int offsetY = annotBounds.y - stateCenterY;
+                    oos.writeInt(offsetX);
+                    oos.writeInt(offsetY);
+                } else {
+                    oos.writeInt(Integer.MIN_VALUE);
+                    oos.writeInt(Integer.MIN_VALUE);
+                }
             }
         }
         oos.writeUTF("END_STATES");
@@ -1184,6 +1210,55 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 oos.writeBoolean(guardVisible);
                 oos.writeBoolean(actionVisible);
                 oos.writeBoolean(semVisible);
+                // Persist relative offsets of annotations to the curve points (guard@0.2, action@0.5, sem@0.8)
+                try {
+                    // Compute curve reference points
+                    machinery.State sourceState = (machinery.State) pt.getSource();
+                    machinery.State targetState = (machinery.State) pt.getTarget();
+                    Point sourcePos = sourceState.getPosition();
+                    Point targetPos = targetState.getPosition();
+                    int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                    int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                    Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                    Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                    Point cp = ((Transition) pt).getControlPoint();
+                    if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                    Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                    Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                    Point guardPoint = computePointOnCurve(p0, cp, p2, 0.2);
+                    Point actionPoint = computePointOnCurve(p0, cp, p2, 0.5);
+                    Point semPoint = computePointOnCurve(p0, cp, p2, 0.8);
+                    // write offsets (or sentinel)
+                    if (guardBounds != null) {
+                        oos.writeInt(guardBounds.x - guardPoint.x);
+                        oos.writeInt(guardBounds.y - guardPoint.y);
+                    } else {
+                        oos.writeInt(Integer.MIN_VALUE);
+                        oos.writeInt(Integer.MIN_VALUE);
+                    }
+                    if (actionBounds != null) {
+                        oos.writeInt(actionBounds.x - actionPoint.x);
+                        oos.writeInt(actionBounds.y - actionPoint.y);
+                    } else {
+                        oos.writeInt(Integer.MIN_VALUE);
+                        oos.writeInt(Integer.MIN_VALUE);
+                    }
+                    if (semanticsBounds != null) {
+                        oos.writeInt(semanticsBounds.x - semPoint.x);
+                        oos.writeInt(semanticsBounds.y - semPoint.y);
+                    } else {
+                        oos.writeInt(Integer.MIN_VALUE);
+                        oos.writeInt(Integer.MIN_VALUE);
+                    }
+                } catch (Exception ignore) {
+                    // If anything fails, write sentinels to remain backwards-compatible
+                    oos.writeInt(Integer.MIN_VALUE);
+                    oos.writeInt(Integer.MIN_VALUE);
+                    oos.writeInt(Integer.MIN_VALUE);
+                    oos.writeInt(Integer.MIN_VALUE);
+                    oos.writeInt(Integer.MIN_VALUE);
+                    oos.writeInt(Integer.MIN_VALUE);
+                }
             }
         }
     }
@@ -1200,22 +1275,51 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 // backward compatibility: if no boolean present, default to false
                 stateVisible = false;
             }
+            // Attempt to read optional relative offsets (backwards-compatible)
+            int relOffsetX = Integer.MIN_VALUE;
+            int relOffsetY = Integer.MIN_VALUE;
+            try {
+                relOffsetX = ois.readInt();
+                relOffsetY = ois.readInt();
+            } catch (IOException ignored) {
+                // older files don't have offsets — leave as MIN_VALUE
+            }
             for (StateInterface s : stateMachine.getStates()) {
                 if (s instanceof PWSState && s.getName().equals(stateName)) {
                     PWSState pState = (PWSState) s;
-                    if (annotBounds != null) {
+                    if (annotBounds != null || relOffsetX != Integer.MIN_VALUE) {
                         if (pState.getAnnotation() == null) {
                             StateSemanticsAnnotation annot = new StateSemanticsAnnotation(
                                 pState,
                                 ((PWSStateMachine) stateMachine).getAssembly(),
                                 this);
-                            annot.setBounds(annotBounds);
+                            if (relOffsetX != Integer.MIN_VALUE) {
+                                Point pos = ((machinery.State) pState).getPosition();
+                                int d = pState.getName().equals("PseudoState") ? PSEUDO_DIAMETER : DIAMETER;
+                                int stateCenterX = pos.x + d / 2;
+                                int stateCenterY = pos.y + d / 2;
+                                int w = (annotBounds != null) ? annotBounds.width : 120;
+                                int h = (annotBounds != null) ? annotBounds.height : 30;
+                                annot.setBounds(stateCenterX + relOffsetX, stateCenterY + relOffsetY, w, h);
+                            } else {
+                                annot.setBounds(annotBounds);
+                            }
                             annot.setVisible(stateVisible);
                             pState.setAnnotationVisible(stateVisible);
                             pState.setAnnotation(annot);
                             add(annot);
                         } else {
-                            pState.getAnnotation().setBounds(annotBounds);
+                            if (relOffsetX != Integer.MIN_VALUE) {
+                                Point pos = ((machinery.State) pState).getPosition();
+                                int d = pState.getName().equals("PseudoState") ? PSEUDO_DIAMETER : DIAMETER;
+                                int stateCenterX = pos.x + d / 2;
+                                int stateCenterY = pos.y + d / 2;
+                                int w = (annotBounds != null) ? annotBounds.width : pState.getAnnotation().getBounds().width;
+                                int h = (annotBounds != null) ? annotBounds.height : pState.getAnnotation().getBounds().height;
+                                pState.getAnnotation().setBounds(stateCenterX + relOffsetX, stateCenterY + relOffsetY, w, h);
+                            } else if (annotBounds != null) {
+                                pState.getAnnotation().setBounds(annotBounds);
+                            }
                             pState.getAnnotation().setVisible(stateVisible);
                             pState.setAnnotationVisible(stateVisible);
                         }
@@ -1246,44 +1350,178 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                             // backward compatibility: leave defaults false
                         }
 
+                        // Read optional relative offsets for transition annotations (backwards compatible)
+                        int guardOffsetX = Integer.MIN_VALUE;
+                        int guardOffsetY = Integer.MIN_VALUE;
+                        int actionOffsetX = Integer.MIN_VALUE;
+                        int actionOffsetY = Integer.MIN_VALUE;
+                        int semOffsetX = Integer.MIN_VALUE;
+                        int semOffsetY = Integer.MIN_VALUE;
+                        try {
+                            guardOffsetX = ois.readInt();
+                            guardOffsetY = ois.readInt();
+                            actionOffsetX = ois.readInt();
+                            actionOffsetY = ois.readInt();
+                            semOffsetX = ois.readInt();
+                            semOffsetY = ois.readInt();
+                        } catch (IOException ignored) {
+                            // older files don't have offsets; we'll use absolute bounds
+                        }
+
                         // Guard Annotation
                         if (guardBounds != null) {
                             if (pt.getGuardAnnotation() == null) {
                                 SMProposition guardProp = pt.getGuardProposition();
                                 GuardAnnotation guardAnnot = new GuardAnnotation(guardProp, ((PWSStateMachine)stateMachine).getAssembly(), newGuard -> pt.setGuardProposition(newGuard), pt);
-                                guardAnnot.setBounds(guardBounds);
+                                if (guardOffsetX != Integer.MIN_VALUE) {
+                                    machinery.State sourceState = (machinery.State) pt.getSource();
+                                    machinery.State targetState = (machinery.State) pt.getTarget();
+                                    Point sourcePos = sourceState.getPosition();
+                                    Point targetPos = targetState.getPosition();
+                                    int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                                    int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                                    Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                                    Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                                    Point cp = ((Transition) pt).getControlPoint();
+                                    if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                                    Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                                    Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                                    Point guardPoint = computePointOnCurve(p0, cp, p2, 0.2);
+                                    int w = (guardBounds != null) ? guardBounds.width : 120;
+                                    int h = (guardBounds != null) ? guardBounds.height : 20;
+                                    guardAnnot.setBounds(guardPoint.x + guardOffsetX, guardPoint.y + guardOffsetY, w, h);
+                                } else {
+                                    guardAnnot.setBounds(guardBounds);
+                                }
                                 pt.setGuardAnnotation(guardAnnot);
                                 add(guardAnnot);
                                 guardAnnot.setVisible(guardVisible);
                             } else {
-                                pt.getGuardAnnotation().setBounds(guardBounds);
+                                if (guardOffsetX != Integer.MIN_VALUE) {
+                                    machinery.State sourceState = (machinery.State) pt.getSource();
+                                    machinery.State targetState = (machinery.State) pt.getTarget();
+                                    Point sourcePos = sourceState.getPosition();
+                                    Point targetPos = targetState.getPosition();
+                                    int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                                    int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                                    Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                                    Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                                    Point cp = ((Transition) pt).getControlPoint();
+                                    if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                                    Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                                    Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                                    Point guardPoint = computePointOnCurve(p0, cp, p2, 0.2);
+                                    int w = (guardBounds != null) ? guardBounds.width : pt.getGuardAnnotation().getBounds().width;
+                                    int h = (guardBounds != null) ? guardBounds.height : pt.getGuardAnnotation().getBounds().height;
+                                    pt.getGuardAnnotation().setBounds(guardPoint.x + guardOffsetX, guardPoint.y + guardOffsetY, w, h);
+                                } else {
+                                    pt.getGuardAnnotation().setBounds(guardBounds);
+                                }
                                 pt.getGuardAnnotation().setVisible(guardVisible);
                             }
                         }
+
                         // Action Annotation
                         if (actionBounds != null) {
                             if (pt.getActionAnnotation() == null) {
                                 ActionAnnotation actionAnnot = new ActionAnnotation(pt.getActionList(), ((PWSStateMachine)stateMachine).getAssembly(), newActions -> pt.setActionList(newActions), pt);
-                                actionAnnot.setBounds(actionBounds);
+                                if (actionOffsetX != Integer.MIN_VALUE) {
+                                    machinery.State sourceState = (machinery.State) pt.getSource();
+                                    machinery.State targetState = (machinery.State) pt.getTarget();
+                                    Point sourcePos = sourceState.getPosition();
+                                    Point targetPos = targetState.getPosition();
+                                    int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                                    int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                                    Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                                    Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                                    Point cp = ((Transition) pt).getControlPoint();
+                                    if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                                    Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                                    Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                                    Point actionPoint = computePointOnCurve(p0, cp, p2, 0.5);
+                                    int w = (actionBounds != null) ? actionBounds.width : 150;
+                                    int h = (actionBounds != null) ? actionBounds.height : 20;
+                                    actionAnnot.setBounds(actionPoint.x + actionOffsetX, actionPoint.y + actionOffsetY, w, h);
+                                } else {
+                                    actionAnnot.setBounds(actionBounds);
+                                }
                                 pt.setActionAnnotation(actionAnnot);
                                 add(actionAnnot);
                                 actionAnnot.setVisible(actionVisible);
                             } else {
-                                pt.getActionAnnotation().setBounds(actionBounds);
+                                if (actionOffsetX != Integer.MIN_VALUE) {
+                                    machinery.State sourceState = (machinery.State) pt.getSource();
+                                    machinery.State targetState = (machinery.State) pt.getTarget();
+                                    Point sourcePos = sourceState.getPosition();
+                                    Point targetPos = targetState.getPosition();
+                                    int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                                    int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                                    Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                                    Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                                    Point cp = ((Transition) pt).getControlPoint();
+                                    if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                                    Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                                    Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                                    Point actionPoint = computePointOnCurve(p0, cp, p2, 0.5);
+                                    int w = (actionBounds != null) ? actionBounds.width : pt.getActionAnnotation().getBounds().width;
+                                    int h = (actionBounds != null) ? actionBounds.height : pt.getActionAnnotation().getBounds().height;
+                                    pt.getActionAnnotation().setBounds(actionPoint.x + actionOffsetX, actionPoint.y + actionOffsetY, w, h);
+                                } else {
+                                    pt.getActionAnnotation().setBounds(actionBounds);
+                                }
                                 pt.getActionAnnotation().setVisible(actionVisible);
                             }
                         }
+
                         // Transition Semantics Annotation
                         if (semanticsBounds != null) {
                             if (pt.getSemanticsAnnotation() == null) {
                                 Semantics semProp = pt.getTransitionSemantics();
                                 TransitionSemanticsAnnotation semAnnot = new TransitionSemanticsAnnotation(semProp);
-                                semAnnot.setBounds(semanticsBounds);
+                                if (semOffsetX != Integer.MIN_VALUE) {
+                                    machinery.State sourceState = (machinery.State) pt.getSource();
+                                    machinery.State targetState = (machinery.State) pt.getTarget();
+                                    Point sourcePos = sourceState.getPosition();
+                                    Point targetPos = targetState.getPosition();
+                                    int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                                    int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                                    Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                                    Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                                    Point cp = ((Transition) pt).getControlPoint();
+                                    if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                                    Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                                    Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                                    Point semPoint = computePointOnCurve(p0, cp, p2, 0.8);
+                                    int w = (semanticsBounds != null) ? semanticsBounds.width : 150;
+                                    int h = (semanticsBounds != null) ? semanticsBounds.height : 20;
+                                    semAnnot.setBounds(semPoint.x + semOffsetX, semPoint.y + semOffsetY, w, h);
+                                } else {
+                                    semAnnot.setBounds(semanticsBounds);
+                                }
                                 semAnnot.setVisible(semVisible);
                                 pt.setSemanticsAnnotation(semAnnot);
                                 add(semAnnot);
                             } else {
-                                pt.getSemanticsAnnotation().setBounds(semanticsBounds);
+                                if (semOffsetX != Integer.MIN_VALUE) {
+                                    machinery.State sourceState = (machinery.State) pt.getSource();
+                                    machinery.State targetState = (machinery.State) pt.getTarget();
+                                    Point sourcePos = sourceState.getPosition();
+                                    Point targetPos = targetState.getPosition();
+                                    int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                                    int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                                    Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                                    Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                                    Point cp = ((Transition) pt).getControlPoint();
+                                    if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                                    Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                                    Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                                    Point semPoint = computePointOnCurve(p0, cp, p2, 0.8);
+                                    int w = (semanticsBounds != null) ? semanticsBounds.width : pt.getSemanticsAnnotation().getBounds().width;
+                                    int h = (semanticsBounds != null) ? semanticsBounds.height : pt.getSemanticsAnnotation().getBounds().height;
+                                    pt.getSemanticsAnnotation().setBounds(semPoint.x + semOffsetX, semPoint.y + semOffsetY, w, h);
+                                } else {
+                                    pt.getSemanticsAnnotation().setBounds(semanticsBounds);
+                                }
                                 pt.getSemanticsAnnotation().setVisible(semVisible);
                             }
                         }
@@ -1329,6 +1567,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         updateTriggerLabels();
         revalidate();
         repaint();
+        java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+        if (w instanceof PWSEditor pe) pe.markDocumentDirty();
     }
     
     /**

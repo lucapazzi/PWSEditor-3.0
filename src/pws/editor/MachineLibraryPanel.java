@@ -112,14 +112,19 @@ public class MachineLibraryPanel extends JPanel {
         JButton newBtn = new JButton("New");
         JButton editBtn = new JButton("Edit");
         JButton loadBtn = new JButton("Load");
+        JButton saveBtn = new JButton("Save");
 
         newBtn.addActionListener(e -> onNew());
         editBtn.addActionListener(e -> onEdit());
-        loadBtn.addActionListener(e -> onLoad());
+        // Load button now replaces the entire library (Load Library)
+        loadBtn.addActionListener(e -> onLoadLibrary());
+        // Save button exports the whole MachineLibrary (Save Library)
+        saveBtn.addActionListener(e -> onSaveLibrary());
 
         buttons.add(newBtn);
         buttons.add(editBtn);
         buttons.add(loadBtn);
+        buttons.add(saveBtn);
         add(buttons, BorderLayout.SOUTH);
     }
 
@@ -178,6 +183,55 @@ public class MachineLibraryPanel extends JPanel {
             }
         } catch (IOException | ClassNotFoundException ex) {
             JOptionPane.showMessageDialog(this, "Error loading machine: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * Load a MachineLibrary (.mlib) and replace the current library contents.
+     */
+    private void onLoadLibrary() {
+        JFileChooser fc = new JFileChooser();
+        fc.setFileFilter(new FileNameExtensionFilter("Machine Library (.mlib)", "mlib"));
+        int res = fc.showOpenDialog(this);
+        if (res != JFileChooser.APPROVE_OPTION) return;
+        File file = fc.getSelectedFile();
+        try {
+            Object obj = BinaryModelSerializer.loadModel(file.getAbsolutePath());
+            if (obj instanceof MachineLibrary) {
+                MachineLibrary loaded = (MachineLibrary) obj;
+                MachineLibrary current = assembly.getMachineLibrary();
+                current.clear();
+                for (java.util.Map.Entry<String, machinery.StateMachine> entry : loaded.getMachines().entrySet()) {
+                    current.addMachine(entry.getKey(), entry.getValue());
+                }
+                refreshList();
+                // Notify listener about a loaded library; pick first key if present
+                if (listener != null) {
+                    String firstKey = current.getMachines().keySet().stream().findFirst().orElse(null);
+                    if (firstKey != null) listener.libraryLoaded(firstKey);
+                }
+                JOptionPane.showMessageDialog(this, "Library loaded successfully.");
+            } else {
+                JOptionPane.showMessageDialog(this, "The selected file does not contain a MachineLibrary.", "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        } catch (IOException | ClassNotFoundException ex) {
+            JOptionPane.showMessageDialog(this, "Error loading library: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void onSaveLibrary() {
+        JFileChooser fc = new JFileChooser();
+        fc.setFileFilter(new FileNameExtensionFilter("Machine Library (.mlib)", "mlib"));
+        if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        File file = fc.getSelectedFile();
+        if (!file.getName().toLowerCase().endsWith(".mlib")) {
+            file = new File(file.getAbsolutePath() + ".mlib");
+        }
+        try {
+            BinaryModelSerializer.saveModel(assembly.getMachineLibrary(), file.getAbsolutePath());
+            JOptionPane.showMessageDialog(this, "Library saved successfully.");
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(this, "Error saving library: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 

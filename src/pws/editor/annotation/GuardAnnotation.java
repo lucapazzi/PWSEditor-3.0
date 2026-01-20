@@ -142,6 +142,8 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                         item.addActionListener(ev -> {
                             setContent(guardOption);
                             updateCallback.accept(guardOption);
+                            java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
+                            if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
                             revalidate();
                             repaint();
                             if (getParent() != null) {
@@ -168,6 +170,8 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                         item.addActionListener(ev -> {
                             setContent(guardOption);
                             updateCallback.accept(guardOption);
+                            java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
+                            if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
                             revalidate();
                             repaint();
                             if (getParent() != null) {
@@ -186,6 +190,8 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 SMProposition defaultGuard = new TrueProposition();
                 setContent(defaultGuard);
                 updateCallback.accept(defaultGuard);
+                java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
+                if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
                 repaint();
             });
             popup.add(removeItem);
@@ -215,6 +221,8 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                     SMProposition newGuard = new AndProposition(content, guardOption);
                     setContent(newGuard);
                     updateCallback.accept(newGuard);
+                    java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
+                    if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
                     revalidate();
                     repaint();
                     if (getParent() != null) {

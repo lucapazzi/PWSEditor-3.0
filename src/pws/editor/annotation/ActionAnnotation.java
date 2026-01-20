@@ -133,6 +133,8 @@ public class ActionAnnotation extends Annotation<ActionList> {
                     current.add(a);
                     setContent(current);
                     updateCallback.accept(current);
+                    java.awt.Window w = SwingUtilities.getWindowAncestor(ActionAnnotation.this);
+                    if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
                     revalidate();
                     repaint();
                 });
@@ -157,6 +159,8 @@ public class ActionAnnotation extends Annotation<ActionList> {
                     current.remove(a);
                     setContent(current);
                     updateCallback.accept(current);
+                    java.awt.Window w = SwingUtilities.getWindowAncestor(ActionAnnotation.this);
+                    if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
                     revalidate();
                     repaint();
                 });

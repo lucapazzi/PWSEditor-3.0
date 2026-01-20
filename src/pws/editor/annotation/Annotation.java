@@ -77,6 +77,9 @@ public class Annotation<T> extends JComponent implements Serializable {
                 }
 
                 dragOffset = null;
+                // Mark document dirty after annotation move/interaction
+                java.awt.Window w = SwingUtilities.getWindowAncestor(Annotation.this);
+                if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
             }
             @Override
             public void mouseDragged(MouseEvent e) {

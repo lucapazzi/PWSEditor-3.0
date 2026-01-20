@@ -46,6 +46,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 pws.editor.ConstraintsEditorDialog dialog = 
                     new pws.editor.ConstraintsEditorDialog(content, assembly);
                 dialog.setVisible(true);
+                // After editing constraints, mark document dirty
+                java.awt.Window w = SwingUtilities.getWindowAncestor(panel);
+                if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
             });
             popup.add(editConstraintsItem);
         }

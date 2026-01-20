@@ -33,6 +33,9 @@ public class PWSEditor extends JFrame {
 
     // private Assembly assembly;
     private PWSStateMachine pwsStateMachine;
+    // Document and file manager for classic file operations
+    private PWSDocument currentDocument;
+    private PWSFileManager fileManager;
     private StateMachineEditor baseEditor;  // Editor for the current state machine
     private PWSPanel assemblyPanel;         // Panel to manage the Assembly
     private MachineLibraryPanel libraryPanel; // inline library panel (exposed to menu actions)
@@ -59,6 +62,10 @@ public class PWSEditor extends JFrame {
             this.pwsStateMachine = new PWSStateMachine(machine.getName());
         }
         initComponents();
+        // Initialize file manager and document wrapper
+        this.fileManager = new PWSFileManager(this);
+        this.currentDocument = new PWSDocument(this.pwsStateMachine, this.pwsStateMachine.getAssembly().getMachineLibrary());
+        updateWindowTitle();
     }
 
     // Helper stream that can append objects to an existing object stream
@@ -474,222 +481,78 @@ public class PWSEditor extends JFrame {
 //        });
 //        fileMenu.add(loadItem);
 
-        // --- New Composite Save/Load for Model + Layout in a Single File ---
-
-        // Save All (model and layout)
-        JMenuItem saveAllItem = new JMenuItem("Save All");
-        saveAllItem.addActionListener(e -> {
-            JFileChooser fileChooser = new JFileChooser();
-            fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("PWS Workspace (.pws)", "pws"));
-            int option = fileChooser.showSaveDialog(PWSEditor.this);
-            if (option == JFileChooser.APPROVE_OPTION) {
-                File file = fileChooser.getSelectedFile();
-                // Ensure the file has the .pws extension
-                if (!file.getName().toLowerCase().endsWith(".pws")) {
-                    file = new File(file.getAbsolutePath() + ".pws");
-                }
-                try {
-                    // First, serialize the annotations into a byte[] so we can write model+library
-                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                    try (ObjectOutputStream tempOos = new ObjectOutputStream(baos)) {
-                        ((PWSStateMachinePanel) baseEditor.getStateMachinePanel()).saveAnnotationsToStream(tempOos);
-                    }
-                    byte[] annotationsBytes = baos.toByteArray();
-
-                    // Save model and machine library using the serializer helper
-                    BinaryModelSerializer.saveModelAndLibrary(pwsStateMachine, pwsStateMachine.getAssembly().getMachineLibrary(), file.getAbsolutePath());
-
-                    // Append the serialized annotations as a single byte[] object so loading can restore them
-                    try (FileOutputStream fos = new FileOutputStream(file, true);
-                         AppendingObjectOutputStream aout = new AppendingObjectOutputStream(fos)) {
-                        aout.writeObject(annotationsBytes);
-                        aout.flush();
-                    }
-
-                    JOptionPane.showMessageDialog(PWSEditor.this, "Model, library and layout saved successfully.");
-                } catch (IOException ex) {
-                    ex.printStackTrace();
-                    JOptionPane.showMessageDialog(PWSEditor.this, "Error saving: " + ex.getMessage());
-                }
+        // Classic file operations
+        JMenuItem newItem = new JMenuItem("New");
+        newItem.addActionListener(e -> {
+            if (currentDocument != null && currentDocument.isDirty()) {
+                Object[] options = new Object[] {"No", "Yes"};
+                int opt = JOptionPane.showOptionDialog(PWSEditor.this,
+                        "Current document has unsaved changes. Continue and discard?",
+                        "Unsaved changes",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.WARNING_MESSAGE,
+                        null,
+                        options,
+                        options[1]);
+                // opt == 1 => Yes
+                if (opt != 1) return;
             }
+            fileManager.newDocument();
         });
-        fileMenu.add(saveAllItem);
+        fileMenu.add(newItem);
 
-        // Load All (model and layout)
-        JMenuItem loadAllItem = new JMenuItem("Load All");
-        loadAllItem.addActionListener(e -> {
-            JFileChooser fileChooser = new JFileChooser();
-            fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("PWS Workspace (.pws)", "pws"));
-            int option = fileChooser.showOpenDialog(PWSEditor.this);
-            if (option == JFileChooser.APPROVE_OPTION) {
-                File file = fileChooser.getSelectedFile();
-                try {
-                    // Use the helper to read model and (optional) machine library
-                    Object[] pair = BinaryModelSerializer.loadModelAndLibrary(file.getAbsolutePath());
-                    Object loadedModel = pair[0];
-                    Object libOrAnn = pair[1];
-
-                    // If libOrAnn is an Exception, the library failed to deserialize
-                    if (libOrAnn instanceof Exception) {
-                        Exception libEx = (Exception) libOrAnn;
-                        JOptionPane.showMessageDialog(PWSEditor.this, "Warning: library could not be loaded: " + libEx.getMessage(), "Warning", JOptionPane.WARNING_MESSAGE);
-                        libOrAnn = null; // proceed without library
-                    }
-
-                    if (loadedModel instanceof PWSStateMachine) {
-                        pwsStateMachine = (PWSStateMachine) loadedModel;
-
-                        // If the second object is a MachineLibrary, merge its content into the assembly's library
-                        if (libOrAnn instanceof assembly.MachineLibrary) {
-                            assembly.MachineLibrary loadedLib = (assembly.MachineLibrary) libOrAnn;
-                            assembly.Assembly asm = pwsStateMachine.getAssembly();
-                            assembly.MachineLibrary currentLib = asm.getMachineLibrary();
-                            // If the deserialized library is a distinct instance, merge it; if it's the same
-                            // instance as the one already inside the loaded model, skip (clearing would
-                            // remove the entries we just deserialized with the model).
-                            if (loadedLib != currentLib) {
-                                currentLib.clear();
-                                // Re-add via addMachine to rebuild name-to-key mapping
-                                for (Map.Entry<String, machinery.StateMachine> entry : loadedLib.getMachines().entrySet()) {
-                                    currentLib.addMachine(entry.getKey(), entry.getValue());
-                                }
-                            }
-                        }
-
-                        // Rebuild the UI so all panels (assembly/library/editor) point to the new model
-                        getContentPane().removeAll();
-                        initComponents();
-
-                        // Handle annotations: two formats are possible in files on disk:
-                        // - Older files: second object is the annotations (byte[] or direct stream content)
-                        // - Newer files: third object contains annotations (we need to reopen and skip first two)
-                        boolean annotationsHandled = false;
-                        if (libOrAnn instanceof byte[]) {
-                            // libOrAnn is actually the annotations bytes from older-format save
-                            byte[] annotationsBytes = (byte[]) libOrAnn;
-                            try (ObjectInputStream annIn = new ObjectInputStream(new ByteArrayInputStream(annotationsBytes))) {
-                                ((PWSStateMachinePanel) baseEditor.getStateMachinePanel()).loadAnnotationsFromStream(annIn);
-                            }
-                            annotationsHandled = true;
-                        }
-
-                        if (!annotationsHandled) {
-                            // Try to read a third object (annotations) if present
-                            try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
-                                // skip model
-                                ois.readObject();
-                                // skip library (may be annotations in old files)
-                                try {
-                                    ois.readObject();
-                                } catch (EOFException eof) {
-                                    // nothing more
-                                }
-                                try {
-                                    Object maybeAnn = ois.readObject();
-                                    if (maybeAnn instanceof byte[]) {
-                                        byte[] annotationsBytes = (byte[]) maybeAnn;
-                                        try (ObjectInputStream annIn = new ObjectInputStream(new ByteArrayInputStream(annotationsBytes))) {
-                                            ((PWSStateMachinePanel) baseEditor.getStateMachinePanel()).loadAnnotationsFromStream(annIn);
-                                        }
-                                    }
-                                } catch (EOFException eof) {
-                                    // no annotations present
-                                }
-                            } catch (IOException | ClassNotFoundException ex) {
-                                // Non-fatal: annotations may not be present or may be older format
-                            }
-                        }
-
-                        // Ensure state dashboards (annotations) are visible after loading
-                        try {
-                            PWSStateMachinePanel panel = (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
-                            panel.setShowStateAnnotations(true);
-                            // Reattach and show any annotations that were restored from the file
-                            panel.restoreVisibleStateAnnotations();
-                            panel.repaint();
-                        } catch (Exception ex) {
-                            // ignore
-                        }
-                        getContentPane().revalidate();
-                        getContentPane().repaint();
-                        JOptionPane.showMessageDialog(PWSEditor.this, "Model, library and layout loaded successfully.");
-                    } else {
-                        JOptionPane.showMessageDialog(PWSEditor.this, "The selected file does not contain valid data.");
-                    }
-                } catch (IOException | ClassNotFoundException ex) {
-                    ex.printStackTrace();
-                    JOptionPane.showMessageDialog(PWSEditor.this, "Error loading: " + ex.getMessage());
-                }
+        JMenuItem openItem = new JMenuItem("Open...");
+        openItem.addActionListener(e -> {
+            if (currentDocument != null && currentDocument.isDirty()) {
+                Object[] options = new Object[] {"No", "Yes"};
+                int opt = JOptionPane.showOptionDialog(PWSEditor.this,
+                        "Current document has unsaved changes. Continue and discard?",
+                        "Unsaved changes",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.WARNING_MESSAGE,
+                        null,
+                        options,
+                        options[1]);
+                if (opt != 1) return;
             }
+            fileManager.open();
         });
-        fileMenu.add(loadAllItem);
+        fileMenu.add(openItem);
 
-        // Save Library (export only the MachineLibrary)
-        JMenuItem saveLibItem = new JMenuItem("Save Library...");
-        saveLibItem.addActionListener(e -> {
-            JFileChooser fc = new JFileChooser();
-            fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Machine Library (.mlib)", "mlib"));
-            if (fc.showSaveDialog(PWSEditor.this) == JFileChooser.APPROVE_OPTION) {
-                File file = fc.getSelectedFile();
-                if (!file.getName().toLowerCase().endsWith(".mlib")) {
-                    file = new File(file.getAbsolutePath() + ".mlib");
-                }
-                try {
-                    BinaryModelSerializer.saveModel(pwsStateMachine.getAssembly().getMachineLibrary(), file.getAbsolutePath());
-                    JOptionPane.showMessageDialog(PWSEditor.this, "Library saved successfully.");
-                } catch (IOException ex) {
-                    ex.printStackTrace();
-                    JOptionPane.showMessageDialog(PWSEditor.this, "Error saving library: " + ex.getMessage());
-                }
+        JMenuItem saveItem = new JMenuItem("Save");
+        saveItem.addActionListener(e -> {
+            fileManager.save();
+        });
+        fileMenu.add(saveItem);
+
+        JMenuItem saveAsItem = new JMenuItem("Save As...");
+        saveAsItem.addActionListener(e -> {
+            fileManager.saveAs();
+        });
+        fileMenu.add(saveAsItem);
+
+        JMenuItem closeItem = new JMenuItem("Close");
+        closeItem.addActionListener(e -> {
+            if (currentDocument != null && currentDocument.isDirty()) {
+                Object[] options = new Object[] {"No", "Yes"};
+                int opt = JOptionPane.showOptionDialog(PWSEditor.this,
+                        "Current document has unsaved changes. Continue and discard?",
+                        "Unsaved changes",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.WARNING_MESSAGE,
+                        null,
+                        options,
+                        options[1]);
+                if (opt != 1) return;
             }
+            // Create a new empty document (clears the editor)
+            fileManager.newDocument();
         });
-        fileMenu.add(saveLibItem);
+        fileMenu.add(closeItem);
 
-        // Load Library (replace current library contents)
-        JMenuItem loadLibItem = new JMenuItem("Load Library...");
-        loadLibItem.addActionListener(e -> {
-            JFileChooser fc = new JFileChooser();
-            fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Machine Library (.mlib)", "mlib"));
-            if (fc.showOpenDialog(PWSEditor.this) == JFileChooser.APPROVE_OPTION) {
-                File file = fc.getSelectedFile();
-                try {
-                    Object obj = BinaryModelSerializer.loadModel(file.getAbsolutePath());
-                    if (obj instanceof assembly.MachineLibrary) {
-                        assembly.MachineLibrary loaded = (assembly.MachineLibrary) obj;
-                        assembly.MachineLibrary current = pwsStateMachine.getAssembly().getMachineLibrary();
-                        current.clear();
-                        for (Map.Entry<String, machinery.StateMachine> entry : loaded.getMachines().entrySet()) {
-                            current.addMachine(entry.getKey(), entry.getValue());
-                        }
-                        if (libraryPanel != null) libraryPanel.refreshList();
-                        if (assemblyPanel != null) assemblyPanel.refreshList();
+        // Composite Save/Load moved to toolbar buttons
 
-                        // If the embedded editor was showing a library machine that no longer exists, clear it
-                        SwingUtilities.invokeLater(() -> {
-                            if (embeddedMachineId != null && embeddedMachineId.startsWith("lib:")) {
-                                String key = embeddedMachineId.substring(4);
-                                if (pwsStateMachine.getAssembly().getMachineLibrary().get(key) == null) {
-                                    machineEditorContainer.removeAll();
-                                    JLabel placeholder = new JLabel("Select a machine (assembly or library) to edit", SwingConstants.CENTER);
-                                    machineEditorContainer.add(placeholder, BorderLayout.CENTER);
-                                    machineEditorContainer.revalidate();
-                                    machineEditorContainer.repaint();
-                                    embeddedMachineId = null;
-                                }
-                            }
-                        });
-
-                        JOptionPane.showMessageDialog(PWSEditor.this, "Library loaded successfully.");
-                    } else {
-                        JOptionPane.showMessageDialog(PWSEditor.this, "The selected file does not contain a MachineLibrary.", "Error", JOptionPane.ERROR_MESSAGE);
-                    }
-                } catch (IOException | ClassNotFoundException ex) {
-                    ex.printStackTrace();
-                    JOptionPane.showMessageDialog(PWSEditor.this, "Error loading library: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        });
-        fileMenu.add(loadLibItem);
+        // Library save/load moved to the Library panel buttons
 
         // SVG export removed — prefer PDF export
 
@@ -740,7 +603,25 @@ public class PWSEditor extends JFrame {
 
         // Exit item
         JMenuItem exitItem = new JMenuItem("Exit");
-        exitItem.addActionListener(e -> System.exit(0));
+        exitItem.addActionListener(e -> {
+            if (currentDocument != null && currentDocument.isDirty()) {
+                Object[] options = new Object[] {"Yes", "No", "Cancel"};
+                int opt = JOptionPane.showOptionDialog(PWSEditor.this,
+                        "There are unsaved changes. Save before exit?",
+                        "Unsaved changes",
+                        JOptionPane.YES_NO_CANCEL_OPTION,
+                        JOptionPane.WARNING_MESSAGE,
+                        null,
+                        options,
+                        options[0]);
+                if (opt == JOptionPane.CLOSED_OPTION || opt == 2) return; // Cancel or closed
+                if (opt == 0) {
+                    boolean ok = fileManager.save();
+                    if (!ok) return; // abort exit if save failed
+                }
+            }
+            System.exit(0);
+        });
         fileMenu.addSeparator();
         fileMenu.add(exitItem);
 
@@ -794,6 +675,8 @@ public class PWSEditor extends JFrame {
                 (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
             panel.setShowStateAnnotations(show);
             panel.repaint();
+            // Mark document dirty when the user toggles global dashboards
+            markDocumentDirty();
         });
         viewMenu.add(showStateAnn);
 
@@ -865,6 +748,89 @@ public class PWSEditor extends JFrame {
             }
         }
         return null;
+    }
+
+    // Document helpers used by the file manager and panels
+    public void setDocument(PWSDocument doc) {
+        this.currentDocument = doc;
+        updateWindowTitle();
+    }
+
+    public PWSDocument getDocument() { return this.currentDocument; }
+
+    // Helper for PWSFileManager to access the base editor
+    public StateMachineEditor getBaseEditor() { return this.baseEditor; }
+
+    // Rebuild UI when a new model is provided (used by open/new)
+    public void rebuildUIForNewModel(PWSStateMachine model) {
+        this.pwsStateMachine = model;
+        getContentPane().removeAll();
+        initComponents();
+        revalidate();
+        repaint();
+        updateWindowTitle();
+        // If the document is dirty, automatically recalculate semantics in background
+        if (this.currentDocument != null && this.currentDocument.isDirty()) {
+            // Indicate busy state
+            Cursor oldCursor = getCursor();
+            setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+            SwingWorker<Void,Void> worker = new SwingWorker<>() {
+                @Override
+                protected Void doInBackground() throws Exception {
+                    try {
+                        if (PWSEditor.this.pwsStateMachine != null) {
+                            ((pws.PWSStateMachine) PWSEditor.this.pwsStateMachine).recalculateSemantics();
+                        }
+                    } catch (Exception ex) {
+                        // propagate to done()
+                        throw ex;
+                    }
+                    return null;
+                }
+
+                @Override
+                protected void done() {
+                    try {
+                        get(); // rethrow any exceptions
+                        // Update UI on EDT
+                        try {
+                            PWSStateMachinePanel panel = (PWSStateMachinePanel) ((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+                            panel.setShowStateAnnotations(true);
+                            panel.restoreVisibleStateAnnotations();
+                            panel.repaint();
+                        } catch (Exception ignore) {}
+                        // Clear dirty flag and refresh title
+                        currentDocument.setDirty(false);
+                        updateWindowTitle();
+                    } catch (Exception ex) {
+                        // Show a non-blocking warning
+                        JOptionPane.showMessageDialog(PWSEditor.this, "Automatic semantics recalculation failed: " + ex.getMessage(), "Warning", JOptionPane.WARNING_MESSAGE);
+                    } finally {
+                        setCursor(oldCursor);
+                    }
+                }
+            };
+            worker.execute();
+        }
+    }
+
+    public void markDocumentDirty() {
+        if (this.currentDocument != null) {
+            this.currentDocument.setDirty(true);
+            updateWindowTitle();
+        }
+    }
+
+    public void updateWindowTitle() {
+        String base = "PWSEditor";
+        if (currentDocument != null) {
+            String name = (currentDocument.getFile() != null) ? currentDocument.getFile().getName() : currentDocument.getModel().getName();
+            if (name == null || name.trim().isEmpty()) name = "Untitled";
+            if (currentDocument.isDirty()) name += " *";
+            setTitle(base + " : " + name);
+        } else {
+            setTitle(base + " : Untitled");
+        }
     }
 
 
