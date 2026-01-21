@@ -46,9 +46,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 pws.editor.ConstraintsEditorDialog dialog = 
                     new pws.editor.ConstraintsEditorDialog(content, assembly);
                 dialog.setVisible(true);
-                // After editing constraints, mark document dirty
+                // After editing constraints, update exit zones immediately
+                PWSStateMachine sm = panel.getStateMachine();
+                if (sm != null) {
+                    sm.updateExitZonesForState(content);
+                }
+                // Mark document dirty and repaint
                 java.awt.Window w = SwingUtilities.getWindowAncestor(panel);
                 if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
+                panel.repaint();
             });
             popup.add(editConstraintsItem);
         }
@@ -196,7 +202,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             x += fm.stringWidth(s) + fm.charWidth(' ');
         }
 
-        // 3) Reactive exit zones: centered, comma-separated, colored by coverage
+        // 3) Reactive exit zones: centered, comma-separated, colored by origin and coverage
         y += fm.getHeight();
         try {
             PWSStateMachine sm = ((PWSStateMachinePanel) getParent()).getStateMachine();
@@ -211,6 +217,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                     }
                 }
             }
+            // Get CS-only and SS-only sets for color determination
+            Set<ExitZone> csOnly = state.getCsOnlyExitZones();
+            Set<ExitZone> ssOnly = state.getSsOnlyExitZones();
             // Prepare list of exit-zones
             List<ExitZone> zones = new ArrayList<>(state.getReactiveSemantics());
             // Compute total width of comma-separated exit-zone list
@@ -224,13 +233,35 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
             int exitX = (getWidth() - exitTotalWidth) / 2;
             // Draw each exit-zone with comma separators
+            // Color logic: 
+            // - If covered by a guard transition: green
+            // - Else if CS-only: dark yellow
+            // - Else if SS-only: light red
+            // - Else (in both CS and SS): dark red (bold)
+            Font baseFont = g2d.getFont();
+            Font boldFont = baseFont.deriveFont(Font.BOLD);
             for (int i = 0; i < zones.size(); i++) {
                 ExitZone ez = zones.get(i);
                 String txt = ez.toString();
                 boolean isCovered = covered.contains(ez.getTarget());
-                g2d.setColor(isCovered ? Color.GREEN.darker() : Color.RED);
+                Color ezColor;
+                boolean useBold = false;
+                if (isCovered) {
+                    ezColor = Color.GREEN.darker();
+                } else if (csOnly != null && csOnly.contains(ez)) {
+                    ezColor = new Color(204, 153, 0); // Dark yellow
+                } else if (ssOnly != null && ssOnly.contains(ez)) {
+                    ezColor = new Color(255, 102, 102); // Light red
+                } else {
+                    // In both CS and SS (not covered) - dark red, bold
+                    ezColor = new Color(139, 0, 0); // Dark red
+                    useBold = true;
+                }
+                g2d.setColor(ezColor);
+                g2d.setFont(useBold ? boldFont : baseFont);
                 g2d.drawString(txt, exitX, y);
-                exitX += fm.stringWidth(txt);
+                exitX += g2d.getFontMetrics().stringWidth(txt);
+                g2d.setFont(baseFont); // Reset font
                 if (i < zones.size() - 1) {
                     String sep = ", ";
                     g2d.setColor(Color.BLACK);

@@ -70,13 +70,6 @@ public class PWSStateMachine extends StateMachine {
             pseudo.setStateSemantics(init);
         }
 
-        // Precompute static exit zones based on each state's constraint semantics
-        for (StateInterface si : getStates()) {
-            if (si instanceof PWSState ps && si != pseudoState) {
-                ps.setReactiveSemantics(new HashSet<>(this.findExitZones(ps.getConstraintsSemantics())));
-            }
-        }
-
         // Compute fixed-point semantics for all states via SemanticsVisitor
         Map<PWSState, Semantics> semMap = SemanticsVisitor.computeAllStateSemantics(this);
 
@@ -91,6 +84,34 @@ public class PWSStateMachine extends StateMachine {
             if (s instanceof PWSState && s != pseudoState) {
                 PWSState ps = (PWSState) s;
                 ps.setStateSemantics(semMap.get(ps));
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // REACTIVE SEMANTICS: Compute exit zones from both CS and SS, classify by origin
+        // - CS-only (blue): exit zones present in CS but not in SS
+        // - SS-only (red): exit zones present in SS but not in CS
+        // - Combined: union of both for the full reactive semantics
+        // ----------------------------------------------------------------------
+        for (StateInterface si : getStates()) {
+            if (si instanceof PWSState ps && si != pseudoState) {
+                HashSet<ExitZone> ssZones = new HashSet<>(this.findExitZones(ps.getStateSemantics()));
+                HashSet<ExitZone> csZones = new HashSet<>(this.findExitZones(ps.getConstraintsSemantics()));
+
+                // CS-only: in CS but not in SS
+                HashSet<ExitZone> csOnly = new HashSet<>(csZones);
+                csOnly.removeAll(ssZones);
+                ps.setCsOnlyExitZones(csOnly);
+
+                // SS-only: in SS but not in CS
+                HashSet<ExitZone> ssOnly = new HashSet<>(ssZones);
+                ssOnly.removeAll(csZones);
+                ps.setSsOnlyExitZones(ssOnly);
+
+                // Combined reactive semantics (union)
+                HashSet<ExitZone> combined = new HashSet<>(csZones);
+                combined.addAll(ssZones);
+                ps.setReactiveSemantics(combined);
             }
         }
 // ----------------------------------------------------------------------
@@ -122,6 +143,37 @@ public class PWSStateMachine extends StateMachine {
 //                ps.setReactiveSemantics(reactiveZones);
 //            }
 //        }
+    }
+
+    /**
+     * Updates the exit zones (Reactive Semantics) for a single state based on
+     * its current Constraint Semantics (CS) and State Semantics (SS).
+     * 
+     * This method should be called when CS is edited directly (without running
+     * a full fixed-point computation) to immediately reflect the new exit zones.
+     *
+     * @param ps the PWSState whose exit zones should be updated
+     */
+    public void updateExitZonesForState(PWSState ps) {
+        if (ps == null || ps == pseudoState) return;
+        
+        HashSet<ExitZone> ssZones = new HashSet<>(this.findExitZones(ps.getStateSemantics()));
+        HashSet<ExitZone> csZones = new HashSet<>(this.findExitZones(ps.getConstraintsSemantics()));
+
+        // CS-only: in CS but not in SS
+        HashSet<ExitZone> csOnly = new HashSet<>(csZones);
+        csOnly.removeAll(ssZones);
+        ps.setCsOnlyExitZones(csOnly);
+
+        // SS-only: in SS but not in CS
+        HashSet<ExitZone> ssOnly = new HashSet<>(ssZones);
+        ssOnly.removeAll(csZones);
+        ps.setSsOnlyExitZones(ssOnly);
+
+        // Combined reactive semantics (union)
+        HashSet<ExitZone> combined = new HashSet<>(csZones);
+        combined.addAll(ssZones);
+        ps.setReactiveSemantics(combined);
     }
 
     /**

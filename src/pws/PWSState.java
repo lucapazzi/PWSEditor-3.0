@@ -21,6 +21,10 @@ public class PWSState extends State {
     private Semantics constraintsSemantics;
     // Reactive semantics.
     private HashSet<ExitZone> reactiveSemantics;
+    // Exit zones from Constraint Semantics only (drawn blue)
+    private HashSet<ExitZone> csOnlyExitZones = new HashSet<>();
+    // Exit zones from State Semantics only (drawn red)
+    private HashSet<ExitZone> ssOnlyExitZones = new HashSet<>();
     // Stores the raw constraint text entered by the user
     private String rawConstraintText;
 
@@ -56,6 +60,26 @@ public class PWSState extends State {
             annotation.setContent(this); // Updated to use 'this'
             annotation.repaint();
         }
+    }
+
+    /** Returns exit zones that appear only in Constraint Semantics (drawn blue). */
+    public HashSet<ExitZone> getCsOnlyExitZones() {
+        return csOnlyExitZones;
+    }
+
+    /** Sets exit zones that appear only in Constraint Semantics. */
+    public void setCsOnlyExitZones(HashSet<ExitZone> csOnlyExitZones) {
+        this.csOnlyExitZones = csOnlyExitZones;
+    }
+
+    /** Returns exit zones that appear only in State Semantics (drawn red). */
+    public HashSet<ExitZone> getSsOnlyExitZones() {
+        return ssOnlyExitZones;
+    }
+
+    /** Sets exit zones that appear only in State Semantics. */
+    public void setSsOnlyExitZones(HashSet<ExitZone> ssOnlyExitZones) {
+        this.ssOnlyExitZones = ssOnlyExitZones;
     }
 
     public StateSemanticsAnnotation getAnnotation() {
