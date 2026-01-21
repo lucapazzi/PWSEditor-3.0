@@ -1,6 +1,5 @@
 package pws.editor;
 
-import assembly.Assembly;
 import assembly.AssemblyInterface;
 import assembly.LTLFormula;
 import smalgebra.BasicStateProposition;
@@ -132,14 +131,16 @@ public class LTLFormulaEditorDialog extends JDialog {
         JButton newBtn = new JButton("New");
         JButton saveBtn = new JButton("Save");
         JButton deleteBtn = new JButton("Delete");
+        JButton helpBtn = new JButton("Help");
         JButton closeBtn = new JButton("Close");
 
         newBtn.addActionListener(a -> createNewFormula());
         saveBtn.addActionListener(a -> saveSelectedFormula());
         deleteBtn.addActionListener(a -> deleteSelectedFormula());
+        helpBtn.addActionListener(a -> showHelp());
         closeBtn.addActionListener(a -> setVisible(false));
 
-        buttons.add(newBtn); buttons.add(saveBtn); buttons.add(deleteBtn); buttons.add(closeBtn);
+        buttons.add(newBtn); buttons.add(saveBtn); buttons.add(deleteBtn); buttons.add(helpBtn); buttons.add(closeBtn);
         editor.add(buttons, BorderLayout.SOUTH);
 
         add(listScroll, BorderLayout.WEST);
@@ -195,7 +196,7 @@ public class LTLFormulaEditorDialog extends JDialog {
             // Use reflection so the editor compiles even if LTL parser/analyzer are absent.
             Object node = null;
             try {
-                Class<?> parserClass = Class.forName("pws.editor.LTLParser");
+                Class<?> parserClass = Class.forName("assembly.LTLParser");
                 java.lang.reflect.Method parseMethod = parserClass.getMethod("parse", String.class);
                 node = parseMethod.invoke(null, text);
             } catch (ClassNotFoundException cnf) {
@@ -239,5 +240,75 @@ public class LTLFormulaEditorDialog extends JDialog {
             try { assembly.removeLTLFormula(f); } catch (Exception ex) { }
             formulaArea.setText("");
         }
+    }
+
+    private void showHelp() {
+        String helpText = 
+            "LTL FORMULA EDITOR - HELP\n\n" +
+            "═══════════════════════════════════════════════\n" +
+            "LTL OPERATORS\n" +
+            "═══════════════════════════════════════════════\n\n" +
+            "Temporal Operators:\n" +
+            "  G φ     - Globally (always) φ holds\n" +
+            "  F φ     - Finally (eventually) φ holds\n" +
+            "  X φ     - Next, φ holds in the next state\n" +
+            "  φ U ψ   - φ Until ψ (φ holds until ψ becomes true)\n" +
+            "  φ R ψ   - φ Release ψ (ψ holds until φ becomes true)\n\n" +
+            "Logical Operators:\n" +
+            "  !φ      - Negation (NOT)\n" +
+            "  φ & ψ   - Conjunction (AND)\n" +
+            "  φ | ψ   - Disjunction (OR)\n" +
+            "  φ -> ψ  - Implication (IF φ THEN ψ)\n\n" +
+            "═══════════════════════════════════════════════\n" +
+            "ATOMIC PROPOSITIONS\n" +
+            "═══════════════════════════════════════════════\n\n" +
+            "Format: machineId.stateName\n" +
+            "Example: m1.idle, m2.running\n\n" +
+            "Use the alphabet list above to select and insert\n" +
+            "available propositions from your assembly.\n\n" +
+            "═══════════════════════════════════════════════\n" +
+            "COMMON PATTERNS\n" +
+            "═══════════════════════════════════════════════\n\n" +
+            "Safety (something bad never happens):\n" +
+            "  G (!bad_state)           - Never enter bad_state\n" +
+            "  G (p -> X q)             - If p, then q follows\n" +
+            "  G (p -> (!q U r))        - If p, avoid q until r\n\n" +
+            "Liveness (something good eventually happens):\n" +
+            "  F (goal)                 - Eventually reach goal\n" +
+            "  G F (state)              - Infinitely often in state\n" +
+            "  G (p -> F q)             - If p, eventually q\n\n" +
+            "Response:\n" +
+            "  G (request -> F grant)   - Every request gets grant\n\n" +
+            "═══════════════════════════════════════════════\n" +
+            "USING THE EDITOR\n" +
+            "═══════════════════════════════════════════════\n\n" +
+            "1. Click 'New' to create a new formula\n" +
+            "2. Select propositions from the alphabet list\n" +
+            "3. Use 'Insert', 'Insert OR', 'Insert AND' buttons\n" +
+            "4. Use template buttons for common patterns\n" +
+            "5. Type operators directly in the formula area\n" +
+            "6. Click 'Save' to validate and store the formula\n" +
+            "7. The editor will auto-classify as safety/liveness\n\n" +
+            "Templates use {p}, {q}, {r} as placeholders.\n" +
+            "Replace them with actual propositions before saving.\n\n" +
+            "═══════════════════════════════════════════════\n" +
+            "EXAMPLES\n" +
+            "═══════════════════════════════════════════════\n\n" +
+            "G (m1.idle | m1.busy)        - Always idle or busy\n" +
+            "G (m1.request -> F m2.grant) - Request leads to grant\n" +
+            "G (!m1.error)                - Never enter error\n" +
+            "F (m1.done & m2.done)        - Both eventually done\n" +
+            "G ((m1.start -> X m1.run) & (m1.run -> X m1.stop))\n" +
+            "                             - Start-Run-Stop sequence\n";
+
+        JTextArea textArea = new JTextArea(helpText, 30, 60);
+        textArea.setEditable(false);
+        textArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        textArea.setCaretPosition(0);
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        scrollPane.setPreferredSize(new Dimension(700, 600));
+
+        JOptionPane.showMessageDialog(this, scrollPane, 
+            "LTL Formula Editor - Help", JOptionPane.INFORMATION_MESSAGE);
     }
 }
