@@ -143,7 +143,10 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                             setContent(guardOption);
                             updateCallback.accept(guardOption);
                             java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
-                            if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
+                            if (w instanceof pws.editor.PWSEditor pe) {
+                                pe.markDocumentDirty();
+                                pe.scheduleSemanticsRecalculation();
+                            }
                             revalidate();
                             repaint();
                             if (getParent() != null) {
@@ -171,7 +174,10 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                             setContent(guardOption);
                             updateCallback.accept(guardOption);
                             java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
-                            if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
+                            if (w instanceof pws.editor.PWSEditor pe) {
+                                pe.markDocumentDirty();
+                                pe.scheduleSemanticsRecalculation();
+                            }
                             revalidate();
                             repaint();
                             if (getParent() != null) {
@@ -191,7 +197,10 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 setContent(defaultGuard);
                 updateCallback.accept(defaultGuard);
                 java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
-                if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
+                if (w instanceof pws.editor.PWSEditor pe) {
+                    pe.markDocumentDirty();
+                    pe.scheduleSemanticsRecalculation();
+                }
                 repaint();
             });
             popup.add(removeItem);
@@ -222,7 +231,10 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                     setContent(newGuard);
                     updateCallback.accept(newGuard);
                     java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
-                    if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
+                    if (w instanceof pws.editor.PWSEditor pe) {
+                        pe.markDocumentDirty();
+                        pe.scheduleSemanticsRecalculation();
+                    }
                     revalidate();
                     repaint();
                     if (getParent() != null) {

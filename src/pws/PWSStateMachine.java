@@ -114,6 +114,22 @@ public class PWSStateMachine extends StateMachine {
                 ps.setReactiveSemantics(combined);
             }
         }
+
+        // ----------------------------------------------------------------------
+        // DEADLOCK DETECTION: Compute and cache deadlock configurations for each state
+        // This is done once during semantics recalculation, not at paint time.
+        // ----------------------------------------------------------------------
+        for (StateInterface si : getStates()) {
+            if (si instanceof PWSState ps) {
+                if (ps.getStateSemantics() != null && assembly != null) {
+                    java.util.Set<pws.editor.semantics.Configuration> deadlocks = 
+                        ps.getStateSemantics().findDeadlockConfigurations(assembly);
+                    ps.setDeadlockConfigurations(deadlocks);
+                } else {
+                    ps.setDeadlockConfigurations(new java.util.HashSet<>());
+                }
+            }
+        }
 // ----------------------------------------------------------------------
 // TRANSITION SEMANTICS UPDATE
 // We still need to recalculate each transition’s pre/post‐semantics

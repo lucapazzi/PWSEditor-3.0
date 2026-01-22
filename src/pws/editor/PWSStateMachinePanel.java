@@ -783,7 +783,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     } catch (Exception ignored) {}
                     System.out.println("Initial transition created: PseudoState -> " + clickedState.getName());
                     java.awt.Window w = SwingUtilities.getWindowAncestor(this);
-                    if (w instanceof PWSEditor pe) pe.markDocumentDirty();
+                    if (w instanceof PWSEditor pe) {
+                        pe.markDocumentDirty();
+                        pe.scheduleSemanticsRecalculation();
+                    }
                 } else {
                     JOptionPane.showMessageDialog(this, "An initial transition for this state already exists.");
                 }
@@ -856,7 +859,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 linkMode = false;
                 transitionSourceState = null;
                 java.awt.Window w = SwingUtilities.getWindowAncestor(this);
-                if (w instanceof PWSEditor pe) pe.markDocumentDirty();
+                if (w instanceof PWSEditor pe) {
+                    pe.markDocumentDirty();
+                    pe.scheduleSemanticsRecalculation();
+                }
             }
             repaint();
         } else {
@@ -916,9 +922,12 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         PWSState newState = new PWSState(name, topLeft, pwsMachine.getAssembly());
         pwsMachine.addState(newState);
         repaint();
-        // mark document dirty
+        // mark document dirty and trigger semantics recalculation
         java.awt.Window w = SwingUtilities.getWindowAncestor(this);
-        if (w instanceof PWSEditor pe) pe.markDocumentDirty();
+        if (w instanceof PWSEditor pe) {
+            pe.markDocumentDirty();
+            pe.scheduleSemanticsRecalculation();
+        }
     }
 
     private String generateDefaultStateName(PWSStateMachine machine) {
@@ -1111,7 +1120,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             JMenuItem toggleEnableItem = new JMenuItem(toggleText);
             toggleEnableItem.addActionListener(ae -> {
                 pt.setEnabled(!pt.isEnabled());
-                ((PWSStateMachine) stateMachine).recalculateSemantics();
+                java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                if (w instanceof PWSEditor pe) {
+                    pe.markDocumentDirty();
+                    pe.scheduleSemanticsRecalculation();
+                }
                 revalidate();
                 repaint();
             });
@@ -1149,17 +1162,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                         annot.setBounds(annotCenterX - 60, annotCenterY - 15, 120, 30);
                         pwsState.setAnnotation(annot);
                         add(annot);
-                        java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
-                        if (win instanceof pws.editor.PWSEditor) {
-                            ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
-                        }
                         System.out.println("Created new StateAnnotation for " + pwsState.getName());
                     } else {
                         annot.setVisible(true);
                         System.out.println("Set StateAnnotation visibility to true");
                     }
                     pwsState.setAnnotationVisible(true);
-                    // Showed dashboard — ensure semantics up-to-date
+                    // Ensure semantics up-to-date (single call, not duplicate)
                     java.awt.Container win2 = javax.swing.SwingUtilities.getWindowAncestor(this);
                     if (win2 instanceof pws.editor.PWSEditor) {
                         ((pws.editor.PWSEditor) win2).scheduleSemanticsRecalculation();
@@ -1299,6 +1308,12 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 //                                System.out.println(t.toString() + " is still associated to state " + state.getName() + " in outgoing transitions");
 //                            }
                         }
+                    }
+                    // Mark document dirty and trigger semantics recalculation
+                    java.awt.Window w = SwingUtilities.getWindowAncestor(PWSStateMachinePanel.this);
+                    if (w instanceof PWSEditor pe) {
+                        pe.markDocumentDirty();
+                        pe.scheduleSemanticsRecalculation();
                     }
                     repaint();
                 }
@@ -1742,7 +1757,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         revalidate();
         repaint();
         java.awt.Window w = SwingUtilities.getWindowAncestor(this);
-        if (w instanceof PWSEditor pe) pe.markDocumentDirty();
+        if (w instanceof PWSEditor pe) {
+            pe.markDocumentDirty();
+            pe.scheduleSemanticsRecalculation();
+        }
     }
     
     /**

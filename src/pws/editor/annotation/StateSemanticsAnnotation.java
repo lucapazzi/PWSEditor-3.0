@@ -51,9 +51,12 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 if (sm != null) {
                     sm.updateExitZonesForState(content);
                 }
-                // Mark document dirty and repaint
+                // Mark document dirty, trigger semantics recalculation, and repaint
                 java.awt.Window w = SwingUtilities.getWindowAncestor(panel);
-                if (w instanceof pws.editor.PWSEditor pe) pe.markDocumentDirty();
+                if (w instanceof pws.editor.PWSEditor pe) {
+                    pe.markDocumentDirty();
+                    pe.scheduleSemanticsRecalculation();
+                }
                 panel.repaint();
             });
             popup.add(editConstraintsItem);
@@ -148,11 +151,12 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
         List<String> cfgStrs = new ArrayList<>();
         // Compute which state configurations are covered by at least one outgoing guard
+        // Note: disabled transitions do not contribute to coverage
         PWSStateMachine pwsMachine = ((PWSStateMachinePanel) getParent()).getStateMachine();
         Assembly asm = pwsMachine.getAssembly();
         Set<String> coveredCfgStrs = new HashSet<>();
         for (machinery.TransitionInterface ti2 : pwsMachine.getTransitions()) {
-            if (ti2 instanceof pws.PWSTransition pt2 && pt2.getSource() == state) {
+            if (ti2 instanceof pws.PWSTransition pt2 && pt2.getSource() == state && pt2.isEnabled()) {
                 // guard proposition must hold under the state's current semantics
                 smalgebra.SMProposition guardProp = pt2.getGuardProposition();
                 Semantics guardSem = guardProp.toSemantics(asm)
@@ -165,11 +169,10 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         for (Object cfg : stateConfigs) {
             cfgStrs.add(cfg.toString());
         }
-        // Compute deadlock configurations (configurations that cannot reach others via autonomous transitions)
+        // Use cached deadlock configurations (computed during semantics recalculation, not at paint time)
         Set<String> deadlockCfgStrs = new HashSet<>();
-        if (state.getStateSemantics() != null && asm != null) {
-            Set<pws.editor.semantics.Configuration> deadlocks = 
-                state.getStateSemantics().findDeadlockConfigurations(asm);
+        Set<pws.editor.semantics.Configuration> deadlocks = state.getDeadlockConfigurations();
+        if (deadlocks != null) {
             for (pws.editor.semantics.Configuration dc : deadlocks) {
                 deadlockCfgStrs.add(dc.toString());
             }
@@ -184,17 +187,20 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             boolean isGreen = state.isPseudoState() || constraintStrs.contains(s);
             g2d.setColor(isGreen ? Color.GREEN.darker() : Color.RED);
             g2d.drawString(s, x, y);
-            // Determine underline: red for deadlock, green if covered by guard, none otherwise
+            // Determine underline: 
+            // - Red for deadlock configurations that are NOT covered by any outgoing transition
+            // - Green for configurations covered by an outgoing transition guard
+            // - None otherwise
             boolean isDeadlock = deadlockCfgStrs.contains(s);
             boolean isCovered = coveredCfgStrs.contains(s);
-            if (isDeadlock) {
-                // Deadlock configurations always get a red underline (draw 2 lines for visibility)
+            if (isDeadlock && !isCovered) {
+                // True deadlock: can't evolve internally AND not covered by any transition
                 int sw = fm.stringWidth(s);
                 g2d.setColor(Color.RED);
                 g2d.drawLine(x, y + 1, x + sw, y + 1);
                 g2d.drawLine(x, y + 2, x + sw, y + 2);  // double line for emphasis
             } else if (isCovered) {
-                // Covered non-deadlock configurations get a green underline
+                // Covered configurations get a green underline (they have a way out)
                 int sw = fm.stringWidth(s);
                 g2d.setColor(Color.GREEN.darker());
                 g2d.drawLine(x, y + 1, x + sw, y + 1);
@@ -207,11 +213,12 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         try {
             PWSStateMachine sm = ((PWSStateMachinePanel) getParent()).getStateMachine();
             // Determine covered guards for coloring
+            // Note: disabled transitions do not contribute to coverage
             Set<smalgebra.BasicStateProposition> covered = new HashSet<>();
             for (machinery.TransitionInterface ti : sm.getTransitions()) {
                 if (ti instanceof pws.PWSTransition) {
                     pws.PWSTransition pt = (pws.PWSTransition) ti;
-                    if (!pt.isTriggerable() && pt.getSource() == state
+                    if (pt.isEnabled() && !pt.isTriggerable() && pt.getSource() == state
                             && pt.getGuardProposition() instanceof smalgebra.BasicStateProposition) {
                         covered.add((smalgebra.BasicStateProposition) pt.getGuardProposition());
                     }
@@ -293,10 +300,16 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                     }
                 }
             }
-            // 3) Check for deadlock configurations (configurations that cannot reach others)
-            if (allOk && !deadlockCfgStrs.isEmpty()) {
-                // Any deadlock configuration is a problem
-                allOk = false;
+            // 3) Check for true deadlock configurations 
+            // (configurations that cannot reach others AND are not covered by any transition)
+            if (allOk) {
+                for (String deadlockStr : deadlockCfgStrs) {
+                    if (!coveredCfgStrs.contains(deadlockStr)) {
+                        // This is a true deadlock - no way out
+                        allOk = false;
+                        break;
+                    }
+                }
             }
             // Set the border based on overall OK status
             Color borderColor = allOk ? Color.GREEN.darker() : Color.RED;

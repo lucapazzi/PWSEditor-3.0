@@ -3,6 +3,7 @@ package pws;
 import assembly.Assembly;
 import machinery.State;
 import pws.editor.annotation.StateSemanticsAnnotation;
+import pws.editor.semantics.Configuration;
 import pws.editor.semantics.ExitZone;
 import pws.editor.semantics.Semantics;
 import smalgebra.BasicStateProposition;
@@ -10,6 +11,7 @@ import smalgebra.BasicStateProposition;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Set;
 
 /** PWS-specific state with semantics, constraints, and UI annotation. */
 public class PWSState extends State {
@@ -27,6 +29,8 @@ public class PWSState extends State {
     private HashSet<ExitZone> ssOnlyExitZones = new HashSet<>();
     // Stores the raw constraint text entered by the user
     private String rawConstraintText;
+    // Cached deadlock configurations (computed during semantics recalculation)
+    private transient Set<Configuration> deadlockConfigurations = new HashSet<>();
 
     public PWSState(String name, Point position, Assembly assembly) {
         super(name, position);
@@ -127,5 +131,15 @@ public class PWSState extends State {
     /** Returns the raw constraint text, or null if none was set. */
     public String getRawConstraintText() {
         return rawConstraintText;
+    }
+
+    /** Returns cached deadlock configurations for this state. */
+    public Set<Configuration> getDeadlockConfigurations() {
+        return deadlockConfigurations != null ? deadlockConfigurations : new HashSet<>();
+    }
+
+    /** Sets the cached deadlock configurations (called during semantics recalculation). */
+    public void setDeadlockConfigurations(Set<Configuration> deadlocks) {
+        this.deadlockConfigurations = deadlocks != null ? deadlocks : new HashSet<>();
     }
 }

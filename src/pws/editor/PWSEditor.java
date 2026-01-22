@@ -62,6 +62,8 @@ public class PWSEditor extends JFrame {
     private JMenuItem ltlEditorItem;
     private JMenuItem ltlCheckNowItem;
     private LTLChecksDialog ltlChecksDialog;
+    // Track current semantics recalculation worker for debouncing
+    private SwingWorker<Void, Void> currentSemanticsWorker = null;
 
     // The main PWSEditor window uses a fixed title, e.g. "PWSEditor"
     /**
@@ -831,12 +833,20 @@ public class PWSEditor extends JFrame {
     /** Schedule an asynchronous semantics recalculation for the current model. */
     public void scheduleSemanticsRecalculation() {
         if (this.pwsStateMachine == null) return;
-        // Indicate busy state
-        Cursor oldCursor = getCursor();
+        
+        // Cancel any previous running worker to avoid duplicate/interleaved computations
+        if (currentSemanticsWorker != null && !currentSemanticsWorker.isDone()) {
+            currentSemanticsWorker.cancel(false);
+        }
+        
+        // Indicate busy state - always use default cursor as the "old" cursor
+        // to avoid stacking wait cursors
         setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+        
         SwingWorker<Void,Void> worker = new SwingWorker<>() {
             @Override
             protected Void doInBackground() throws Exception {
+                if (isCancelled()) return null;
                 try {
                     ((pws.PWSStateMachine) PWSEditor.this.pwsStateMachine).recalculateSemantics();
                 } catch (Exception ex) {
@@ -848,6 +858,7 @@ public class PWSEditor extends JFrame {
             @Override
             protected void done() {
                 try {
+                    if (isCancelled()) return;
                     get();
                     try {
                         if (baseEditor != null) {
@@ -860,13 +871,17 @@ public class PWSEditor extends JFrame {
                     if (currentDocument != null) currentDocument.setDirty(true);
                     updateWindowTitle();
                     runLTLChecks(false);
+                } catch (java.util.concurrent.CancellationException ce) {
+                    // Worker was cancelled, ignore
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(PWSEditor.this, "Automatic semantics recalculation failed: " + ex.getMessage(), "Warning", JOptionPane.WARNING_MESSAGE);
                 } finally {
-                    setCursor(oldCursor);
+                    // Always restore to default cursor
+                    setCursor(Cursor.getDefaultCursor());
                 }
             }
         };
+        currentSemanticsWorker = worker;
         worker.execute();
     }
 
