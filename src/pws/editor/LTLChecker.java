@@ -48,12 +48,13 @@ public final class LTLChecker {
                         "Unsupported formula (supported: G(p -> F q))", null));
                     continue;
                 }
-                List<String> violating = findViolations(machine, adjacency, assembly, pattern);
-                if (violating.isEmpty()) {
-                    results.add(new LTLCheckResult(f.getId(), text, LTLCheckResult.Status.PASS, "OK", null));
+                CheckContext ctx = buildContext(machine, adjacency, assembly, pattern);
+                if (ctx.violating.isEmpty()) {
+                    String msg = buildPassMessage(ctx);
+                    results.add(new LTLCheckResult(f.getId(), text, LTLCheckResult.Status.PASS, msg, null));
                 } else {
-                    results.add(new LTLCheckResult(f.getId(), text, LTLCheckResult.Status.FAIL,
-                        "No path to q from states: " + String.join(", ", violating), violating));
+                    String msg = buildFailMessage(ctx);
+                    results.add(new LTLCheckResult(f.getId(), text, LTLCheckResult.Status.FAIL, msg, ctx.violating));
                 }
             } catch (Exception ex) {
                 results.add(new LTLCheckResult(f.getId(), text, LTLCheckResult.Status.ERROR, ex.getMessage(), null));
@@ -77,10 +78,10 @@ public final class LTLChecker {
         return adjacency;
     }
 
-    private static List<String> findViolations(PWSStateMachine machine,
-                                               Map<StateInterface, List<StateInterface>> adjacency,
-                                               Assembly assembly,
-                                               ResponsePattern pattern) {
+    private static CheckContext buildContext(PWSStateMachine machine,
+                                             Map<StateInterface, List<StateInterface>> adjacency,
+                                             Assembly assembly,
+                                             ResponsePattern pattern) {
         List<String> violating = new ArrayList<>();
         List<PWSState> pStates = new ArrayList<>();
         Set<StateInterface> qStates = new HashSet<>();
@@ -101,7 +102,7 @@ public final class LTLChecker {
             if (isReachable(start, qStates, adjacency)) continue;
             violating.add(start.getName());
         }
-        return violating;
+        return new CheckContext(pStates, qStates, violating, adjacency);
     }
 
     private static boolean propositionHolds(PWSState state, BasicStateProposition prop, Assembly assembly) {
@@ -131,6 +132,93 @@ public final class LTLChecker {
             }
         }
         return false;
+    }
+
+    private static List<String> findExamplePath(StateInterface start,
+                                                Set<StateInterface> targets,
+                                                Map<StateInterface, List<StateInterface>> adjacency) {
+        Map<StateInterface, StateInterface> prev = new HashMap<>();
+        Deque<StateInterface> work = new ArrayDeque<>();
+        Set<StateInterface> seen = new HashSet<>();
+        work.add(start);
+        seen.add(start);
+        StateInterface found = null;
+        while (!work.isEmpty()) {
+            StateInterface cur = work.poll();
+            if (targets.contains(cur)) {
+                found = cur;
+                break;
+            }
+            List<StateInterface> nexts = adjacency.get(cur);
+            if (nexts == null) continue;
+            for (StateInterface next : nexts) {
+                if (!seen.add(next)) continue;
+                prev.put(next, cur);
+                work.add(next);
+            }
+        }
+        if (found == null) return null;
+        List<String> path = new ArrayList<>();
+        StateInterface cur = found;
+        while (cur != null) {
+            path.add(0, cur.getName());
+            cur = prev.get(cur);
+        }
+        return path;
+    }
+
+    private static String buildPassMessage(CheckContext ctx) {
+        if (ctx.pStates.isEmpty()) {
+            return "No states satisfy p; formula holds vacuously.";
+        }
+        if (ctx.qStates.isEmpty()) {
+            return "No states satisfy q, but no p-states were found (vacuous).";
+        }
+        PWSState start = ctx.pStates.get(0);
+        List<String> path = findExamplePath(start, ctx.qStates, ctx.adjacency);
+        String pList = joinStateNames(ctx.pStates);
+        String qList = joinStateNames(ctx.qStates);
+        if (path == null) {
+            return "States satisfying p: " + pList + ". States satisfying q: " + qList + ".";
+        }
+        return "States satisfying p: " + pList + ". States satisfying q: " + qList +
+            ". Example path from " + start.getName() + " to q: " + String.join(" -> ", path) + ".";
+    }
+
+    private static String buildFailMessage(CheckContext ctx) {
+        if (ctx.qStates.isEmpty()) {
+            return "No states satisfy q; all p-states violate the response.";
+        }
+        String viol = ctx.violating.isEmpty() ? "-" : String.join(", ", ctx.violating);
+        String pList = joinStateNames(ctx.pStates);
+        String qList = joinStateNames(ctx.qStates);
+        return "States satisfying p: " + pList + ". States satisfying q: " + qList +
+            ". No path to q from: " + viol + ".";
+    }
+
+    private static String joinStateNames(Iterable<? extends StateInterface> states) {
+        List<String> names = new ArrayList<>();
+        for (StateInterface s : states) {
+            names.add(s.getName());
+        }
+        return names.isEmpty() ? "-" : String.join(", ", names);
+    }
+
+    private static class CheckContext {
+        private final List<PWSState> pStates;
+        private final Set<StateInterface> qStates;
+        private final List<String> violating;
+        private final Map<StateInterface, List<StateInterface>> adjacency;
+
+        private CheckContext(List<PWSState> pStates,
+                             Set<StateInterface> qStates,
+                             List<String> violating,
+                             Map<StateInterface, List<StateInterface>> adjacency) {
+            this.pStates = pStates;
+            this.qStates = qStates;
+            this.violating = violating;
+            this.adjacency = adjacency;
+        }
     }
 
     private static class ResponsePattern {
