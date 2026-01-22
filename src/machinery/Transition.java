@@ -17,6 +17,9 @@ public class Transition implements TransitionInterface {
 
     // Field for control handle
     private Point triggerOffset;
+    
+    // Whether this transition is enabled (disabled transitions are ignored in semantics)
+    private boolean enabled = true;
 
     public Transition() { }
 
@@ -132,5 +135,20 @@ public class Transition implements TransitionInterface {
 
     public void setControlPoint(Point controlPoint) {
         this.controlPoint = controlPoint;
+    }
+    
+    /**
+     * Returns whether this transition is enabled.
+     * Disabled transitions are rendered differently and excluded from semantics computation.
+     */
+    public boolean isEnabled() {
+        return enabled;
+    }
+    
+    /**
+     * Sets whether this transition is enabled.
+     */
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
     }
 }

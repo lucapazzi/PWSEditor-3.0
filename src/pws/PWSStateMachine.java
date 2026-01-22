@@ -348,7 +348,8 @@ public class PWSStateMachine extends StateMachine {
                     for (TransitionInterface t : allTransitions) {
                         if (t instanceof Transition) {
                             Transition transition = (Transition) t;
-                            if (transition.isAutonomous()) {
+                            // Only consider enabled autonomous transitions
+                            if (transition.isEnabled() && transition.isAutonomous()) {
                                 State sourceState = (State) transition.getSource();
                                 State targetState = (State) transition.getTarget();
                                 BasicStateProposition bs_source = new BasicStateProposition(machineId, sourceState.getName());

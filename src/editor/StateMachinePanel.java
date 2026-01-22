@@ -302,9 +302,24 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         // Draw the transition curve.
         QuadCurve2D.Double curve = new QuadCurve2D.Double();
         curve.setCurve(p0.x, p0.y, cp.x, cp.y, p2.x, p2.y);
-        g2d.setColor(Color.BLACK);
+        
+        // Check if this transition is disabled
+        boolean disabled = false;
+        if (t instanceof machinery.Transition trans) {
+            disabled = !trans.isEnabled();
+        }
+        
+        // Save original stroke and render disabled transitions in gray with thicker stroke
+        Stroke oldStroke = g2d.getStroke();
+        if (disabled) {
+            g2d.setStroke(new BasicStroke(2.0f));
+            g2d.setColor(Color.LIGHT_GRAY);
+        } else {
+            g2d.setColor(Color.BLACK);
+        }
         g2d.draw(curve);
         drawArrowHead(g2d, p0, p2, cp);
+        g2d.setStroke(oldStroke);
 
         // For triggerable transitions, the draggable label is now used.
         if (!t.isTriggerable()) {
@@ -747,6 +762,46 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             repaint();
         });
         popup.add(deleteItem);
+        
+        // Enable/Disable transition (only for PWSTransition)
+        if (t instanceof pws.PWSTransition pt) {
+            String toggleText = pt.isEnabled() ? "Disable Transition" : "Enable Transition";
+            JMenuItem toggleEnableItem = new JMenuItem(toggleText);
+            toggleEnableItem.addActionListener(ae -> {
+                pt.setEnabled(!pt.isEnabled());
+                // Schedule semantics recalculation
+                java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+                if (win instanceof pws.editor.PWSEditor pwsEd) {
+                    pwsEd.scheduleSemanticsRecalculation();
+                    if (pwsEd.getDocument() != null) {
+                        pwsEd.getDocument().setDirty(true);
+                    }
+                }
+                repaint();
+            });
+            popup.add(toggleEnableItem);
+        } else if (t instanceof machinery.Transition trans) {
+            // For base Transition in component machines
+            String toggleText = trans.isEnabled() ? "Disable Transition" : "Enable Transition";
+            JMenuItem toggleEnableItem = new JMenuItem(toggleText);
+            toggleEnableItem.addActionListener(ae -> {
+                trans.setEnabled(!trans.isEnabled());
+                // Schedule semantics recalculation - search up the hierarchy for PWSEditor
+                java.awt.Window win = javax.swing.SwingUtilities.getWindowAncestor(this);
+                if (win instanceof pws.editor.PWSEditor pwsEd) {
+                    pwsEd.scheduleSemanticsRecalculation();
+                    if (pwsEd.getDocument() != null) {
+                        pwsEd.getDocument().setDirty(true);
+                    }
+                    // Also repaint the controller panel to reflect changes
+                    if (pwsEd.getBaseEditor() != null) {
+                        pwsEd.getBaseEditor().getStateMachinePanel().repaint();
+                    }
+                }
+                repaint();
+            });
+            popup.add(toggleEnableItem);
+        }
         
         popup.addSeparator();
 
