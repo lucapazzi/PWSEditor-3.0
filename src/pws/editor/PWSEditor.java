@@ -9,6 +9,7 @@ import machinery.StateMachine;
 import pws.PWSState;
 import pws.PWSStateMachine;
 import serializer.BinaryModelSerializer;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 import java.util.logging.Handler;
@@ -59,6 +60,8 @@ public class PWSEditor extends JFrame {
     private JCheckBoxMenuItem snapToGridItem;
     private JMenuItem gridSizeItem;
     private JMenuItem ltlEditorItem;
+    private JMenuItem ltlCheckNowItem;
+    private LTLChecksDialog ltlChecksDialog;
 
     // The main PWSEditor window uses a fixed title, e.g. "PWSEditor"
     /**
@@ -762,12 +765,20 @@ public class PWSEditor extends JFrame {
         // LTL Formula editor for the current assembly
         ltlEditorItem = new JMenuItem("LTL Editor...");
         ltlEditorItem.addActionListener(e -> {
-            pws.editor.LTLFormulaEditorDialog dlg = new pws.editor.LTLFormulaEditorDialog(PWSEditor.this, pwsStateMachine.getAssembly());
+            pws.editor.LTLFormulaEditorDialog dlg = new pws.editor.LTLFormulaEditorDialog(
+                PWSEditor.this,
+                pwsStateMachine.getAssembly(),
+                () -> runLTLChecks(false));
             dlg.setVisible(true);
         });
         // Disabled by default (grayed out)
         ltlEditorItem.setEnabled(false);
         viewMenu.add(ltlEditorItem);
+
+        ltlCheckNowItem = new JMenuItem("Check now");
+        ltlCheckNowItem.addActionListener(e -> runLTLChecks(true));
+        ltlCheckNowItem.setEnabled(false);
+        viewMenu.add(ltlCheckNowItem);
 
         // Ensure menu items reflect initial state
         updateMenuItemsEnabledState();
@@ -814,6 +825,7 @@ public class PWSEditor extends JFrame {
         if (snapToGridItem != null) snapToGridItem.setEnabled(ctrl);
         if (gridSizeItem != null) gridSizeItem.setEnabled(ctrl);
         if (ltlEditorItem != null) ltlEditorItem.setEnabled(ctrl);
+        if (ltlCheckNowItem != null) ltlCheckNowItem.setEnabled(ctrl);
     }
 
     /** Schedule an asynchronous semantics recalculation for the current model. */
@@ -847,6 +859,7 @@ public class PWSEditor extends JFrame {
                     } catch (Exception ignore) {}
                     if (currentDocument != null) currentDocument.setDirty(true);
                     updateWindowTitle();
+                    runLTLChecks(false);
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(PWSEditor.this, "Automatic semantics recalculation failed: " + ex.getMessage(), "Warning", JOptionPane.WARNING_MESSAGE);
                 } finally {
@@ -903,6 +916,7 @@ public class PWSEditor extends JFrame {
                         // Clear dirty flag and refresh title
                         currentDocument.setDirty(false);
                         updateWindowTitle();
+                        runLTLChecks(false);
                     } catch (Exception ex) {
                         // Show a non-blocking warning
                         JOptionPane.showMessageDialog(PWSEditor.this, "Automatic semantics recalculation failed: " + ex.getMessage(), "Warning", JOptionPane.WARNING_MESSAGE);
@@ -932,6 +946,37 @@ public class PWSEditor extends JFrame {
         } else {
             setTitle(base + " : Untitled");
         }
+    }
+
+    private void runLTLChecks(boolean showDialog) {
+        if (!(pwsStateMachine instanceof PWSStateMachine)) return;
+        List<LTLCheckResult> results = LTLChecker.check((PWSStateMachine) pwsStateMachine);
+        boolean hasFailures = false;
+        for (LTLCheckResult r : results) {
+            if (r.getStatus() == LTLCheckResult.Status.FAIL || r.getStatus() == LTLCheckResult.Status.ERROR) {
+                hasFailures = true;
+                break;
+            }
+        }
+        ensureLTLChecksDialog();
+        ltlChecksDialog.setResults(results);
+        if (showDialog || hasFailures) {
+            ltlChecksDialog.setLocationRelativeTo(this);
+            ltlChecksDialog.setVisible(true);
+        }
+    }
+
+    private void ensureLTLChecksDialog() {
+        if (ltlChecksDialog != null) return;
+        ltlChecksDialog = new LTLChecksDialog(this);
+        ltlChecksDialog.setOnOpenEditor(() -> {
+            pws.editor.LTLFormulaEditorDialog dlg = new pws.editor.LTLFormulaEditorDialog(
+                PWSEditor.this,
+                pwsStateMachine.getAssembly(),
+                () -> runLTLChecks(false));
+            dlg.setVisible(true);
+        });
+        ltlChecksDialog.setOnRecheck(() -> runLTLChecks(true));
     }
 
 

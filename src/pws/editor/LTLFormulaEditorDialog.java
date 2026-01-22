@@ -13,6 +13,7 @@ import java.util.List;
 /** Dialog for creating, validating, and editing LTL formulas. */
 public class LTLFormulaEditorDialog extends JDialog {
     private final AssemblyInterface assembly;
+    private final Runnable onFormulaChanged;
     private DefaultListModel<LTLFormula> formulasModel = new DefaultListModel<>();
     private JList<LTLFormula> formulasList;
     private JTextArea formulaArea;
@@ -26,8 +27,13 @@ public class LTLFormulaEditorDialog extends JDialog {
      * @param assembly assembly context
      */
     public LTLFormulaEditorDialog(Window owner, AssemblyInterface assembly) {
+        this(owner, assembly, null);
+    }
+
+    public LTLFormulaEditorDialog(Window owner, AssemblyInterface assembly, Runnable onFormulaChanged) {
         super(owner, "LTL Formula Editor", ModalityType.APPLICATION_MODAL);
         this.assembly = assembly;
+        this.onFormulaChanged = onFormulaChanged;
         initUI();
         loadFormulas();
         pack();
@@ -207,11 +213,24 @@ public class LTLFormulaEditorDialog extends JDialog {
             if (node != null) {
                 try {
                     Class<?> analyzerClass = Class.forName("assembly.LTLAnalyzer");
-                    java.lang.reflect.Method classify = analyzerClass.getMethod("classify", Object.class);
-                    Object kindObj = classify.invoke(null, node);
-                    if (kindObj != null) kindName = kindObj.toString();
+                    java.lang.reflect.Method classify = null;
+                    for (java.lang.reflect.Method m : analyzerClass.getMethods()) {
+                        if (!"classify".equals(m.getName())) continue;
+                        if (m.getParameterCount() != 1) continue;
+                        Class<?> param = m.getParameterTypes()[0];
+                        if (param.isAssignableFrom(node.getClass())) {
+                            classify = m;
+                            break;
+                        }
+                    }
+                    if (classify != null) {
+                        Object kindObj = classify.invoke(null, node);
+                        if (kindObj != null) kindName = kindObj.toString();
+                    }
                 } catch (ClassNotFoundException cnf) {
                     // analyzer not present; ignore
+                } catch (Exception ignored) {
+                    // Classification is optional; ignore failures and keep the formula.
                 }
             }
 
@@ -229,6 +248,7 @@ public class LTLFormulaEditorDialog extends JDialog {
             try { assembly.addLTLFormula(f); } catch (Exception ex) { }
         }
         formulasList.repaint();
+        if (onFormulaChanged != null) onFormulaChanged.run();
     }
 
     private void deleteSelectedFormula() {
@@ -239,6 +259,7 @@ public class LTLFormulaEditorDialog extends JDialog {
             formulasModel.removeElement(f);
             try { assembly.removeLTLFormula(f); } catch (Exception ex) { }
             formulaArea.setText("");
+            if (onFormulaChanged != null) onFormulaChanged.run();
         }
     }
 
@@ -285,6 +306,7 @@ public class LTLFormulaEditorDialog extends JDialog {
             "1. Click 'New' to create a new formula\n" +
             "2. Select propositions from the alphabet list\n" +
             "3. Use 'Insert', 'Insert OR', 'Insert AND' buttons\n" +
+            "   (select multiple propositions for OR/AND to combine them)\n" +
             "4. Use template buttons for common patterns\n" +
             "5. Type operators directly in the formula area\n" +
             "6. Click 'Save' to validate and store the formula\n" +
@@ -308,7 +330,14 @@ public class LTLFormulaEditorDialog extends JDialog {
         JScrollPane scrollPane = new JScrollPane(textArea);
         scrollPane.setPreferredSize(new Dimension(700, 600));
 
-        JOptionPane.showMessageDialog(this, scrollPane, 
-            "LTL Formula Editor - Help", JOptionPane.INFORMATION_MESSAGE);
+        // Non-modal help window that stays interactive even while the editor dialog is modal.
+        JDialog helpDialog = new JDialog(SwingUtilities.getWindowAncestor(this),
+            "LTL Formula Editor - Help", Dialog.ModalityType.MODELESS);
+        helpDialog.setModalExclusionType(Dialog.ModalExclusionType.APPLICATION_EXCLUDE);
+        helpDialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        helpDialog.getContentPane().add(scrollPane);
+        helpDialog.pack();
+        helpDialog.setLocationRelativeTo(this);
+        helpDialog.setVisible(true);
     }
 }
