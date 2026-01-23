@@ -345,6 +345,16 @@ public class PWSEditor extends JFrame {
                     if (libraryPanel != null) {
                         libraryPanel.refreshList();
                     }
+                    // Trigger semantics recalculation since assembly identifiers affect guards/actions
+                    scheduleSemanticsRecalculation();
+                });
+            }
+
+            @Override
+            public void machineAdded(String id) {
+                // Trigger semantics recalculation when a new machine is added to the assembly
+                SwingUtilities.invokeLater(() -> {
+                    scheduleSemanticsRecalculation();
                 });
             }
         });
@@ -1014,9 +1024,7 @@ public class PWSEditor extends JFrame {
         }
         PWSStateMachine pwsStateMachine = new PWSStateMachine("Whole");
 
-        // Here I create a state machine for adding to the assembly with id "m1"
-        StateMachine stateMachine1 = new StateMachine("M1");
-        pwsStateMachine.getAssembly().addStateMachine("m1", stateMachine1);
+        // Start with an empty assembly - user can add machines via File -> New
         SwingUtilities.invokeLater(() -> {
             PWSEditor editor = new PWSEditor(pwsStateMachine);
             editor.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);

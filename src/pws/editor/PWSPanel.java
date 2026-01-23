@@ -113,6 +113,12 @@ public class PWSPanel extends JPanel {
          * @param id machine id
          */
         void machineEdited(String id);
+        /**
+         * Called when a machine is added to the assembly.
+         *
+         * @param id machine id
+         */
+        void machineAdded(String id);
     }
 
     private MachineSelectionListener selectionListener = null;
@@ -191,12 +197,18 @@ public class PWSPanel extends JPanel {
                         } catch (Exception ex) {
                             ex.printStackTrace();
                             JOptionPane.showMessageDialog(this, "Error cloning machine: " + ex.getMessage());
+                            refreshList();
+                            return;
                         }
                     }
                 }
             }
         }
         refreshList();
+        // Notify listener that a machine was added
+        if (selectionListener != null) {
+            selectionListener.machineAdded(id);
+        }
     }
 
     private void onEdit() {

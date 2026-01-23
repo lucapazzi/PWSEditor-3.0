@@ -11,9 +11,10 @@
 7. [Using the Machine Library](#using-the-machine-library)
 8. [Semantic Constraints & Annotations](#semantic-constraints--annotations)
 9. [Deadlock Detection](#deadlock-detection)
-10. [File Management](#file-management)
-11. [Menu Reference](#menu-reference)
-12. [Tips & Troubleshooting](#tips--troubleshooting)
+10. [Exit Zones](#exit-zones)
+11. [File Management](#file-management)
+12. [Menu Reference](#menu-reference)
+13. [Tips & Troubleshooting](#tips--troubleshooting)
 
 ---
 
@@ -307,6 +308,63 @@ m1.S3, m2.S4
 ```
 means "(m1.S1 AND m2.S2) OR (m1.S3 AND m2.S4)"
 
+### Partial Configurations (Implicit Expansion)
+
+When you specify a constraint that references only **some** of the machines in the assembly, PWSEditor automatically treats it as a constraint over **all possible combinations** of the unspecified machines.
+
+#### Example
+
+Suppose your assembly has two machines:
+- **m1** with states `{A, B}`
+- **m2** with states `{X, Y}`
+
+If you specify the constraint:
+```
+m1.A
+```
+
+This **partial configuration** is automatically interpreted as:
+```
+(m1.A, m2.X) OR (m1.A, m2.Y)
+```
+
+In other words, specifying `(m1.A)` means "machine m1 is in state A, **regardless of** machine m2's state."
+
+#### How It Works
+
+PWSEditor uses an implication-based semantics where:
+- A **fully-specified** configuration like `(m1.A, m2.X)` is more specific
+- A **partial** configuration like `(m1.A)` is more general
+
+The key rule is: **A configuration C1 implies configuration C2 if C1 contains all the constraints that C2 specifies (and possibly more).**
+
+This means:
+- `(m1.A, m2.X)` implies `(m1.A)` ✓ (C1 is more specific)
+- `(m1.A, m2.Y)` implies `(m1.A)` ✓ (C1 is more specific)
+- `(m1.A)` does NOT imply `(m1.A, m2.X)` ✗ (C2 has a constraint m2.X that C1 doesn't specify)
+
+#### Practical Benefits
+
+This partial configuration feature provides several advantages:
+
+1. **Concise Constraints**: Instead of listing every possible combination, specify only the relevant machine states
+2. **Maintenance**: When you add states to machine m2, a constraint like `(m1.A)` automatically includes the new combinations
+3. **Abstraction**: Focus on what matters for the constraint without over-specifying
+
+#### Normalization
+
+PWSEditor automatically **normalizes** the set of configurations to keep only the most general ones. If you add both:
+```
+m1.A
+m1.A, m2.X
+```
+
+The second line `(m1.A, m2.X)` is **subsumed** by the first `(m1.A)` and will be removed during normalization, since `(m1.A)` already covers all m2 states.
+
+#### Guard Evaluation
+
+The same logic applies to **transition guards**. A guard expression like `[m1.A]` will match any fully-specified configuration where m1 is in state A, regardless of the other machines' states.
+
 ### Semantics Display
 
 Hover over or click annotation boxes to see:
@@ -324,15 +382,9 @@ In the state annotation dashboard:
 | **Blue text** | Constraint semantics (user-defined) |
 | **Green text** | Computed configuration that satisfies constraints |
 | **Red text** | Computed configuration that violates constraints |
-| **Green underline** | Configuration covered by an outgoing transition |
-| **Red double underline** | Deadlock configuration (see [Deadlock Detection](#deadlock-detection)) |
-| **Green border** | State is well-formed (all checks pass) |
-| **Red border** | State has issues (constraint violations, uncovered exit zones, or deadlocks) |
-
----
-
-## Deadlock Detection
-
+| **Red** | True deadlock: configuration cannot evolve AND is not covered by any transition |
+| **Green** | Covered: configuration has a way out via an outgoing transition |
+| **Green underline** | Configuration can evolve internally (not a deadlock risk) |
 ### Overview
 
 **Deadlock detection** is a critical feature that identifies configurations where the system could get stuck with no way to evolve. PWSEditor automatically detects and highlights potential deadlock situations in the state semantics annotation.
@@ -380,18 +432,12 @@ In the state semantics annotation dashboard:
 
 | Visual | Meaning |
 |--------|---------|
-| **Red double underline** | True deadlock: configuration cannot evolve AND is not covered by any transition |
-| **Green underline** | Covered: configuration has a way out via an outgoing transition |
-| **No underline** | Configuration can evolve internally (not a deadlock risk) |
-| **Red border** | State contains at least one true deadlock configuration |
-
-### Example Scenario
-
-Consider a state with computed semantics `{(m1.A, m2.X), (m1.B, m2.Y)}`:
-
-1. If `(m1.A, m2.X)` can evolve to `(m1.B, m2.Y)` via autonomous transitions → **OK**
-2. If `(m1.A, m2.X)` cannot reach `(m1.B, m2.Y)` but is covered by transition guard `[m1.A]` → **OK** (green underline)
-3. If `(m1.A, m2.X)` cannot reach `(m1.B, m2.Y)` AND no transition covers it → **DEADLOCK** (red double underline)
+| **Red** | True deadlock: configuration cannot evolve AND is not covered by any transition |
+| **Green** | Covered: configuration has a way out via an outgoing transition |
+| **Green underline** | Configuration can evolve internally (not a deadlock risk) |
+1. If `(m1.A, m2.X)` can evolve to `(m1.B, m2.Y)` via autonomous transitions → **OK** (green underline)
+2. If `(m1.A, m2.X)` cannot reach `(m1.B, m2.Y)` but is covered by transition guard `[m1.A]` → **OK** (green)
+3. If `(m1.A, m2.X)` cannot reach `(m1.B, m2.Y)` AND no transition covers it → **DEADLOCK** (red)
 
 ### Resolving Deadlocks
 
@@ -410,6 +456,107 @@ Deadlock detection is automatically recalculated whenever you:
 - Edit constraint semantics
 - Enable or disable transitions
 - Modify the assembly (add/remove/edit component machines)
+
+---
+
+## Exit Zones
+
+### Overview
+
+**Exit zones** are a fundamental concept in PWS that identify points where an autonomous transition in a component machine would take the system **outside** of the current state's allowed configurations. They represent "boundary conditions" where the controller must react.
+
+### What is an Exit Zone?
+
+An exit zone occurs when:
+
+1. A component machine has an **autonomous transition** (self-triggering, no external event required)
+2. The transition's **source state** is compatible with the current state's semantics
+3. The transition's **target state** would take the system **outside** the current semantics
+
+In other words, an exit zone marks a configuration where firing the autonomous transition would violate the state's constraints—the system would "exit" the allowed space.
+
+### Exit Zone Structure
+
+Each exit zone records:
+- **Machine ID**: Which component machine contains the transition
+- **Transition**: The specific autonomous transition
+- **Source**: The configuration condition that enables the transition
+- **Target**: The resulting configuration after the transition fires
+
+### How Exit Zones Are Computed
+
+For each autonomous transition in the assembly's component machines:
+
+```
+1. Create a partial configuration for the source state: (machineId.sourceState)
+2. Intersect with the state's semantics
+3. If intersection is NON-EMPTY (source is reachable):
+   a. Create a partial configuration for the target state: (machineId.targetState)
+   b. Intersect with the state's semantics
+   c. If intersection is EMPTY (target is outside):
+      → EXIT ZONE detected!
+```
+
+### Exit Zones and Partial Configurations
+
+A key insight is how exit zones interact with **partial configurations** (constraints that don't specify all machines).
+
+#### Example: No Exit Zone with Partial Constraints
+
+Suppose your assembly has:
+- **m1** with states `{A, B}`
+- **m2** with states `{X, Y}` and an autonomous transition X → Y
+
+If the state's constraint is the partial configuration `(m1.A)`:
+- This implicitly represents ALL m2 states: `{(m1.A, m2.X), (m1.A, m2.Y)}`
+- When m2 transitions from X to Y:
+  - Source `(m2.X)` intersected with `(m1.A)` = `(m1.A, m2.X)` — NOT EMPTY ✓
+  - Target `(m2.Y)` intersected with `(m1.A)` = `(m1.A, m2.Y)` — NOT EMPTY!
+- **Result**: NO exit zone is generated
+
+**Why?** Because the partial constraint `(m1.A)` doesn't restrict m2 at all. The transition from X to Y keeps the system **within** the allowed configurations—it just moves from `(m1.A, m2.X)` to `(m1.A, m2.Y)`, both of which satisfy `(m1.A)`.
+
+#### Example: Exit Zone with Full Specification
+
+With the same assembly, if the constraint is fully specified as `(m1.A, m2.X)`:
+- Source `(m2.X)` intersected with `(m1.A, m2.X)` = `(m1.A, m2.X)` — NOT EMPTY ✓
+- Target `(m2.Y)` intersected with `(m1.A, m2.X)` = conflict (m2.X vs m2.Y) — EMPTY ✓
+- **Result**: EXIT ZONE is generated
+
+Here, the transition from X to Y would take the system **outside** the allowed configuration, so the controller needs to be aware of this boundary.
+
+### Semantic Meaning
+
+This behavior reflects an important design principle:
+
+> **Partial configurations represent abstraction over unspecified machines.**
+
+When you don't constrain a machine in your semantics, you're saying "I don't care what state that machine is in." Consequently:
+- Autonomous transitions in unconstrained machines are **internal evolution**—they don't require controller intervention
+- Only transitions that would violate **specified** constraints generate exit zones
+
+### Exit Zones and Controller Design
+
+Exit zones serve two purposes:
+
+1. **Reactive Transitions**: Exit zones enable autonomous PWS-level transitions. When an exit zone's target matches a PWS transition's guard, that transition can fire.
+
+2. **Coverage Analysis**: The annotation dashboard shows which exit zones are "covered" by outgoing transitions (green) versus uncovered (red). Uncovered exit zones may indicate missing transitions in your controller design.
+
+### Exit Zone Colors in the Dashboard
+
+The dashboard uses a simple two-color scheme for exit zones:
+
+| Color | Meaning |
+|-------|---------|  
+| **Green** | Exit zone is covered by an autonomous PWS transition ✓ |
+| **Red** | Exit zone is NOT covered by any autonomous PWS transition ✗ |
+
+**Note**: For detailed analysis including exit zone origin (CS-only, SS-only, or both), right-click on the state dashboard and select **"Show Extended Details..."** to open a comprehensive analysis window.
+
+2. **Precise Control**: Use fully-specified configurations when you need exact control over which component states are allowed. This generates exit zones for any transition that would leave those exact configurations.
+
+3. **Incremental Refinement**: Start with partial constraints to focus on key machines, then add more constraints as needed based on the exit zones that appear.
 
 ---
 
@@ -566,28 +713,15 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 | Blue text (top row) | Constraint semantics you defined |
 | Green text | Configuration satisfies constraints |
 | Red text | Configuration violates constraints |
-| Green underline | Configuration covered by outgoing transition |
-| Red double underline | Deadlock configuration (needs attention) |
-| Green border | State is well-formed |
-| Red border | State has issues to resolve |
-
-#### Exit Zone Colors
-
+| Red | True deadlock (cannot evolve, not covered) |
+| Green | Covered by outgoing transition |
+| Green underline | Can evolve internally (not a deadlock risk) |
 | Color | Meaning |
 |-------|---------|
-| Green | Exit zone is covered by an autonomous transition |
-| Dark yellow | Exit zone only in constraint semantics (CS-only) |
-| Light red | Exit zone only in state semantics (SS-only) |
-| Dark red bold | Exit zone in both CS and SS but not covered |
+| **Green** | Exit zone is covered by an autonomous transition ✓ |
+| **Red** | Exit zone is NOT covered (needs attention) ✗ |
 
-### Common Issues
-
-#### "Transition won't appear"
-- **Solution**: Ensure you clicked the exact target state, not empty space
-- Try creating the transition via the **Edit → Add Transition** menu instead
-
-#### "Annotations are cluttered"
-- **Solution**: Use **View → Show State Annotations** to hide them temporarily
+**Tip**: Right-click on the dashboard and select **"Show Extended Details..."** for detailed exit zone origin analysis.
 - Drag annotations to reorganize (they snap to grid)
 
 #### "Red underlined configurations appear"
@@ -732,7 +866,7 @@ For more information about Part-Whole Statecharts theory, see the project README
 
 #### Enhanced Deadlock Detection
 - **Refined logic**: Configurations are only marked as deadlocks if they cannot evolve AND are not covered by any outgoing transition
-- **Visual indicators**: Red double underline for true deadlocks, green underline for covered configurations
+- **Visual indicators**: Red for true deadlocks, green for covered configurations, green underline for configurations that can evolve internally
 - **Border feedback**: State annotation border color reflects overall state health
 
 #### Automatic Semantics Recalculation

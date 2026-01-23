@@ -41,25 +41,39 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         JPopupMenu popup = new JPopupMenu();
         
         if (assembly != null && panel != null) {
-            JMenuItem editConstraintsItem = new JMenuItem("Edit Constraints Semantics");
-            editConstraintsItem.addActionListener(ae -> {
-                pws.editor.ConstraintsEditorDialog dialog = 
-                    new pws.editor.ConstraintsEditorDialog(content, assembly);
-                dialog.setVisible(true);
-                // After editing constraints, update exit zones immediately
+            // Only show "Edit Constraints" for non-pseudostates (pseudostates always have "ANY")
+            if (!content.isPseudoState()) {
+                JMenuItem editConstraintsItem = new JMenuItem("Edit Constraints Semantics");
+                editConstraintsItem.addActionListener(ae -> {
+                    pws.editor.ConstraintsEditorDialog dialog = 
+                        new pws.editor.ConstraintsEditorDialog(content, assembly);
+                    dialog.setVisible(true);
+                    // After editing constraints, update exit zones immediately
+                    PWSStateMachine sm = panel.getStateMachine();
+                    if (sm != null) {
+                        sm.updateExitZonesForState(content);
+                    }
+                    // Mark document dirty, trigger semantics recalculation, and repaint
+                    java.awt.Window w = SwingUtilities.getWindowAncestor(panel);
+                    if (w instanceof pws.editor.PWSEditor pe) {
+                        pe.markDocumentDirty();
+                        pe.scheduleSemanticsRecalculation();
+                    }
+                    panel.repaint();
+                });
+                popup.add(editConstraintsItem);
+            }
+            
+            // Add "Show Extended Details" menu item
+            JMenuItem showExtendedItem = new JMenuItem("Show Extended Details...");
+            showExtendedItem.addActionListener(ae -> {
                 PWSStateMachine sm = panel.getStateMachine();
-                if (sm != null) {
-                    sm.updateExitZonesForState(content);
-                }
-                // Mark document dirty, trigger semantics recalculation, and repaint
-                java.awt.Window w = SwingUtilities.getWindowAncestor(panel);
-                if (w instanceof pws.editor.PWSEditor pe) {
-                    pe.markDocumentDirty();
-                    pe.scheduleSemanticsRecalculation();
-                }
-                panel.repaint();
+                java.awt.Window owner = SwingUtilities.getWindowAncestor(panel);
+                pws.editor.ExtendedDashboardDialog dialog = 
+                    new pws.editor.ExtendedDashboardDialog(owner, content, sm, assembly);
+                dialog.setVisible(true);
             });
-            popup.add(editConstraintsItem);
+            popup.add(showExtendedItem);
         }
         
         popup.show(this, e.getX(), e.getY());
@@ -70,25 +84,50 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         return "";
     }
 
+    // Border thickness constant for consistent styling
+    private static final int BORDER_THICKNESS = 2;
+    private static final int CORNER_RADIUS = 8;
+    
     @Override
     protected void paintComponent(Graphics g) {
+        Graphics2D g2d = (Graphics2D) g.create();
+        
+        // Enable anti-aliasing for smooth rendering
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+        
+        // Draw rounded background
         if (isOpaque()) {
-            g.setColor(getBackground());
-            g.fillRect(0, 0, getWidth(), getHeight());
+            g2d.setColor(getBackground());
+            g2d.fillRoundRect(0, 0, getWidth(), getHeight(), CORNER_RADIUS, CORNER_RADIUS);
         }
-        super.paintComponent(g);
-        Graphics2D g2d = (Graphics2D) g;
+        
         g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
         g2d.setColor(Color.BLACK);
 
-        if (content == null) return;
+        if (content == null) {
+            g2d.dispose();
+            return;
+        }
 
         PWSState state = content;
         FontMetrics fm = g2d.getFontMetrics();
+        FontMetrics fmSmall = g2d.getFontMetrics(getFont().deriveFont(Font.ITALIC, 9f));
+        int lineHeight = fm.getHeight();
+        int smallLineHeight = fmSmall.getHeight();
 
-        int padding = 4;
-        int y = fm.getHeight() + padding;
+        int padding = 6;
+        int y = padding;
+        
+        // Draw subtle section label for constraints
+        y += smallLineHeight;
+        g2d.setFont(getFont().deriveFont(Font.ITALIC, 9f));
+        g2d.setColor(new Color(150, 150, 150));
+        g2d.drawString("constraints", padding, y);
+        
         // 1) Constraint semantics (blue, centered)
+        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
+        y += lineHeight;
         String constraintSem;
         String raw = state.getRawConstraintText();
         if (state.isPseudoState()) {
@@ -132,12 +171,24 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 }
             }
         }
-        g2d.setColor(Color.BLUE);
+        g2d.setColor(new Color(0, 70, 180)); // Darker blue for better contrast
         int w1 = fm.stringWidth(constraintSem);
         g2d.drawString(constraintSem, (getWidth() - w1) / 2, y);
+        
+        // Draw separator line
+        y += 3;
+        g2d.setColor(new Color(200, 200, 200));
+        g2d.drawLine(padding + 2, y, getWidth() - padding - 2, y);
+        
+        // Draw subtle section label for configurations
+        y += smallLineHeight + 1;
+        g2d.setFont(getFont().deriveFont(Font.ITALIC, 9f));
+        g2d.setColor(new Color(150, 150, 150));
+        g2d.drawString("configs", padding, y);
+        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
 
         // 2) Actual state semantics: each configuration green if in constraints, red otherwise
-        y += fm.getHeight();
+        y += lineHeight;
         Set<?> constraintsConfigs = state.getConstraintsSemantics() == null
                 ? Collections.emptySet()
                 : state.getConstraintsSemantics().getConfigurations();
@@ -183,33 +234,58 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
         int x = (getWidth() - totalWidth) / 2;
         for (String s : cfgStrs) {
-            // Always paint green for the pseudostate’s actual semantics
-            boolean isGreen = state.isPseudoState() || constraintStrs.contains(s);
-            g2d.setColor(isGreen ? Color.GREEN.darker() : Color.RED);
-            g2d.drawString(s, x, y);
-            // Determine underline: 
-            // - Red for deadlock configurations that are NOT covered by any outgoing transition
-            // - Green for configurations covered by an outgoing transition guard
-            // - None otherwise
+
+            // Special case: empty configuration "()" means no component machines configured
+            boolean isEmptyConfig = s.equals("()");
+            
+            // Determine status for color and underline:
+            // - isDeadlock: configuration cannot evolve internally (is in deadlockConfigurations)
+            // - isCovered: configuration is covered by at least one outgoing transition guard
             boolean isDeadlock = deadlockCfgStrs.contains(s);
             boolean isCovered = coveredCfgStrs.contains(s);
-            if (isDeadlock && !isCovered) {
-                // True deadlock: can't evolve internally AND not covered by any transition
-                int sw = fm.stringWidth(s);
+            boolean canEvolve = !isDeadlock && !isEmptyConfig; // Empty config can't evolve (nothing to evolve)
+            boolean satisfiesConstraint = state.isPseudoState() || constraintStrs.contains(s);
+            
+            // Color logic (new scheme):
+            // - Gray: Empty config (no component machines) - neutral, informational
+            // - Red: True deadlock (can't evolve AND not covered)
+            // - Green: Covered by transition OR can evolve internally
+            if (isEmptyConfig) {
+                g2d.setColor(new Color(100, 100, 100)); // Gray for empty config
+            } else if (isDeadlock && !isCovered) {
                 g2d.setColor(Color.RED);
-                g2d.drawLine(x, y + 1, x + sw, y + 1);
-                g2d.drawLine(x, y + 2, x + sw, y + 2);  // double line for emphasis
             } else if (isCovered) {
-                // Covered configurations get a green underline (they have a way out)
+                g2d.setColor(Color.GREEN.darker());
+            } else {
+                g2d.setColor(satisfiesConstraint ? Color.GREEN.darker() : Color.RED);
+            }
+            g2d.drawString(s, x, y);
+            
+            // Underline logic (new scheme):
+            // - Green underline: can evolve internally (not a deadlock risk)
+            // - No underline for empty config
+            if (canEvolve && !isCovered) {
                 int sw = fm.stringWidth(s);
                 g2d.setColor(Color.GREEN.darker());
                 g2d.drawLine(x, y + 1, x + sw, y + 1);
             }
             x += fm.stringWidth(s) + fm.charWidth(' ');
         }
+        
+        // Draw separator line before exit zones
+        y += 3;
+        g2d.setColor(new Color(200, 200, 200));
+        g2d.drawLine(padding + 2, y, getWidth() - padding - 2, y);
+        
+        // Draw subtle section label for exit zones
+        y += smallLineHeight + 1;
+        g2d.setFont(getFont().deriveFont(Font.ITALIC, 9f));
+        g2d.setColor(new Color(150, 150, 150));
+        g2d.drawString("exit zones", padding, y);
+        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
 
         // 3) Reactive exit zones: centered, comma-separated, colored by origin and coverage
-        y += fm.getHeight();
+        y += lineHeight;
         try {
             PWSStateMachine sm = ((PWSStateMachinePanel) getParent()).getStateMachine();
             // Determine covered guards for coloring
@@ -224,7 +300,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                     }
                 }
             }
-            // Get CS-only and SS-only sets for color determination
+            // Get CS-only and SS-only sets for later detailed analysis (used in extended dashboard)
             Set<ExitZone> csOnly = state.getCsOnlyExitZones();
             Set<ExitZone> ssOnly = state.getSsOnlyExitZones();
             // Prepare list of exit-zones
@@ -240,35 +316,19 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
             int exitX = (getWidth() - exitTotalWidth) / 2;
             // Draw each exit-zone with comma separators
-            // Color logic: 
-            // - If covered by a guard transition: green
-            // - Else if CS-only: dark yellow
-            // - Else if SS-only: light red
-            // - Else (in both CS and SS): dark red (bold)
+            // Simplified color logic: 
+            // - Green if covered by an autonomous PWS transition
+            // - Red if not covered
             Font baseFont = g2d.getFont();
-            Font boldFont = baseFont.deriveFont(Font.BOLD);
             for (int i = 0; i < zones.size(); i++) {
                 ExitZone ez = zones.get(i);
                 String txt = ez.toString();
                 boolean isCovered = covered.contains(ez.getTarget());
-                Color ezColor;
-                boolean useBold = false;
-                if (isCovered) {
-                    ezColor = Color.GREEN.darker();
-                } else if (csOnly != null && csOnly.contains(ez)) {
-                    ezColor = new Color(204, 153, 0); // Dark yellow
-                } else if (ssOnly != null && ssOnly.contains(ez)) {
-                    ezColor = new Color(255, 102, 102); // Light red
-                } else {
-                    // In both CS and SS (not covered) - dark red, bold
-                    ezColor = new Color(139, 0, 0); // Dark red
-                    useBold = true;
-                }
+                Color ezColor = isCovered ? Color.GREEN.darker() : new Color(180, 0, 0);
                 g2d.setColor(ezColor);
-                g2d.setFont(useBold ? boldFont : baseFont);
+                g2d.setFont(baseFont);
                 g2d.drawString(txt, exitX, y);
                 exitX += g2d.getFontMetrics().stringWidth(txt);
-                g2d.setFont(baseFont); // Reset font
                 if (i < zones.size() - 1) {
                     String sep = ", ";
                     g2d.setColor(Color.BLACK);
@@ -312,10 +372,28 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 }
             }
             // Set the border based on overall OK status
-            Color borderColor = allOk ? Color.GREEN.darker() : Color.RED;
-            setBorder(BorderFactory.createLineBorder(borderColor, 1));
+            Color borderColor = allOk ? new Color(0, 140, 0) : new Color(180, 0, 0);
+            
+            // Draw custom rounded border with thicker line
+            g2d.setColor(borderColor);
+            g2d.setStroke(new BasicStroke(BORDER_THICKNESS));
+            g2d.drawRoundRect(BORDER_THICKNESS/2, BORDER_THICKNESS/2, 
+                             getWidth() - BORDER_THICKNESS, getHeight() - BORDER_THICKNESS, 
+                             CORNER_RADIUS, CORNER_RADIUS);
+            
+            // Add subtle status indicator glow/tint in background
+            if (!allOk) {
+                g2d.setColor(new Color(255, 200, 200, 40)); // Very subtle red tint
+                g2d.fillRoundRect(BORDER_THICKNESS, BORDER_THICKNESS, 
+                                 getWidth() - 2*BORDER_THICKNESS, getHeight() - 2*BORDER_THICKNESS, 
+                                 CORNER_RADIUS - 2, CORNER_RADIUS - 2);
+            }
+            
+            // Remove the old simple border since we draw our own
+            setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
         } catch (Exception ignored) {
         }
+        g2d.dispose();
     }
 
     @Override
@@ -353,12 +431,30 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
 
         String[] lines = new String[] { constraintSem, actualSem, autonomousSem };
         FontMetrics fm = getFontMetrics(getFont().deriveFont(Font.PLAIN, 12f));
+        FontMetrics fmSmall = getFontMetrics(getFont().deriveFont(Font.ITALIC, 9f));
         int maxWidth = 0;
         for (String line : lines) {
             maxWidth = Math.max(maxWidth, fm.stringWidth(line));
         }
-        int totalHeight = fm.getHeight() * lines.length;
-        // Add padding
-        return new Dimension(maxWidth + 10, totalHeight + 10);
+        // Account for section labels width
+        maxWidth = Math.max(maxWidth, fmSmall.stringWidth("exit zones") + 20);
+        
+        // Match the exact y-positions used in paintComponent:
+        // padding=6, then for each section: smallLineHeight + lineHeight + separator(~4)
+        int padding = 6;
+        int lineHeight = fm.getHeight();
+        int smallLineHeight = fmSmall.getHeight();
+        
+        // Section 1: constraints label + content
+        // Section 2: separator + configs label + content  
+        // Section 3: separator + exit zones label + content
+        int totalHeight = padding +
+                          smallLineHeight + lineHeight +  // constraints section
+                          4 + smallLineHeight + lineHeight +  // configs section (with separator)
+                          4 + smallLineHeight + lineHeight +  // exit zones section (with separator)
+                          padding;
+        
+        // Add padding for borders
+        return new Dimension(maxWidth + 24, totalHeight + 4);
     }
 }
