@@ -8,6 +8,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -24,6 +25,10 @@ public class ActionAnnotation extends Annotation<ActionList> {
     private Consumer<ActionList> updateCallback; // Callback per aggiornare il modello
     // Optional associated transition (when this annotation is attached to a transition)
     private machinery.TransitionInterface associatedTransition;
+    
+    // Problem status for coloring
+    private boolean hasOrphanActions = false;
+    private List<String> orphanActionReasons = new ArrayList<>();
 
     /**
      * Creates an action annotation.
@@ -37,6 +42,7 @@ public class ActionAnnotation extends Annotation<ActionList> {
         this.assembly = assembly;
         this.updateCallback = updateCallback;
         this.associatedTransition = null;
+        setToolTipText(""); // Enable tooltips
     }
 
     /**
@@ -52,6 +58,126 @@ public class ActionAnnotation extends Annotation<ActionList> {
         this.assembly = assembly;
         this.updateCallback = updateCallback;
         this.associatedTransition = associatedTransition;
+        setToolTipText(""); // Enable tooltips
+    }
+    
+    /**
+     * Checks if any action is orphan (references machines/events not reachable from source state semantics).
+     * An action is orphan when:
+     * - The machine it references is not in the source state's semantics or constraints
+     * - The event it references is not triggerable from any state in the source semantics
+     */
+    private void checkOrphanActions() {
+        hasOrphanActions = false;
+        orphanActionReasons.clear();
+        
+        if (content == null || content.isEmpty()) return;
+        if (associatedTransition == null) return;
+        
+        machinery.StateInterface src = associatedTransition.getSource();
+        if (!(src instanceof PWSState ps) || ps.isPseudoState()) return;
+        
+        // Get valid machine.event combinations from source state semantics
+        Set<String> validActions = new HashSet<>();
+        Semantics stateSemantics = ps.getStateSemantics();
+        Semantics constraintSemantics = ps.getConstraintsSemantics();
+        
+        // Collect valid actions from state semantics
+        if (stateSemantics != null) {
+            collectValidActionsFromSemantics(stateSemantics, validActions);
+        }
+        
+        // Also consider constraint semantics (union of both)
+        if (constraintSemantics != null) {
+            collectValidActionsFromSemantics(constraintSemantics, validActions);
+        }
+        
+        // If no semantics available, don't flag as orphan
+        if (validActions.isEmpty() && (stateSemantics == null || stateSemantics.getConfigurations().isEmpty()) 
+                && (constraintSemantics == null || constraintSemantics.getConfigurations().isEmpty())) {
+            return;
+        }
+        
+        // Check each action
+        for (Action a : content) {
+            String actionStr = a.toString();
+            if (!validActions.contains(actionStr)) {
+                hasOrphanActions = true;
+                orphanActionReasons.add("'" + actionStr + "' is not reachable from source state semantics");
+            }
+        }
+    }
+    
+    /**
+     * Collects valid machine.event action strings from a semantics object.
+     */
+    private void collectValidActionsFromSemantics(Semantics sem, Set<String> validActions) {
+        if (sem == null || sem.getConfigurations().isEmpty()) return;
+        
+        for (Configuration conf : sem.getConfigurations()) {
+            for (BasicStateProposition bsp : conf.getBasicStatePropositions()) {
+                String machineId = bsp.getMachineId();
+                String stateName = bsp.getStateName();
+                StateMachine machine = assembly.getStateMachines().get(machineId);
+                if (machine == null) continue;
+                
+                // Find triggerable transitions from this state
+                for (machinery.TransitionInterface t : machine.getTransitions()) {
+                    if (t.isTriggerable() && t.getSource() != null && stateName.equals(t.getSource().getName())) {
+                        validActions.add(machineId + "." + t.getTriggerEvent());
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Returns whether this annotation has orphan actions.
+     */
+    public boolean hasOrphanActions() {
+        checkOrphanActions();
+        return hasOrphanActions;
+    }
+    
+    /**
+     * Returns the list of orphan action reasons.
+     */
+    public List<String> getOrphanActionReasons() {
+        checkOrphanActions();
+        return orphanActionReasons;
+    }
+    
+    @Override
+    protected void paintComponent(Graphics g) {
+        // Update orphan status before painting
+        checkOrphanActions();
+        
+        Graphics2D g2d = (Graphics2D) g;
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
+        
+        // Set color based on orphan status
+        if (hasOrphanActions) {
+            g2d.setColor(new Color(180, 0, 0)); // Red for orphan actions
+        } else {
+            g2d.setColor(Color.BLACK);
+        }
+        
+        String text = buildDisplayText();
+        FontMetrics fm = g2d.getFontMetrics();
+        int textWidth = fm.stringWidth(text);
+        int textHeight = fm.getAscent();
+        int x = (getWidth() - textWidth) / 2;
+        int y = (getHeight() + textHeight) / 2 - 2;
+        g2d.drawString(text, x, y);
+    }
+    
+    @Override
+    public String getToolTipText() {
+        if (hasOrphanActions && !orphanActionReasons.isEmpty()) {
+            return "Orphan actions: " + String.join(", ", orphanActionReasons);
+        }
+        return super.getToolTipText();
     }
 
     @Override

@@ -14,7 +14,8 @@
 10. [Exit Zones](#exit-zones)
 11. [File Management](#file-management)
 12. [Menu Reference](#menu-reference)
-13. [Tips & Troubleshooting](#tips--troubleshooting)
+13. [Controller Report](#controller-report)
+14. [Tips & Troubleshooting](#tips--troubleshooting)
 
 ---
 
@@ -56,13 +57,15 @@ A **Part-Whole Statechart** is a behavioral modeling formalism that describes:
 | **State** | A control point in a state machine where the system can reside |
 | **Pseudo-State** | An initial state (marked with a small filled circle) |
 | **Transition** | A directed arc connecting states, optionally with triggers, guards, and actions |
+| **Triggered Transition** | A transition that fires when a specific event occurs (and guard is satisfied) |
+| **Autonomous Transition** | A transition without a trigger event; fires based on guard condition alone |
 | **Guard** | A boolean condition that must be true to enable a transition |
 | **Action** | An emission (event output) that occurs when a transition fires |
 | **Constraint Semantics** | User-specified allowed configurations for a state |
 | **Computed Semantics** | Semantics inferred from state machine structure |
 | **Assembly** | A collection of component machines forming a part-whole hierarchy |
 | **Machine Library** | A repository of reusable state machine templates |
-| **Exit Zone** | An autonomous transition point in a component machine that enables PWS-level transitions |
+| **Exit Zone** | A guard condition on an autonomous transition that monitors component machine states |
 | **Deadlock Configuration** | A configuration that cannot evolve and has no way out via transitions |
 
 ---
@@ -160,9 +163,87 @@ Use **in-place editors** (floating text boxes) to directly modify:
 - **Action labels**: Click the action text and edit
 - **Semantics labels**: View computed semantics
 
-### Autonomous Transitions
+### Understanding Transition Types
 
-A transition can be marked as **autonomous** (self-triggering) to evolve without external events. This is useful for modeling fail-safe repair or guard-only transitions.
+PWSEditor supports two fundamentally different transition types:
+
+#### Triggered Transitions
+
+A **triggered transition** has a **trigger event** (shown as text on the arrow). These transitions:
+- Fire when the specified event occurs **AND** the guard condition is satisfied
+- Require external stimulus to activate
+- Are the most common type in reactive systems
+
+Example: A transition labeled `button_pressed [isReady] / beep` fires when:
+1. The event `button_pressed` occurs
+2. The guard `isReady` evaluates to true
+3. The action `beep` is then emitted
+
+#### Autonomous Transitions
+
+An **autonomous transition** has **no trigger event** — it fires based purely on its guard condition. These transitions:
+- React to **exit zones** in component machines (when component machines reach certain states that satisfy the guard)
+- Enable the PWS controller to respond to internal configuration changes
+- Are essential for modeling fail-safe recovery, monitoring, and self-adaptation
+
+Example: A transition with guard `[m1.Failed ∨ m2.Error]` (no trigger) fires automatically when either component machine `m1` reaches state `Failed` or `m2` reaches state `Error`.
+
+**When to Use Autonomous Transitions:**
+- Monitoring component machine states (e.g., detecting failures)
+- Implementing recovery or fallback behaviors
+- Modeling self-triggered evolution based on configuration
+- Creating guard-only transitions that react to exit zones
+
+#### Initial Transitions (Special Case)
+
+**Initial transitions** (from the pseudo-state) are a special case. Although they appear autonomous (no visible trigger event), they are actually **triggered by a hidden system startup event**. Therefore:
+
+- Initial transitions **accept TRUE as a valid guard** — this means "fire at startup"
+- They do NOT trigger the "TRUE on autonomous" warning
+- They behave like triggered transitions: the system "sends" a startup event when initialization begins
+
+### Guard Conventions and Visual Feedback
+
+The guard expression determines when a transition can fire. PWSEditor provides visual feedback to help you identify problematic guard configurations:
+
+#### Default Guard for New Transitions
+
+- **Triggered transitions** (with an event): Default to **TRUE** guard — the transition fires whenever the event occurs
+- **Initial transitions** (from pseudo-state): Default to **TRUE** guard — fire at system startup
+- **Autonomous transitions** (no event, not from pseudo-state): Default to **FALSE** guard — this is a **placeholder** indicating you need to specify a meaningful guard
+
+#### Problematic Guards (Red Highlighting)
+
+Guards that appear in **red** indicate potential issues:
+
+| Guard Condition | Problem | Explanation |
+|-----------------|---------|-------------|
+| **FALSE** on any transition | Placeholder | The transition can never fire. Edit the guard to specify a real condition. |
+| **TRUE** on autonomous transition | Immediate firing | With no event required and guard always true, this transition fires immediately upon entering the source state, which is usually unintended. **Exception**: Initial transitions (from pseudo-state) are NOT flagged — they have a hidden startup trigger. |
+| **Orphan guard** | References removed machines | The guard references component machine states that no longer exist in the assembly (e.g., after removing a machine). |
+
+**Tooltips**: Hover over a red guard to see an explanation of the specific problem.
+
+**How to Fix:**
+- **FALSE guards**: Replace with a meaningful condition like `m1.Active` or `m1.Failed ∨ m2.Error`
+- **TRUE on autonomous**: Either add a trigger event (making it triggered), or change the guard to a specific condition
+- **Orphan guards**: Update the guard to reference only machines currently in the assembly
+
+### Autonomous Transitions and Exit Zones
+
+**Exit zones** are the key to understanding autonomous transitions:
+
+1. An **exit zone** is defined by the guard expression on an autonomous transition
+2. When component machines reach states that satisfy the guard, the transition becomes **enabled**
+3. The PWS controller can then fire the transition to respond to the configuration
+
+Example workflow:
+1. Component machine `monitor` has states: `OK`, `Warning`, `Critical`
+2. PWS controller has an autonomous transition with guard `[monitor.Critical]`
+3. When `monitor` reaches `Critical` state, the autonomous transition fires
+4. The controller moves to a recovery or alarm state
+
+This mechanism allows PWS controllers to **observe and react** to their component machines without explicit events.
 
 ### Disabling a Transition
 
@@ -283,15 +364,92 @@ To share reusable machines across projects:
 
 ### Editing Constraint Semantics
 
-1. **Right-click** a state
-2. Select **Edit Constraints** (or **View → Edit Constraints** from the menu)
-3. In the dialog, enter configurations in the format:
-   ```
-   machine1.state1, machine2.state2
-   machine1.state3, machine2.state4
-   ```
-4. Each line represents one allowed configuration (a conjunction)
-5. Multiple lines create a disjunction (OR)
+PWSEditor provides a visual Constraints Editor that makes it easy to build constraints using dropdown menus.
+
+#### Opening the Editor
+
+1. **Right-click** on a state's dashboard (the annotation box)
+2. Select **Edit Constraints Semantics**
+
+> **Note**: Pseudostates always have constraint "ANY" and cannot be edited.
+
+#### The Visual Constraints Editor
+
+The editor uses an **"add machine constraint"** approach where you explicitly add only the machines you want to constrain:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Edit Constraints: StateName                                 │
+├─────────────────────────────────────────────────────────────┤
+│ Build constraints: Add machine constraints. Lines are       │
+│ OR-joined.                                                  │
+│ Tip: Only add machines you want to constrain. Unmentioned   │
+│ machines allow any state.                                   │
+├─────────────────────────────────────────────────────────────┤
+│ Constraint Lines (OR-joined)                                │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ [m1.▼A ] [×]                              [+]  [×]      │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ [m1.▼B ] [m2.▼X ] [×]                     [+]  [×]      │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│ [+ Add Constraint Line]                                     │
+├─────────────────────────────────────────────────────────────┤
+│ Preview: (m1.A), (m1.B, m2.X)                               │
+├─────────────────────────────────────────────────────────────┤
+│                                    [Apply]  [Cancel]        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Editor Features
+
+| Element | Description |
+|---------|-------------|
+| **Constraint Line** | Each line represents one allowed configuration (OR-joined) |
+| **Machine Chip** | A styled box showing `machineId.state` with dropdown and remove button |
+| **[+] Button (in line)** | Add a machine constraint to this line - shows a popup menu with available machines and their states |
+| **[×] Button (chip)** | Remove a specific machine constraint from the line |
+| **[×] Button (line)** | Remove the entire constraint line |
+| **[+ Add Constraint Line]** | Add a new (empty) constraint line |
+| **Preview** | Shows the resulting constraint in text format |
+
+#### Building Constraints Step-by-Step
+
+**Example 1: Single machine constraint `(m1.A)`**
+1. Click **[+]** in an empty line
+2. Select machine **m1** from the popup
+3. Select state **A** from the submenu
+4. Result: One chip showing `m1.A`
+
+**Example 2: Multi-machine constraint `(m1.A, m2.X)`**
+1. Click **[+]** → select **m1** → select **A**
+2. Click **[+]** again → select **m2** → select **X**
+3. Result: Two chips showing `m1.A` and `m2.X`
+
+**Example 3: Multiple OR-joined constraints `(m1.A), (m1.B, m2.X)`**
+1. Build first line: `m1.A`
+2. Click **[+ Add Constraint Line]**
+3. Build second line: `m1.B`, then add `m2.X`
+4. Result: Two lines, meaning "m1 in A" OR "m1 in B AND m2 in X"
+
+#### Changing a State
+
+Each machine chip has a dropdown - simply click it to change the state without removing and re-adding.
+
+#### Preserving Partial Specifications
+
+When you re-open the editor, your **original partial specification is preserved**. For example:
+- You enter `m1.A` (partial - doesn't mention m2)
+- The system computes the full semantics internally
+- When you edit again, you see `m1.A` (not the expanded version)
+
+This makes it easy to maintain and understand your constraints.
+
+#### What States Are Available?
+
+- All regular states from each machine in the assembly
+- **Pseudostates are excluded** - they cannot be selected as constraint targets
 
 ### Understanding Configurations
 
@@ -689,6 +847,79 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 | **Add Machine** | Add new machine to assembly |
 | **Remove Machine** | Remove selected machine from assembly |
 | **Clone Machine** | Duplicate a machine with new ID |
+
+---
+
+## Controller Report
+
+The **Controller Report** provides a comprehensive overview of all issues in your controller design. It enumerates problems that need attention and correlates with the visual indicators (red highlights) shown on the diagram.
+
+### Accessing the Report
+
+**Right-click** on an empty area of the controller canvas (the same menu used to add states) and select **"Controller Report..."** to open the report dialog.
+
+### Report Sections
+
+The report is organized into several sections:
+
+#### Summary
+Shows controller statistics (states, transitions, assembly machines) and a quick count of all detected issues.
+
+#### Guard Problems
+Lists transitions with problematic guard conditions:
+
+| Problem Type | Description | Visual Indicator |
+|--------------|-------------|------------------|
+| **FALSE Guard** | Placeholder that needs to be set — transition will never fire | Red guard label `[FALSE]` |
+| **TRUE on Autonomous** | Fires immediately upon entering source state | Red guard label `[TRUE]` |
+| **Orphan Guard** | References an exit zone that no longer exists | Red guard label |
+
+**How to Fix:**
+- **FALSE**: Edit the guard to specify a meaningful condition (e.g., `m1.Failed`)
+- **TRUE on Autonomous**: Either add a trigger event or change to a specific guard
+- **Orphan**: Update the guard to reference exit zones that still exist
+
+#### Action Problems (Orphan Actions)
+Lists actions that reference events not reachable from the source state's semantics or constraints. An action is "orphan" when:
+- The machine it references is not included in the source state's semantics
+- The event (trigger) it references cannot be fired from any state in the source semantics
+
+Orphan actions are shown in **red** on the diagram.
+
+**How to Fix:** 
+- Remove the orphan action from the transition
+- Or update the source state's constraints to include machine states that enable the referenced events
+
+#### Uncovered Exit Zones
+Lists exit zones that have no covering autonomous transition. Each exit zone should ideally be handled by an autonomous transition with a matching guard.
+
+**How to Fix:** Add autonomous transitions with guards matching the listed exit zones.
+
+#### Constraint Violations
+Lists configurations that appear in computed state semantics but violate user-defined constraints. These are also shown in **red** in state dashboards.
+
+**How to Fix:** Review and adjust either the constraints or the transition structure.
+
+#### Deadlock Configurations
+Lists configurations where the system can get stuck — no autonomous evolution and no covering transition. These are warnings that may indicate design issues.
+
+**How to Fix:** Add transitions that can fire from these configurations, or verify that the deadlock is intentional (e.g., final/sink states).
+
+#### LTL Formula Verification
+*(Coming soon)* Once LTL verification is implemented, this section will show which formulas are satisfied and which are violated.
+
+#### Overall Status
+Shows a final assessment: either **"CONTROLLER IS WELL-FORMED"** (no issues) or a summary of outstanding problems.
+
+### Report and Diagram Correlation
+
+The report correlates with visual indicators on the diagram:
+- **Red guard labels**: Problematic guards (FALSE, TRUE on autonomous, orphan)
+- **Red action labels**: Orphan actions (not reachable from source state semantics)
+- **Red configurations in dashboards**: Constraint violations
+- **Uncovered exit zones**: No visual indicator on transitions, but shown in state dashboards
+
+Use the report to get a comprehensive overview, then use the diagram to locate and fix individual issues.
 
 ---
 

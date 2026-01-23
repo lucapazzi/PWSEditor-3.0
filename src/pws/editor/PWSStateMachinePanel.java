@@ -825,8 +825,14 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 boolean autonomous = transitionSourceState.getName().equals("PseudoState") ||
                         (trigger == null || trigger.trim().isEmpty());
                 PWSTransition newTransition = new PWSTransition(transitionSourceState, clickedState, autonomous, trigger,((PWSStateMachine)stateMachine).getAssembly());
+                
+                // For autonomous transitions (except from pseudostate), set FALSE as default guard
+                // This makes it clear that the guard needs to be set by the designer
+                if (autonomous && !transitionSourceState.getName().equals("PseudoState")) {
+                    newTransition.setGuardProposition(new smalgebra.FalseProposition());
+                }
 
-                // Here, we no longer use a single dialog; the guard remains default (TRUE) and action list empty,
+                // Here, we no longer use a single dialog; the guard remains default (TRUE for triggered, FALSE for autonomous)
                 // and the transition semantics default as well.
                 // The user can later modify them by clicking on the corresponding annotations.
 
@@ -902,6 +908,21 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             addNewStateAt(e.getPoint());
         });
         popup.add(addStateItem);
+        
+        popup.addSeparator();
+        
+        // Controller Report menu item
+        JMenuItem reportItem = new JMenuItem("Controller Report...");
+        reportItem.addActionListener(ae -> {
+            if (stateMachine instanceof pws.PWSStateMachine pwsm) {
+                java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                java.awt.Frame frame = (w instanceof java.awt.Frame) ? (java.awt.Frame) w : null;
+                ControllerReportDialog dialog = new ControllerReportDialog(frame, pwsm);
+                dialog.setVisible(true);
+            }
+        });
+        popup.add(reportItem);
+        
         popup.show(this, e.getX(), e.getY());
     }
 

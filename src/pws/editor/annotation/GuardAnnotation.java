@@ -5,6 +5,7 @@ import assembly.AssemblyInterface;
 import smalgebra.AndProposition;
 import smalgebra.SMProposition;
 import smalgebra.TrueProposition;
+import smalgebra.FalseProposition;
 import smalgebra.BasicStateProposition;
 
 import javax.swing.*;
@@ -26,6 +27,10 @@ public class GuardAnnotation extends Annotation<SMProposition> {
     private Assembly assembly;
     private Consumer<SMProposition> updateCallback;
     private TransitionInterface associatedTransition;
+    
+    // Problem status for coloring
+    private boolean isProblematic = false;
+    private String problemReason = null;
 
     /**
      * Creates a guard annotation.
@@ -39,6 +44,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
         this.assembly = assembly;
         this.updateCallback = updateCallback;
         this.associatedTransition = null;
+        setToolTipText(""); // Enable tooltips
     }
 
     /**
@@ -54,6 +60,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
         this.assembly = assembly;
         this.updateCallback = updateCallback;
         this.associatedTransition = associatedTransition;
+        setToolTipText(""); // Enable tooltips
     }
 
     // Add an extra listener to adjust snapping on mouse release to half-grid.
@@ -90,6 +97,98 @@ public class GuardAnnotation extends Annotation<SMProposition> {
     protected String buildDisplayText() {
         // Return the text with square brackets.
         return "[" + (content == null ? "" : content.toString()) + "]";
+    }
+    
+    /**
+     * Checks if this guard is problematic and needs red highlighting.
+     * Problematic conditions:
+     * - FALSE guard (placeholder that needs to be set)
+     * - TRUE guard on autonomous transition (fires immediately - usually unintended)
+     *   Exception: Initial transitions (from pseudo-state) are treated as triggered by a hidden startup event
+     * - Orphan guard (references exit zone that no longer exists)
+     */
+    private void checkProblematicStatus() {
+        isProblematic = false;
+        problemReason = null;
+        
+        if (content == null) return;
+        
+        // Check for FALSE guard - placeholder
+        if (content instanceof FalseProposition) {
+            isProblematic = true;
+            problemReason = "FALSE guard - transition will never fire";
+            return;
+        }
+        
+        // Check for TRUE guard on autonomous transition
+        // Exception: Initial transitions (from pseudo-state) are triggered by a hidden startup event,
+        // so TRUE is valid for them
+        if (content instanceof TrueProposition && associatedTransition != null && associatedTransition.isAutonomous()) {
+            machinery.StateInterface src = associatedTransition.getSource();
+            boolean isInitialTransition = (src instanceof PWSState ps && ps.isPseudoState());
+            if (!isInitialTransition) {
+                isProblematic = true;
+                problemReason = "TRUE guard on autonomous transition - fires immediately";
+                return;
+            }
+        }
+        
+        // Check for orphan guard (guard references exit zone that doesn't exist)
+        if (associatedTransition != null && associatedTransition.isAutonomous() 
+                && content instanceof BasicStateProposition bsp) {
+            machinery.StateInterface src = associatedTransition.getSource();
+            if (src instanceof PWSState ps && !ps.isPseudoState()) {
+                java.util.HashSet<pws.editor.semantics.ExitZone> reactive = ps.getReactiveSemantics();
+                if (reactive != null && !reactive.isEmpty()) {
+                    // Check if the guard's target exists in any exit zone
+                    boolean found = false;
+                    for (pws.editor.semantics.ExitZone zone : reactive) {
+                        if (zone != null && zone.getTarget() != null 
+                                && zone.getTarget().toString().equals(bsp.toString())) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        isProblematic = true;
+                        problemReason = "Orphan guard - exit zone no longer exists";
+                    }
+                }
+            }
+        }
+    }
+    
+    @Override
+    protected void paintComponent(Graphics g) {
+        // Update problematic status before painting
+        checkProblematicStatus();
+        
+        Graphics2D g2d = (Graphics2D) g;
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
+        
+        // Set color based on problematic status
+        if (isProblematic) {
+            g2d.setColor(new Color(180, 0, 0)); // Red for problematic
+        } else {
+            g2d.setColor(Color.BLACK);
+        }
+        
+        String text = buildDisplayText();
+        FontMetrics fm = g2d.getFontMetrics();
+        int textWidth = fm.stringWidth(text);
+        int textHeight = fm.getAscent();
+        int x = (getWidth() - textWidth) / 2;
+        int y = (getHeight() + textHeight) / 2 - 2;
+        g2d.drawString(text, x, y);
+    }
+    
+    @Override
+    public String getToolTipText() {
+        if (isProblematic && problemReason != null) {
+            return problemReason;
+        }
+        return super.getToolTipText();
     }
 
     @Override
@@ -193,7 +292,8 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             // Guard is already set - show "Remove guard" and options to extend with AND
             JMenuItem removeItem = new JMenuItem("Remove guard");
             removeItem.addActionListener(ev -> {
-                SMProposition defaultGuard = new TrueProposition();
+                // Reset to FALSE - a placeholder indicating the guard needs to be set
+                SMProposition defaultGuard = new FalseProposition();
                 setContent(defaultGuard);
                 updateCallback.accept(defaultGuard);
                 java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
