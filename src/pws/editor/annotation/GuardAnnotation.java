@@ -298,8 +298,26 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             // Guard is already set - show "Remove guard" and options
             JMenuItem removeItem = new JMenuItem("Remove guard");
             removeItem.addActionListener(ev -> {
-                // Reset to FALSE - a placeholder indicating the guard needs to be set
-                SMProposition defaultGuard = new FalseProposition();
+                // Determine the appropriate default guard based on transition type
+                // Initial transitions (from pseudo-state) should reset to TRUE (fire at startup)
+                // Autonomous transitions should reset to FALSE (placeholder)
+                SMProposition defaultGuard;
+                boolean isInitialTransition = false;
+                if (associatedTransition != null) {
+                    machinery.StateInterface src = associatedTransition.getSource();
+                    if (src instanceof PWSState ps && ps.isPseudoState()) {
+                        isInitialTransition = true;
+                    }
+                }
+                
+                if (isInitialTransition) {
+                    // Initial transitions reset to TRUE - "fire at startup"
+                    defaultGuard = new TrueProposition();
+                } else {
+                    // Other transitions reset to FALSE - placeholder indicating guard needs to be set
+                    defaultGuard = new FalseProposition();
+                }
+                
                 setContent(defaultGuard);
                 updateCallback.accept(defaultGuard);
                 java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);

@@ -38,6 +38,7 @@ public class ExtendedDashboardDialog extends JDialog {
     private static final String STYLE_GRAY = "gray";
     private static final String STYLE_BOLD = "bold";
     private static final String STYLE_GREEN_UNDERLINE = "greenUnderline";
+    private static final String STYLE_RED_UNDERLINE = "redUnderline";
 
     public ExtendedDashboardDialog(Window owner, PWSState state, PWSStateMachine stateMachine, Assembly assembly) {
         super(owner, "Extended Dashboard: " + state.getName(), ModalityType.MODELESS);
@@ -125,6 +126,11 @@ public class ExtendedDashboardDialog extends JDialog {
         Style greenUnderline = doc.addStyle(STYLE_GREEN_UNDERLINE, normal);
         StyleConstants.setForeground(greenUnderline, new Color(0, 128, 0));
         StyleConstants.setUnderline(greenUnderline, true);
+        
+        // Red underline style (violates constraint but can evolve internally)
+        Style redUnderline = doc.addStyle(STYLE_RED_UNDERLINE, normal);
+        StyleConstants.setForeground(redUnderline, new Color(180, 0, 0));
+        StyleConstants.setUnderline(redUnderline, true);
     }
 
     private void populateContent() {
@@ -255,10 +261,14 @@ public class ExtendedDashboardDialog extends JDialog {
                 boolean canEvolve = !isDeadlock && !isEmptyConfig; // Empty config can't evolve
                 
                 // Determine style matching the dashboard:
+                // Text color: determined by constraint satisfaction (green=satisfies, red=violates)
+                // Underline: determined by evolution capability (underlined=can evolve internally)
+                // The two attributes are INDEPENDENT - a config can violate constraints but still evolve
                 // - Gray: Empty config (no component machines) - neutral/informational
-                // - Red: True deadlock (can't evolve AND not covered)
-                // - Green: Covered by transition (has a way out)
-                // - Green underline: Can evolve internally (not a deadlock risk)
+                // - Red: Violates constraint AND can't evolve (true problem)
+                // - Red underline: Violates constraint BUT can evolve (less severe)
+                // - Green: Satisfies constraint AND covered (best case)
+                // - Green underline: Satisfies constraint AND can evolve (good)
                 String style;
                 String indicator;
                 
@@ -267,10 +277,19 @@ public class ExtendedDashboardDialog extends JDialog {
                     style = STYLE_GRAY;
                     indicator = " ○ No component machines configured";
                 } else if (!satisfiesConstraint) {
-                    style = STYLE_RED;
-                    indicator = " ⚠ VIOLATES CONSTRAINTS";
+                    // Violates constraint - red text, underline if can evolve
+                    if (canEvolve) {
+                        style = STYLE_RED_UNDERLINE;
+                        indicator = " ⚠ Violates constraint (can evolve)";
+                    } else if (!isCovered) {
+                        style = STYLE_RED;
+                        indicator = " ⛔ Violates constraint (DEADLOCK)";
+                    } else {
+                        style = STYLE_RED;
+                        indicator = " ⚠ Violates constraint (covered)";
+                    }
                 } else if (isDeadlock && !isCovered) {
-                    // TRUE DEADLOCK: Red (no underline)
+                    // TRUE DEADLOCK: Red (no underline) - satisfies constraint but stuck
                     style = STYLE_RED;
                     indicator = " ⛔ TRUE DEADLOCK";
                 } else if (isCovered) {

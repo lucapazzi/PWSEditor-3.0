@@ -574,16 +574,72 @@ Hover over or click annotation boxes to see:
 
 ### Understanding Configuration Colors
 
-In the state annotation dashboard:
+In the state annotation dashboard, each configuration has two independent visual attributes:
+
+#### Text Color (Constraint Satisfaction)
 
 | Color | Meaning |
 |-------|---------|
 | **Blue text** | Constraint semantics (user-defined) |
 | **Green text** | Computed configuration that satisfies constraints |
 | **Red text** | Computed configuration that violates constraints |
-| **Red** | True deadlock: configuration cannot evolve AND is not covered by any transition |
-| **Green** | Covered: configuration has a way out via an outgoing transition |
-| **Green underline** | Configuration can evolve internally (not a deadlock risk) |
+| **Gray text** | Empty configuration (no component machines) |
+
+#### Underline (Evolution Capability)
+
+| Underline | Meaning |
+|-----------|---------|
+| **Green underline** | Configuration can evolve internally via autonomous transitions |
+| **No underline** | Configuration is a deadlock (cannot evolve) OR is covered by an outgoing transition |
+
+#### Combined Meanings
+
+The text color and underline are **independent** — a configuration can have any combination:
+
+| Example | Text | Underline | Meaning |
+|---------|------|-----------|---------|
+| `(m1.S)` | Green | Green underline | Satisfies constraints AND can evolve internally ✓ |
+| `(m1.S)` | Green | No underline | Satisfies constraints, is a deadlock but covered by transition ✓ |
+| `(m1.S)` | Red | Green underline | **Violates constraints** but can evolve internally ⚠ |
+| `(m1.S)` | Red | No underline | Violates constraints AND is a deadlock — critical issue ✗ |
+
+**Example from screenshot**: State S1 has constraint `(m1.T)` but computed semantics `(m1.T) (m1.S)`:
+- `(m1.T)` is **green** (satisfies constraint) with **no underline** (T is a deadlock state but covered)
+- `(m1.S)` is **red** (violates constraint) with **green underline** (S can evolve via autonomous transition)
+
+### Dashboard Border Color
+
+The border color of the state dashboard indicates the overall health of the state:
+
+| Border | Meaning |
+|--------|---------|
+| **Green border** | All OK — no issues detected |
+| **Red border** | Has issues — one or more problems need attention |
+
+**Red border triggers** (any of these conditions):
+- **Unreachable state**: Empty state semantics (no configurations) — the state cannot be reached
+- **Constraint violations**: Computed configurations that don't satisfy user-defined constraints
+- **Uncovered exit zones**: Exit zones not handled by any autonomous transition
+- **Uncovered deadlocks**: Deadlock configurations with no way out
+
+### Unreachable States
+
+A state is **unreachable** when its computed semantics is empty — meaning no configurations are allowed. This typically happens when:
+
+1. **Over-constrained**: The user-defined constraints are too restrictive and conflict with incoming transitions
+2. **No valid path**: No combination of component machine states can satisfy the constraints while being reachable from previous states
+
+**Example**: If a state has constraint `(m1.T)` but no incoming transition can lead to a configuration where m1 is in state T, the state has empty semantics and is marked with a red border.
+
+**How to fix**:
+- Review and relax the constraints
+- Check that incoming transitions can actually reach configurations that satisfy the constraints
+- Verify the assembly machine structure allows the required states
+
+---
+
+## Deadlock Detection
+
 ### Overview
 
 **Deadlock detection** is a critical feature that identifies configurations where the system could get stuck with no way to evolve. PWSEditor automatically detects and highlights potential deadlock situations in the state semantics annotation.

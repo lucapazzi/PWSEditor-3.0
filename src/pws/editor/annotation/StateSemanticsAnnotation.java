@@ -418,6 +418,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
             // After drawing all semantics, adjust border color:
             boolean allOk = true;
+            
+            // 0) Check for empty state semantics (unreachable state)
+            // A state with no configurations cannot be reached, which is a problem
+            // Exception: pseudo-state always has ANY semantics
+            if (!state.isPseudoState() && 
+                (state.getStateSemantics() == null || state.getStateSemantics().getConfigurations().isEmpty())) {
+                allOk = false;
+            }
+            
             // 1) Check actual semantics vs. constraints
             constraintStrs.clear();
             if (state.getConstraintsSemantics() != null) {
@@ -514,6 +523,14 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 sm = panel.getStateMachine();
             }
             if (sm == null) return true;
+            
+            // Check 0: empty state semantics (unreachable state)
+            // A state with no configurations cannot be reached, which is a problem
+            // Exception: pseudo-state always has ANY semantics
+            if (!state.isPseudoState() && 
+                (state.getStateSemantics() == null || state.getStateSemantics().getConfigurations().isEmpty())) {
+                return false;
+            }
             
             // Determine covered guards
             Set<smalgebra.BasicStateProposition> covered = new HashSet<>();
