@@ -560,37 +560,27 @@ public class Semantics implements Serializable {
     /**
      * Identifies "deadlock" configurations within this Semantics.
      * <p>
-     * A configuration is considered a deadlock if it cannot reach ALL other configurations
-     * in this Semantics via autonomous transitions of the component machines.
+     * A configuration is considered a deadlock if it cannot evolve internally via
+     * autonomous transitions of the component machines. This means no component machine
+     * in the configuration has an enabled autonomous transition from its current state.
      * <p>
-     * This is important for PWS semantics: all configurations should be connected through
-     * autonomous transitions. A configuration that cannot reach all others represents a potential
-     * deadlock state where the system could get stuck.
+     * This is important for PWS semantics: a configuration that cannot evolve internally
+     * represents a potential deadlock unless it's covered by an outgoing transition in
+     * the controller.
      *
      * @param assembly the Assembly containing component machines with autonomous transitions
-     * @return set of configurations that are deadlocks (cannot reach all other configurations)
+     * @return set of configurations that are deadlocks (cannot evolve internally)
      */
     public Set<Configuration> findDeadlockConfigurations(Assembly assembly) {
         Set<Configuration> deadlocks = new HashSet<>();
         
-        if (configurations.size() <= 1) {
-            // With 0 or 1 configuration, there's nothing to connect to
-            return deadlocks;
-        }
-        
         for (Configuration config : configurations) {
+            // A configuration is a deadlock if it cannot reach ANY other configuration
+            // (i.e., no autonomous transitions are available from this configuration)
             Set<Configuration> reachable = computeReachableConfigurations(config, assembly);
             
-            // Check if this configuration can reach ALL other configurations in this Semantics
-            boolean canReachAll = true;
-            for (Configuration other : configurations) {
-                if (!other.equals(config) && !reachable.contains(other)) {
-                    canReachAll = false;
-                    break;
-                }
-            }
-            
-            if (!canReachAll) {
+            if (reachable.isEmpty()) {
+                // Cannot evolve at all - this is a deadlock
                 deadlocks.add(config);
             }
         }

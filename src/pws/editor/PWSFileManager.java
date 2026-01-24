@@ -96,6 +96,9 @@ public class PWSFileManager {
                             panel.restoreVisibleStateAnnotations();
                             panel.repaint();
                         } catch (Exception ignore) {}
+                        
+                        // Recalculate semantics after loading to ensure all computed fields are up-to-date
+                        editor.scheduleSemanticsRecalculation();
                     } catch (IOException | ClassNotFoundException ex) {
                         // Non-fatal: show a warning but continue
                         JOptionPane.showMessageDialog(editor, "Warning: annotations could not be restored: " + ex.getMessage(), "Warning", JOptionPane.WARNING_MESSAGE);

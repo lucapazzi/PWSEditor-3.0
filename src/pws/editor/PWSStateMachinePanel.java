@@ -117,6 +117,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
                     pwsState.setAnnotation(annot);
                     add(annot);
+                    
+                    // Restore minimized state if previously minimized
+                    if (pwsState.isAnnotationMinimized()) {
+                        annot.setMinimized(true);
+                    }
                 } else {
                     // Annotation exists - ensure it's attached and visible
                     if (annot.getParent() != this) {
@@ -124,6 +129,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     }
                     // Ensure the JComponent is visible (loadAnnotationsFromStream sets it to false)
                     annot.setVisible(true);
+                    // Restore minimized state
+                    if (pwsState.isAnnotationMinimized()) {
+                        annot.setMinimized(true);
+                    }
                 }
             }
         }

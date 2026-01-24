@@ -195,20 +195,26 @@ public class GuardAnnotation extends Annotation<SMProposition> {
     protected void showPopup(MouseEvent e) {
         JPopupMenu popup = new JPopupMenu();
 
-        if (content instanceof TrueProposition) {
+        // Treat both TRUE and FALSE as "no guard set" - need to select a guard
+        // FALSE is a placeholder indicating the guard was removed and needs to be set
+        if (content instanceof TrueProposition || content instanceof FalseProposition) {
             List list = assembly.getAssemblyGuards();
             List<SMProposition> guards = (List<SMProposition>) list;
 
             // If associatedTransition and source has semantics, filter guards appropriately.
-            // For autonomous transitions use reactiveSemantics (ExitZone targets).
-            // For non-autonomous transitions fall back to stateSemantics as before.
+            // For TRUE autonomous transitions (not initial) use reactiveSemantics (ExitZone targets).
+            // Initial transitions (from pseudo-state) and triggered transitions use stateSemantics.
             boolean filteredBySemantics = false;
             Set<String> candidateStrings = new LinkedHashSet<>();
             if (associatedTransition != null) {
                 machinery.StateInterface src = associatedTransition.getSource();
                 if (src instanceof PWSState p) {
-                    // Autonomous transitions -> use reactiveSemantics ExitZone targets
-                    if (associatedTransition.isAutonomous()) {
+                    // Check if this is a TRUE autonomous transition (not from pseudo-state)
+                    // Initial transitions from pseudo-state are event-triggered with hidden startup event
+                    boolean isTrueAutonomous = associatedTransition.isAutonomous() && !p.isPseudoState();
+                    
+                    if (isTrueAutonomous) {
+                        // True autonomous transitions -> use reactiveSemantics ExitZone targets
                         java.util.HashSet<pws.editor.semantics.ExitZone> reactive = p.getReactiveSemantics();
                         if (reactive != null && !reactive.isEmpty()) {
                             filteredBySemantics = true;
@@ -289,7 +295,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 }
             }
         } else {
-            // Guard is already set - show "Remove guard" and options to extend with AND
+            // Guard is already set - show "Remove guard" and options
             JMenuItem removeItem = new JMenuItem("Remove guard");
             removeItem.addActionListener(ev -> {
                 // Reset to FALSE - a placeholder indicating the guard needs to be set
@@ -312,44 +318,106 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             List list = assembly.getAssemblyGuards();
             List<SMProposition> guards = (List<SMProposition>) list;
             
-            // Extract already used machine IDs from current guard
-            Set<String> usedMachineIds = extractMachineIds(content);
-            
-            // Filter guards to show only those not already in the conjunction
-            // and that refer to different machines
-            boolean hasExtendOptions = false;
-            for (SMProposition guardOption : guards) {
-                if (!(guardOption instanceof BasicStateProposition bsp)) continue;
-                
-                // Skip if this machine is already used in the guard
-                if (usedMachineIds.contains(bsp.getMachineId())) continue;
-                
-                JMenuItem item = new JMenuItem("Add: " + guardOption.toString());
-                item.addActionListener(ev -> {
-                    // Create AND proposition with existing guard and new proposition
-                    SMProposition newGuard = new AndProposition(content, guardOption);
-                    setContent(newGuard);
-                    updateCallback.accept(newGuard);
-                    java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
-                    if (w instanceof pws.editor.PWSEditor pe) {
-                        pe.markDocumentDirty();
-                        pe.scheduleSemanticsRecalculation();
-                    }
-                    revalidate();
-                    repaint();
-                    if (getParent() != null) {
-                        getParent().revalidate();
-                        getParent().repaint();
-                    }
-                });
-                popup.add(item);
-                hasExtendOptions = true;
+            // Check if this is a TRUE autonomous transition (not initial from pseudo-state)
+            // Initial transitions from pseudo-state are event-triggered with hidden startup event
+            boolean isTrueAutonomousTransition = false;
+            if (associatedTransition != null && associatedTransition.isAutonomous()) {
+                machinery.StateInterface src = associatedTransition.getSource();
+                if (src instanceof PWSState p && !p.isPseudoState()) {
+                    isTrueAutonomousTransition = true;
+                }
             }
             
-            if (!hasExtendOptions) {
-                JMenuItem none = new JMenuItem("No additional guards available");
-                none.setEnabled(false);
-                popup.add(none);
+            if (isTrueAutonomousTransition) {
+                // For true autonomous transitions: show only available exit zones for replacement (no AND)
+                Set<String> candidateStrings = new LinkedHashSet<>();
+                machinery.StateInterface src = associatedTransition.getSource();
+                if (src instanceof PWSState p) {
+                    java.util.HashSet<pws.editor.semantics.ExitZone> reactive = p.getReactiveSemantics();
+                    if (reactive != null && !reactive.isEmpty()) {
+                        for (pws.editor.semantics.ExitZone zone : reactive) {
+                            if (zone != null && zone.getTarget() != null) {
+                                candidateStrings.add(zone.getTarget().toString());
+                            }
+                        }
+                    }
+                }
+                
+                // Show available exit zones (excluding the current guard)
+                String currentGuardStr = content.toString();
+                boolean hasOptions = false;
+                for (SMProposition guardOption : guards) {
+                    if (!(guardOption instanceof BasicStateProposition)) continue;
+                    String guardStr = guardOption.toString();
+                    // Skip if not in available exit zones or if it's the current guard
+                    if (!candidateStrings.contains(guardStr) || guardStr.equals(currentGuardStr)) continue;
+                    
+                    JMenuItem item = new JMenuItem("Change to: " + guardStr);
+                    item.addActionListener(ev -> {
+                        setContent(guardOption);
+                        updateCallback.accept(guardOption);
+                        java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
+                        if (w instanceof pws.editor.PWSEditor pe) {
+                            pe.markDocumentDirty();
+                            pe.scheduleSemanticsRecalculation();
+                        }
+                        revalidate();
+                        repaint();
+                        if (getParent() != null) {
+                            getParent().revalidate();
+                            getParent().repaint();
+                        }
+                    });
+                    popup.add(item);
+                    hasOptions = true;
+                }
+                
+                if (!hasOptions) {
+                    JMenuItem none = new JMenuItem("No other exit zones available");
+                    none.setEnabled(false);
+                    popup.add(none);
+                }
+            } else {
+                // Non-autonomous transitions: allow AND conjunction to extend the guard
+                // Extract already used machine IDs from current guard
+                Set<String> usedMachineIds = extractMachineIds(content);
+                
+                // Filter guards to show only those not already in the conjunction
+                // and that refer to different machines
+                boolean hasExtendOptions = false;
+                for (SMProposition guardOption : guards) {
+                    if (!(guardOption instanceof BasicStateProposition bsp)) continue;
+                    
+                    // Skip if this machine is already used in the guard
+                    if (usedMachineIds.contains(bsp.getMachineId())) continue;
+                    
+                    JMenuItem item = new JMenuItem("Add: " + guardOption.toString());
+                    item.addActionListener(ev -> {
+                        // Create AND proposition with existing guard and new proposition
+                        SMProposition newGuard = new AndProposition(content, guardOption);
+                        setContent(newGuard);
+                        updateCallback.accept(newGuard);
+                        java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
+                        if (w instanceof pws.editor.PWSEditor pe) {
+                            pe.markDocumentDirty();
+                            pe.scheduleSemanticsRecalculation();
+                        }
+                        revalidate();
+                        repaint();
+                        if (getParent() != null) {
+                            getParent().revalidate();
+                            getParent().repaint();
+                        }
+                    });
+                    popup.add(item);
+                    hasExtendOptions = true;
+                }
+                
+                if (!hasExtendOptions) {
+                    JMenuItem none = new JMenuItem("No additional guards available");
+                    none.setEnabled(false);
+                    popup.add(none);
+                }
             }
         }
         popup.show(this, e.getX(), e.getY());

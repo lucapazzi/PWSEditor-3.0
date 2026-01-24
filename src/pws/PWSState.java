@@ -17,6 +17,7 @@ import java.util.Set;
 public class PWSState extends State {
     private transient StateSemanticsAnnotation annotation;
     private boolean annotationVisible = false; // Di default nascosta.
+    private boolean annotationMinimized = false; // Whether the dashboard is minimized (small square)
     // State semantics
     private Semantics stateSemantics;
     // Constraints semantics.
@@ -102,6 +103,19 @@ public class PWSState extends State {
         this.annotationVisible = visible;
         if (annotation != null) {
             annotation.setVisible(visible);
+        }
+    }
+
+    /** Returns whether the dashboard is minimized. */
+    public boolean isAnnotationMinimized() {
+        return annotationMinimized;
+    }
+
+    /** Sets whether the dashboard is minimized. */
+    public void setAnnotationMinimized(boolean minimized) {
+        this.annotationMinimized = minimized;
+        if (annotation != null) {
+            annotation.setMinimized(minimized);
         }
     }
 

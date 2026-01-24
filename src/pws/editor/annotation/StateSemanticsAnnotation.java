@@ -22,6 +22,13 @@ import assembly.Assembly;
 public class StateSemanticsAnnotation extends Annotation<PWSState> {
     private Assembly assembly;
     private PWSStateMachinePanel panel;
+    
+    // Minimized state: when true, shows as a small colored square
+    private boolean minimized = false;
+    // Stores expanded bounds for restoration when un-minimizing
+    private Rectangle expandedBounds = null;
+    // Size of the minimized indicator
+    private static final int MINIMIZED_SIZE = 16;
 
     public StateSemanticsAnnotation(PWSState content) {
         this(content, null, null);
@@ -33,6 +40,72 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         this.panel = panel;
         setOpaque(true);
         setBackground(Color.WHITE);
+        
+        // Add double-click listener to toggle minimized state
+        addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    toggleMinimized();
+                }
+            }
+        });
+    }
+    
+    /**
+     * Toggles the minimized state of this dashboard.
+     * When minimized, shows as a small colored indicator.
+     * When expanded, shows the full semantics information.
+     */
+    public void toggleMinimized() {
+        if (minimized) {
+            // Expanding: restore previous bounds
+            minimized = false;
+            if (expandedBounds != null) {
+                setBounds(expandedBounds);
+            } else {
+                // If no saved bounds, compute preferred size
+                Dimension d = getPreferredSize();
+                setSize(d);
+            }
+        } else {
+            // Minimizing: save current bounds and shrink
+            expandedBounds = getBounds();
+            minimized = true;
+            // Keep same top-left position, just shrink
+            setSize(MINIMIZED_SIZE, MINIMIZED_SIZE);
+        }
+        // Update the PWSState's minimized flag for persistence
+        if (content != null) {
+            content.setAnnotationMinimized(minimized);
+        }
+        revalidate();
+        repaint();
+        if (getParent() != null) {
+            getParent().repaint();
+        }
+        // Mark document dirty
+        java.awt.Window w = javax.swing.SwingUtilities.getWindowAncestor(this);
+        if (w instanceof pws.editor.PWSEditor pe) {
+            pe.markDocumentDirty();
+        }
+    }
+    
+    /**
+     * Returns whether this dashboard is currently minimized.
+     */
+    public boolean isMinimized() {
+        return minimized;
+    }
+    
+    /**
+     * Sets the minimized state directly (used during deserialization).
+     */
+    public void setMinimized(boolean minimized) {
+        this.minimized = minimized;
+        if (minimized) {
+            setSize(MINIMIZED_SIZE, MINIMIZED_SIZE);
+        }
     }
 
     @Override
@@ -95,6 +168,13 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         // Enable anti-aliasing for smooth rendering
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+        
+        // If minimized, draw a small colored indicator and return
+        if (minimized) {
+            paintMinimized(g2d);
+            g2d.dispose();
+            return;
+        }
         
         // Draw rounded background
         if (isOpaque()) {
@@ -395,9 +475,115 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
         g2d.dispose();
     }
+    
+    /**
+     * Paints the minimized indicator - a small rounded square colored based on overall status.
+     */
+    private void paintMinimized(Graphics2D g2d) {
+        // Determine overall status (green = all OK, red = has issues)
+        boolean allOk = computeOverallStatus();
+        Color statusColor = allOk ? new Color(0, 160, 0) : new Color(200, 0, 0);
+        
+        int size = Math.min(getWidth(), getHeight());
+        int radius = size / 3;
+        
+        // Fill the rounded square
+        g2d.setColor(statusColor);
+        g2d.fillRoundRect(1, 1, size - 2, size - 2, radius, radius);
+        
+        // Draw a subtle border
+        g2d.setColor(statusColor.darker());
+        g2d.setStroke(new BasicStroke(1.5f));
+        g2d.drawRoundRect(1, 1, size - 3, size - 3, radius, radius);
+    }
+    
+    /**
+     * Computes the overall status of this state's semantics.
+     * Returns true if all OK (green), false if has issues (red).
+     */
+    private boolean computeOverallStatus() {
+        if (content == null) return true;
+        
+        PWSState state = content;
+        try {
+            // Get parent panel's state machine
+            PWSStateMachine sm = null;
+            if (getParent() instanceof PWSStateMachinePanel p) {
+                sm = p.getStateMachine();
+            } else if (panel != null) {
+                sm = panel.getStateMachine();
+            }
+            if (sm == null) return true;
+            
+            // Determine covered guards
+            Set<smalgebra.BasicStateProposition> covered = new HashSet<>();
+            for (machinery.TransitionInterface ti : sm.getTransitions()) {
+                if (ti instanceof pws.PWSTransition pt) {
+                    if (pt.isEnabled() && !pt.isTriggerable() && pt.getSource() == state
+                            && pt.getGuardProposition() instanceof smalgebra.BasicStateProposition) {
+                        covered.add((smalgebra.BasicStateProposition) pt.getGuardProposition());
+                    }
+                }
+            }
+            
+            // Check 1: actual semantics vs constraints
+            Set<String> constraintStrs = new HashSet<>();
+            if (state.getConstraintsSemantics() != null) {
+                for (Object cfg : state.getConstraintsSemantics().getConfigurations()) {
+                    constraintStrs.add(cfg.toString());
+                }
+            }
+            if (state.getStateSemantics() != null) {
+                for (Object cfg : state.getStateSemantics().getConfigurations()) {
+                    if (!state.isPseudoState() && !constraintStrs.contains(cfg.toString())) {
+                        return false;
+                    }
+                }
+            }
+            
+            // Check 2: exit zones coverage
+            if (state.getReactiveSemantics() != null) {
+                for (ExitZone ez : state.getReactiveSemantics()) {
+                    if (!covered.contains(ez.getTarget())) {
+                        return false;
+                    }
+                }
+            }
+            
+            // Check 3: deadlock configurations
+            Set<pws.editor.semantics.Configuration> deadlocks = state.getDeadlockConfigurations();
+            if (deadlocks != null && !deadlocks.isEmpty()) {
+                // Compute covered config strings
+                Assembly asm = sm.getAssembly();
+                Set<String> coveredCfgStrs = new HashSet<>();
+                for (machinery.TransitionInterface ti : sm.getTransitions()) {
+                    if (ti instanceof pws.PWSTransition pt && pt.getSource() == state && pt.isEnabled()) {
+                        smalgebra.SMProposition guardProp = pt.getGuardProposition();
+                        Semantics guardSem = guardProp.toSemantics(asm).AND(state.getStateSemantics());
+                        for (Object c : guardSem.getConfigurations()) {
+                            coveredCfgStrs.add(c.toString());
+                        }
+                    }
+                }
+                for (pws.editor.semantics.Configuration dc : deadlocks) {
+                    if (!coveredCfgStrs.contains(dc.toString())) {
+                        return false;
+                    }
+                }
+            }
+            
+            return true;
+        } catch (Exception e) {
+            return true; // Default to OK on error
+        }
+    }
 
     @Override
     public Dimension getPreferredSize() {
+        // If minimized, return small fixed size
+        if (minimized) {
+            return new Dimension(MINIMIZED_SIZE, MINIMIZED_SIZE);
+        }
         if (content == null) return new Dimension(100, 50);
 
         PWSState state = content;

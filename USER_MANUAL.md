@@ -58,7 +58,8 @@ A **Part-Whole Statechart** is a behavioral modeling formalism that describes:
 | **Pseudo-State** | An initial state (marked with a small filled circle) |
 | **Transition** | A directed arc connecting states, optionally with triggers, guards, and actions |
 | **Triggered Transition** | A transition that fires when a specific event occurs (and guard is satisfied) |
-| **Autonomous Transition** | A transition without a trigger event; fires based on guard condition alone |
+| **Autonomous Transition** | A transition without a trigger event; fires based on guard condition alone (monitors exit zones) |
+| **Initial Transition** | A transition from the pseudo-state; triggered by a hidden `_init` event at system startup |
 | **Guard** | A boolean condition that must be true to enable a transition |
 | **Action** | An emission (event output) that occurs when a transition fires |
 | **Constraint Semantics** | User-specified allowed configurations for a state |
@@ -196,11 +197,22 @@ Example: A transition with guard `[m1.Failed ∨ m2.Error]` (no trigger) fires a
 
 #### Initial Transitions (Special Case)
 
-**Initial transitions** (from the pseudo-state) are a special case. Although they appear autonomous (no visible trigger event), they are actually **triggered by a hidden system startup event**. Therefore:
+**Initial transitions** (from the pseudo-state) are a special case that deserves particular attention. Although they have no visible trigger event (like autonomous transitions), they are fundamentally different:
 
-- Initial transitions **accept TRUE as a valid guard** — this means "fire at startup"
-- They do NOT trigger the "TRUE on autonomous" warning
-- They behave like triggered transitions: the system "sends" a startup event when initialization begins
+- **Initial transitions are event-triggered** by a hidden system startup event (conceptually `_init`)
+- When the controller starts, the system "emits" this hidden event, triggering the initial transition(s)
+- Multiple initial transitions can have different guards to select the appropriate starting state
+- Initial transitions **accept TRUE as a valid guard** — this simply means "fire at startup without additional conditions"
+- They do NOT trigger the "TRUE on autonomous" warning because they ARE triggered (by `_init`)
+
+**Key insight**: Initial transitions behave like triggered transitions, not autonomous transitions:
+- Autonomous transitions monitor exit zones and fire when component machines reach certain states
+- Initial transitions fire once at startup based on their guard condition
+
+This distinction is important for understanding controller reports, which correctly classify:
+- **Initial**: Transitions from pseudo-state (hidden `_init` trigger)
+- **Autonomous**: Guard-driven transitions that monitor component machine states  
+- **Triggered**: Transitions with explicit event triggers
 
 ### Guard Conventions and Visual Feedback
 
@@ -361,6 +373,35 @@ To share reusable machines across projects:
    - Constraint configurations
    - Computed configurations
    - Reactive space (enabled transitions)
+
+### Dashboard Minimization
+
+State dashboards can be **minimized** to save screen space while still providing status feedback:
+
+#### Minimizing a Dashboard
+
+1. **Double-click** on any visible state dashboard
+2. The dashboard shrinks to a small colored indicator (approximately 16×16 pixels)
+3. The color reflects the overall state status:
+   - **Green**: All OK — no issues detected
+   - **Red**: Has issues — constraint violations, uncovered exit zones, or deadlocks
+
+#### Restoring a Dashboard
+
+1. **Double-click** on the minimized indicator
+2. The dashboard expands back to its full size
+3. The original position and size are preserved
+
+#### Use Cases
+
+- **Large diagrams**: Minimize dashboards to reduce visual clutter while keeping status visible
+- **Quick status check**: The colored indicator provides at-a-glance health status
+- **Focused editing**: Minimize dashboards for states you're not currently working on
+- **Presentations**: Show clean diagrams with minimal annotations but preserve status indicators
+
+#### Persistence
+
+The minimized/expanded state is saved with the document, so dashboards will retain their state when you reopen the file.
 
 ### Editing Constraint Semantics
 
@@ -551,7 +592,7 @@ In the state annotation dashboard:
 
 A configuration is considered a **true deadlock** if it meets BOTH of these conditions:
 
-1. **Cannot evolve internally**: The configuration cannot reach all other configurations in the state's semantics via autonomous transitions of the component machines
+1. **Cannot evolve internally**: The configuration has no autonomous transitions available — no component machine in the configuration can fire an autonomous transition from its current state
 2. **Not covered by any transition**: No outgoing transition (triggered or autonomous) has a guard that matches this configuration
 
 A configuration that cannot evolve internally but IS covered by an outgoing transition is NOT a deadlock—it has a "way out" through the transition.
@@ -571,18 +612,22 @@ Configuration C1 can reach C2 if:
 
 This analysis uses a worklist algorithm to compute the transitive closure of reachable configurations.
 
-#### Step 2: Connectivity Check
+#### Step 2: Evolution Check
 
-A configuration is flagged as a potential deadlock if it **cannot reach ALL other configurations** in the state's semantics. This means the system could get stuck in a subset of configurations without being able to reach the full state space.
+A configuration is flagged as a potential deadlock if its **reachable set is empty** — meaning no autonomous transitions are available from that configuration. This happens when all component machines in the configuration are in states with no outgoing autonomous transitions.
+
+**Example**: If machine `m1` has states `S` and `T` with no outgoing autonomous transitions, then configurations `(m1.S)` and `(m1.T)` cannot evolve internally and are potential deadlocks.
+
+**Note**: This is different from checking if a configuration can reach "all other configurations". A configuration that can reach *some* configurations (but not all) can still evolve and is NOT a deadlock.
 
 #### Step 3: Transition Coverage Check
 
-Even if a configuration cannot reach all others internally, it may still have a way out via an outgoing transition. PWSEditor checks:
+Even if a configuration cannot evolve internally, it may still have a way out via an outgoing transition. PWSEditor checks:
 
 - **Triggered transitions**: If the configuration satisfies a guard, it can leave when the trigger event occurs
-- **Autonomous PWS transitions**: If the configuration can reach an exit zone that matches an outgoing autonomous transition's guard
+- **Autonomous PWS transitions**: If the configuration matches an outgoing autonomous transition's guard
 
-Only configurations that fail BOTH the internal reachability AND the transition coverage checks are marked as true deadlocks.
+Only configurations that fail BOTH the internal evolution AND the transition coverage checks are marked as true deadlocks.
 
 ### Visual Indicators
 
@@ -593,13 +638,15 @@ In the state semantics annotation dashboard:
 | **Red** | True deadlock: configuration cannot evolve AND is not covered by any transition |
 | **Green** | Covered: configuration has a way out via an outgoing transition |
 | **Green underline** | Configuration can evolve internally (not a deadlock risk) |
-1. If `(m1.A, m2.X)` can evolve to `(m1.B, m2.Y)` via autonomous transitions → **OK** (green underline)
-2. If `(m1.A, m2.X)` cannot reach `(m1.B, m2.Y)` but is covered by transition guard `[m1.A]` → **OK** (green)
-3. If `(m1.A, m2.X)` cannot reach `(m1.B, m2.Y)` AND no transition covers it → **DEADLOCK** (red)
+
+**Examples**:
+1. If `(m1.A, m2.X)` can evolve to `(m1.B, m2.X)` via an autonomous transition in m1 → **OK** (green underline)
+2. If `(m1.A, m2.X)` cannot evolve but is covered by transition guard `[m1.A]` → **OK** (green)
+3. If `(m1.A, m2.X)` cannot evolve AND no transition covers it → **DEADLOCK** (red)
 
 ### Resolving Deadlocks
 
-When you see red underlined configurations, consider these solutions:
+When you see red configurations, consider these solutions:
 
 1. **Add autonomous transitions**: In component machines, add transitions that allow the stuck configuration to evolve
 2. **Add PWS transitions**: Create an outgoing transition with a guard that covers the deadlock configuration
@@ -1096,7 +1143,8 @@ For more information about Part-Whole Statecharts theory, see the project README
 - **New file format**: `.pws` extension for workspace files (backward compatible with `.bin`)
 
 #### Enhanced Deadlock Detection
-- **Refined logic**: Configurations are only marked as deadlocks if they cannot evolve AND are not covered by any outgoing transition
+- **Refined logic**: A configuration is a deadlock if it cannot evolve at all (no autonomous transitions available) AND is not covered by any outgoing transition
+- **Correct single-config handling**: Configurations like `(m1.T)` are correctly identified as deadlocks when state T has no outgoing autonomous transitions
 - **Visual indicators**: Red for true deadlocks, green for covered configurations, green underline for configurations that can evolve internally
 - **Border feedback**: State annotation border color reflects overall state health
 

@@ -208,6 +208,7 @@ public class ControllerReportDialog extends JDialog {
         int transitionCount = 0;
         int autonomousCount = 0;
         int triggeredCount = 0;
+        int initialCount = 0;
         
         for (StateInterface si : stateMachine.getStates()) {
             if (si instanceof PWSState ps && !ps.isPseudoState()) {
@@ -218,9 +219,18 @@ public class ControllerReportDialog extends JDialog {
         for (TransitionInterface ti : stateMachine.getTransitions()) {
             if (ti instanceof PWSTransition pt && pt.isEnabled()) {
                 transitionCount++;
-                if (pt.isAutonomous()) {
+                // Check if it's an initial transition (from pseudo-state)
+                StateInterface src = pt.getSource();
+                boolean isInitial = (src instanceof PWSState ps && ps.isPseudoState());
+                
+                if (isInitial) {
+                    // Initial transitions are event-triggered (hidden _init event)
+                    initialCount++;
+                } else if (pt.isAutonomous()) {
+                    // True autonomous transitions (guard-driven)
                     autonomousCount++;
                 } else {
+                    // Regular triggered transitions
                     triggeredCount++;
                 }
             }
@@ -229,9 +239,20 @@ public class ControllerReportDialog extends JDialog {
         appendText("  Controller Structure:\n", STYLE_BOLD);
         appendText("    • States: " + stateCount + "\n", STYLE_NORMAL);
         appendText("    • Transitions: " + transitionCount + " (", STYLE_NORMAL);
-        appendText(autonomousCount + " autonomous", STYLE_CODE);
-        appendText(", ", STYLE_NORMAL);
-        appendText(triggeredCount + " triggered", STYLE_CODE);
+        if (initialCount > 0) {
+            appendText(initialCount + " initial", STYLE_CODE);
+            if (autonomousCount > 0 || triggeredCount > 0) appendText(", ", STYLE_NORMAL);
+        }
+        if (autonomousCount > 0) {
+            appendText(autonomousCount + " autonomous", STYLE_CODE);
+            if (triggeredCount > 0) appendText(", ", STYLE_NORMAL);
+        }
+        if (triggeredCount > 0) {
+            appendText(triggeredCount + " triggered", STYLE_CODE);
+        }
+        if (initialCount == 0 && autonomousCount == 0 && triggeredCount == 0) {
+            appendText("none", STYLE_CODE);
+        }
         appendText(")\n", STYLE_NORMAL);
         appendText("    • Assembly machines: " + assembly.getStateMachines().size() + "\n\n", STYLE_NORMAL);
         
