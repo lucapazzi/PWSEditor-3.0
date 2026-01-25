@@ -59,21 +59,32 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
      */
     public void toggleMinimized() {
         if (minimized) {
-            // Expanding: restore previous bounds
+            // Expanding: restore size and center on current minimized square
             minimized = false;
+            Rectangle current = getBounds();
+            int centerX = current.x + current.width / 2;
+            int centerY = current.y + current.height / 2;
+
+            Dimension d;
             if (expandedBounds != null) {
-                setBounds(expandedBounds);
+                d = new Dimension(expandedBounds.width, expandedBounds.height);
             } else {
                 // If no saved bounds, compute preferred size
-                Dimension d = getPreferredSize();
-                setSize(d);
+                d = getPreferredSize();
             }
+            int newX = centerX - d.width / 2;
+            int newY = centerY - d.height / 2;
+            expandedBounds = new Rectangle(newX, newY, d.width, d.height);
+            setBounds(expandedBounds);
         } else {
-            // Minimizing: save current bounds and shrink
+            // Minimizing: save current bounds and shrink around center
             expandedBounds = getBounds();
             minimized = true;
-            // Keep same top-left position, just shrink
-            setSize(MINIMIZED_SIZE, MINIMIZED_SIZE);
+            int centerX = expandedBounds.x + expandedBounds.width / 2;
+            int centerY = expandedBounds.y + expandedBounds.height / 2;
+            int newX = centerX - MINIMIZED_SIZE / 2;
+            int newY = centerY - MINIMIZED_SIZE / 2;
+            setBounds(newX, newY, MINIMIZED_SIZE, MINIMIZED_SIZE);
         }
         // Update the PWSState's minimized flag for persistence
         if (content != null) {
@@ -104,7 +115,12 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     public void setMinimized(boolean minimized) {
         this.minimized = minimized;
         if (minimized) {
-            setSize(MINIMIZED_SIZE, MINIMIZED_SIZE);
+            Rectangle current = getBounds();
+            int centerX = current.x + current.width / 2;
+            int centerY = current.y + current.height / 2;
+            int newX = centerX - MINIMIZED_SIZE / 2;
+            int newY = centerY - MINIMIZED_SIZE / 2;
+            setBounds(newX, newY, MINIMIZED_SIZE, MINIMIZED_SIZE);
         }
     }
 
