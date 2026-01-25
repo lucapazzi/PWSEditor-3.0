@@ -31,7 +31,7 @@ From the command line, navigate to the PWSEditor directory and run:
 
 ```bash
 javac -d out -cp "lib/pdfbox-2.0.29.jar:lib/fontbox-2.0.29.jar:lib/commons-logging-1.2.jar" -sourcepath src src/pws/editor/PWSEditor.java
-java -cp out pws.editor.PWSEditor
+java -cp "out:lib/pdfbox-2.0.29.jar:lib/fontbox-2.0.29.jar:lib/commons-logging-1.2.jar" pws.editor.PWSEditor
 ```
 
 PWSEditor will launch with an empty controller editor ready for use.
@@ -66,7 +66,7 @@ A **Part-Whole Statechart** is a behavioral modeling formalism that describes:
 | **Computed Semantics** | Semantics inferred from state machine structure |
 | **Assembly** | A collection of component machines forming a part-whole hierarchy |
 | **Machine Library** | A repository of reusable state machine templates |
-| **Exit Zone** | A guard condition on an autonomous transition that monitors component machine states |
+| **Exit Zone** | A boundary condition created by a component machine autonomous transition that would leave a state's allowed configurations |
 | **Deadlock Configuration** | A configuration that cannot evolve and has no way out via transitions |
 
 ---
@@ -115,16 +115,16 @@ Edit the main controller state machine here. The canvas displays:
 3. Click to place the state on the canvas
 4. Enter the state name in the dialog box
 
-Alternatively, use the **Edit → Add State** menu.
+There is no menu item for adding states; use the right-click context menu on the canvas.
 
 ### Editing a State
 
-1. **Double-click** the state to select it (it will be highlighted)
+1. **Double-click** the state to rename it
 2. **Right-click** the state to see options:
-   - **Rename**: Change the state name
+   - **Show Dashboard / Hide Dashboard**
    - **Delete**: Remove the state
-   - **Edit Constraints**: Define semantic constraints (see [Semantic Constraints](#semantic-constraints--annotations))
-   - **Toggle Annotation**: Show/hide semantic annotations
+
+To edit constraint semantics, right-click the state's dashboard and choose **Edit Constraints Semantics**.
 
 ### The Pseudo-State
 
@@ -143,20 +143,20 @@ The pseudo-state (initial state) is automatically created and appears as a **sma
 ### Creating a Transition
 
 1. **Right-click** on a state (the source)
-2. Select **"Add Transition"** from the menu
+2. Select **"Create transition: choose arrival state"** from the menu
 3. Click on the target state to complete the transition
 4. A curved arrow appears connecting the two states
 
 Alternatively:
-- Use **Edit → Add Transition** to create transitions with dialog options
-- For an initial transition from the pseudo-state, use **Edit → Add initial transition**
+- Use **Create transition: choose arrival state** from the state context menu
+- For an initial transition from the pseudo-state, right-click the pseudo-state and choose **Add initial transition**
 
 ### Editing Transition Properties
 
 Click on the transition (the arrow) to select it. You can then:
 
 1. **Edit the Trigger Event**: Add an event that triggers the transition
-2. **Edit the Guard**: Add a boolean condition (e.g., `x > 5`)
+2. **Edit the Guard**: Add a boolean condition over machine states (e.g., `m1.S` is true iff machine `m1` is in state `S`)
 3. **Edit Actions**: Add emissions (actions that occur when the transition fires)
 
 Use **in-place editors** (floating text boxes) to directly modify:
@@ -232,28 +232,28 @@ Guards that appear in **red** indicate potential issues:
 |-----------------|---------|-------------|
 | **FALSE** on any transition | Placeholder | The transition can never fire. Edit the guard to specify a real condition. |
 | **TRUE** on autonomous transition | Immediate firing | With no event required and guard always true, this transition fires immediately upon entering the source state, which is usually unintended. **Exception**: Initial transitions (from pseudo-state) are NOT flagged — they have a hidden startup trigger. |
-| **Orphan guard** | References removed machines | The guard references component machine states that no longer exist in the assembly (e.g., after removing a machine). |
+| **Orphan guard** | Exit zone no longer exists | The guard references an exit zone that is no longer present in the state’s reactive semantics. |
 
 **Tooltips**: Hover over a red guard to see an explanation of the specific problem.
 
 **How to Fix:**
 - **FALSE guards**: Replace with a meaningful condition like `m1.Active` or `m1.Failed ∨ m2.Error`
 - **TRUE on autonomous**: Either add a trigger event (making it triggered), or change the guard to a specific condition
-- **Orphan guards**: Update the guard to reference only machines currently in the assembly
+- **Orphan guards**: Update the guard to reference exit zones that still exist in the state’s reactive semantics
 
 ### Autonomous Transitions and Exit Zones
 
 **Exit zones** are the key to understanding autonomous transitions:
 
-1. An **exit zone** is defined by the guard expression on an autonomous transition
-2. When component machines reach states that satisfy the guard, the transition becomes **enabled**
-3. The PWS controller can then fire the transition to respond to the configuration
+1. An **exit zone** is derived from a component machine autonomous transition that would move the system **outside** the current state's allowed configurations
+2. When such a component transition becomes enabled in an allowed configuration, that configuration is an **exit zone**
+3. PWS-level autonomous transitions can use guards that match exit-zone targets to react to those boundary conditions
 
 Example workflow:
-1. Component machine `monitor` has states: `OK`, `Warning`, `Critical`
-2. PWS controller has an autonomous transition with guard `[monitor.Critical]`
-3. When `monitor` reaches `Critical` state, the autonomous transition fires
-4. The controller moves to a recovery or alarm state
+1. Component machine `monitor` has states: `OK`, `Warning`, `Critical`, with an autonomous transition `Warning → Critical`
+2. This creates an exit zone with target `monitor.Critical`
+3. The PWS controller has an autonomous transition with guard `[monitor.Critical]`
+4. When the exit zone is reached, the controller moves to a recovery or alarm state
 
 This mechanism allows PWS controllers to **observe and react** to their component machines without explicit events.
 
@@ -285,10 +285,9 @@ An **Assembly** is a collection of component state machines that work together. 
 3. A new empty machine is created and added
 
 **From Library:**
-1. Go to the **Library** tab
-2. Select a machine template
-3. Click **Add to Assembly**
-4. The machine is cloned and added to the assembly
+1. Click **Add** in the Assembly panel
+2. Choose **Create new machine** or **Choose from library**
+3. If choosing from the library, select a machine and then choose **Reference (shared)** or **Clone (independent)**
 
 ### Editing an Assembly Machine
 
@@ -307,8 +306,8 @@ An **Assembly** is a collection of component state machines that work together. 
 
 1. Select a machine in the Assembly list
 2. Click **Detach/Clone**
-3. A copy is created and added to the assembly with a new ID
-4. Useful for creating similar machines with independent evolution
+3. A copy is created and stored in the library; the assembly entry is reassigned to the cloned instance
+4. Useful for breaking shared references before further edits
 
 ---
 
@@ -327,9 +326,8 @@ The **Machine Library** is a repository of reusable state machine templates. Sav
 
 **From the Assembly:**
 1. Select a machine in the Assembly list
-2. Click **Edit** and then **Save to Library** (in the embedded editor menu)
-3. Enter a key (identifier) and machine name
-4. The machine is saved to the library
+2. Click **Detach/Clone**
+3. The cloned machine is added to the library
 
 **Creating a New Library Machine:**
 1. In the Library view, click **Add**
@@ -338,22 +336,24 @@ The **Machine Library** is a repository of reusable state machine templates. Sav
 
 ### Loading the Library
 
-1. Go to **File → Load Library...**
-2. Select a `.mlib` file (library file)
-3. The library is loaded with all previously saved machines
+1. Go to the **Library** tab
+2. Click **Load**
+3. Select a `.mlib` file (library file)
+4. The library is loaded with all previously saved machines
 
 ### Saving the Library
 
-1. Go to **File → Save Library...**
-2. Choose a location and filename
-3. The entire library is saved as a `.mlib` file
+1. Go to the **Library** tab
+2. Click **Save**
+3. Choose a location and filename
+4. The entire library is saved as a `.mlib` file
 
 ### Sharing Machines
 
 To share reusable machines across projects:
 1. Save the library to a `.mlib` file
 2. Send the file to a colleague
-3. They can load it with **File → Load Library...**
+3. They can load it with the **Library** tab → **Load**
 
 ---
 
@@ -368,7 +368,7 @@ To share reusable machines across projects:
 
 ### Viewing Annotations
 
-1. Go to **View → Show State Annotations** to toggle annotation visibility
+1. Go to **View → Show state dashboards** to toggle annotation visibility
 2. Annotations appear as floating boxes near states, showing:
    - Constraint configurations
    - Computed configurations
@@ -890,11 +890,6 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 2. Choose location and filename
 3. A PDF rendering of the current diagram is created
 
-**Export as SVG:**
-1. Go to **File → Export as SVG**
-2. Choose location and filename
-3. An SVG vector image of the diagram is created
-
 ---
 
 ## Menu Reference
@@ -908,48 +903,26 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 | **Save** | Save current document (prompts for location if new) |
 | **Save As...** | Save current document to a new location |
 | **Close** | Close current document (prompts to save if dirty) |
-| **Save Library...** | Save machine library only to `.mlib` file |
-| **Load Library...** | Load machine library from `.mlib` file |
+| **Prefer vector PDF export** | Toggle vector-based PDF rendering (when supported) |
 | **Export as PDF** | Export current diagram as PDF document |
-| **Export as SVG** | Export current diagram as SVG vector image |
 | **Exit** | Close the editor |
 
 ### Edit Menu
 
 | Option | Description |
 |--------|-------------|
-| **Add State** | Add a new state to the controller |
-| **Add Transition** | Create a transition between states |
-| **Add initial transition** | Add transition from pseudo-state |
-| **Delete Selected** | Remove selected state/transition |
-| **Rename Selected** | Change name of selected state |
-| **Edit Constraints** | Define semantic constraints for a state |
-| **Recalculate Semantics** | Force recalculation of all state semantics |
+| **Edit mode** | Toggle edit vs. view mode (controls control handles/interaction) |
 
 ### View Menu
 
 | Option | Description |
 |--------|-------------|
-| **Edit Mode** | Toggle between edit and view modes |
-| **Show State Annotations** | Toggle display of semantic annotations |
+| **Show state dashboards** | Toggle display of semantic annotations |
 | **Show Grid** | Toggle grid display |
 | **Snap to Grid** | Toggle automatic grid snapping |
-| **Grid Size** | Adjust snap-to-grid size |
-
-### LTL Menu
-
-| Option | Description |
-|--------|-------------|
-| **LTL Editor** | Open the LTL formula editor |
-| **Check LTL Now** | Run LTL verification on current model |
-
-### Assembly Menu
-
-| Option | Description |
-|--------|-------------|
-| **Add Machine** | Add new machine to assembly |
-| **Remove Machine** | Remove selected machine from assembly |
-| **Clone Machine** | Duplicate a machine with new ID |
+| **Set grid size...** | Adjust snap-to-grid size |
+| **LTL Editor...** | Open the LTL formula editor |
+| **Check now** | Run LTL checks on the current model |
 
 ---
 
@@ -1035,8 +1008,8 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 3. **Use the library**: Build reusable machine templates to speed up future designs
 4. **Name clearly**: Use descriptive names for states and machines for clarity
 5. **Align visually**: Use grid snapping and arrow keys to keep diagrams organized
-6. **Export documentation**: Use PDF/SVG export to document your designs
-7. **Monitor deadlocks**: Pay attention to red underlined configurations—they indicate potential issues
+6. **Export documentation**: Use PDF export to document your designs
+7. **Monitor deadlocks**: Pay attention to red configurations—they indicate potential issues
 
 ### Understanding Visual Feedback
 
@@ -1047,19 +1020,15 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 | Blue text (top row) | Constraint semantics you defined |
 | Green text | Configuration satisfies constraints |
 | Red text | Configuration violates constraints |
-| Red | True deadlock (cannot evolve, not covered) |
-| Green | Covered by outgoing transition |
-| Green underline | Can evolve internally (not a deadlock risk) |
-| Color | Meaning |
-|-------|---------|
-| **Green** | Exit zone is covered by an autonomous transition ✓ |
-| **Red** | Exit zone is NOT covered (needs attention) ✗ |
+| Green underline | Configuration can evolve internally via autonomous transitions |
+| Red (in exit zone list) | Exit zone is not covered by any PWS autonomous transition |
+| Green (in exit zone list) | Exit zone is covered by a PWS autonomous transition |
 
 **Tip**: Right-click on the dashboard and select **"Show Extended Details..."** for detailed exit zone origin analysis.
 - Drag annotations to reorganize (they snap to grid)
 
-#### "Red underlined configurations appear"
-- **Cause**: Deadlock configurations that cannot evolve and aren't covered by transitions
+#### "Red configurations appear"
+- **Cause**: Configurations that violate constraints or true deadlocks (cannot evolve and not covered)
 - **Solution**: 
   - Add autonomous transitions in component machines
   - Add PWS transitions with guards covering the deadlock
@@ -1087,10 +1056,10 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 
 #### "States overlap when editing"
 - **Solution**: Enable **Snap to Grid** from **View** menu
-- Use arrow keys to nudge selected states for fine positioning
+- Drag states to reposition them precisely
 
 #### "Semantics not updating"
-- **Solution**: Try **Edit → Recalculate Semantics** to force recalculation
+- **Solution**: Semantics are recalculated automatically; if the UI seems stale, try making a small edit (e.g., toggle a dashboard or edit a guard) to retrigger calculation
 - Check that all component machines are properly configured
 - Verify transitions have correct guards
 
@@ -1098,11 +1067,9 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 
 | Shortcut | Action |
 |----------|--------|
-| **Arrow Keys** | Move selected state |
-| **Delete** | Delete selected state/transition |
+| **W/A/S/D** | Pan the diagram |
 | **Double-click state** | Rename state |
 | **Right-click** | Context menu |
-| **Escape** | Cancel current operation |
 
 ### Performance Tips
 
@@ -1155,8 +1122,8 @@ Here's a step-by-step example to get started:
 
 ### Step 2: Add Timing Semantics
 
-1. Right-click the `Red` state
-2. Select **Edit Constraints**
+1. Right-click the `Red` state dashboard
+2. Select **Edit Constraints Semantics**
 3. Enter: `timer.idle, light.red` (assuming machines named `timer` and `light`)
 4. Repeat for other states
 
@@ -1166,19 +1133,19 @@ Here's a step-by-step example to get started:
 2. Click **Add** to create a new machine
 3. Name it `timer` (with ID `timer`)
 4. Create two states: `idle`, `running`
-5. Save to the library
+5. Optional: click **Detach/Clone** to store a reusable copy in the library
 
 ### Step 4: Add Another Machine
 
 1. Click **Add** again
 2. Create machine `light` with states: `red`, `yellow`, `green`
-3. Save to the library
+3. Optional: click **Detach/Clone** to store a reusable copy in the library
 
 ### Step 5: Test and Save
 
-1. Go to **File → Save All**
-2. Name your project `traffic_light.bin`
-3. Go to **File → Export as SVG** to generate a diagram
+1. Go to **File → Save**
+2. Name your project `traffic_light.pws`
+3. Go to **File → Export as PDF** to generate a diagram
 
 ---
 
