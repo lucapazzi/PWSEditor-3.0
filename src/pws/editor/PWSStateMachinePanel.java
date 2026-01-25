@@ -989,36 +989,26 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     private void showTransitionPopup(MouseEvent e, TransitionInterface t) {
         JPopupMenu popup = new JPopupMenu();
 
-        // Elemento per eliminare la transizione
-        JMenuItem deleteItem = new JMenuItem("Delete Transition");
-        deleteItem.addActionListener(ae -> {
-            int confirm = JOptionPane.showConfirmDialog(
-                    this,
-                    "Are you sure you want to delete the transition?",
-                    "Confirm deletion",
-                    JOptionPane.YES_NO_OPTION);
-            if(confirm == JOptionPane.YES_OPTION) {
-                deleteTransition(t); // Metodo helper che rimuove la transizione e i suoi riferimenti.
-                revalidate();
-                repaint();
-            }
-        });
-        popup.add(deleteItem);
-
-        popup.addSeparator();
-        
-        // Voce per mostrare/nascondere i control handles
-        JMenuItem toggleHandlesItem = new JMenuItem(showControlHandles ? "Hide Self-Loop Handles" : "Show Self-Loop Handles");
-        toggleHandlesItem.addActionListener(ae -> {
-            showControlHandles = !showControlHandles;
-            repaint();
-        });
-        popup.add(toggleHandlesItem);
-
-        // Aggiungi qui eventuali altre voci di menu per le annotazioni, ecc.
         if (t instanceof PWSTransition) {
             PWSTransition pt = (PWSTransition) t;
 
+            // Toggle enable/disable transition
+            String toggleText = pt.isEnabled() ? "Disable Transition" : "Enable Transition";
+            JMenuItem toggleEnableItem = new JMenuItem(toggleText);
+            toggleEnableItem.addActionListener(ae -> {
+                pt.setEnabled(!pt.isEnabled());
+                java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                if (w instanceof PWSEditor pe) {
+                    pe.markDocumentDirty();
+                    pe.scheduleSemanticsRecalculation();
+                }
+                revalidate();
+                repaint();
+            });
+            popup.add(toggleEnableItem);
+            popup.addSeparator();
+
+            // Aggiungi qui eventuali altre voci di menu per le annotazioni, ecc.
             // Show/Hide Guard Annotation
             String guardText = (pt.getGuardAnnotation() != null && pt.getGuardAnnotation().isVisible()) ? "Hide Guard Annotation" : "Show Guard Annotation";
             JMenuItem guardItem = new JMenuItem(guardText);
@@ -1146,22 +1136,33 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 }
             });
             popup.add(semItem);
+        }
 
-            // Toggle enable/disable transition
-            String toggleText = pt.isEnabled() ? "Disable Transition" : "Enable Transition";
-            JMenuItem toggleEnableItem = new JMenuItem(toggleText);
-            toggleEnableItem.addActionListener(ae -> {
-                pt.setEnabled(!pt.isEnabled());
-                java.awt.Window w = SwingUtilities.getWindowAncestor(this);
-                if (w instanceof PWSEditor pe) {
-                    pe.markDocumentDirty();
-                    pe.scheduleSemanticsRecalculation();
-                }
+        // Voce per mostrare/nascondere i control handles
+        JMenuItem toggleHandlesItem = new JMenuItem(showControlHandles ? "Hide Self-Loop Handles" : "Show Self-Loop Handles");
+        toggleHandlesItem.addActionListener(ae -> {
+            showControlHandles = !showControlHandles;
+            repaint();
+        });
+        popup.add(toggleHandlesItem);
+
+        popup.addSeparator();
+
+        // Elemento per eliminare la transizione
+        JMenuItem deleteItem = new JMenuItem("Delete Transition");
+        deleteItem.addActionListener(ae -> {
+            int confirm = JOptionPane.showConfirmDialog(
+                    this,
+                    "Are you sure you want to delete the transition?",
+                    "Confirm deletion",
+                    JOptionPane.YES_NO_OPTION);
+            if(confirm == JOptionPane.YES_OPTION) {
+                deleteTransition(t); // Metodo helper che rimuove la transizione e i suoi riferimenti.
                 revalidate();
                 repaint();
-            });
-            popup.add(toggleEnableItem);
-        }
+            }
+        });
+        popup.add(deleteItem);
 
         popup.show(this, e.getX(), e.getY());
     }
