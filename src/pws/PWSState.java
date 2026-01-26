@@ -36,8 +36,9 @@ public class PWSState extends State {
     public PWSState(String name, Point position, Assembly assembly) {
         super(name, position);
         stateSemantics = new Semantics(assembly.getAssemblyId());
-        // Initialize new semantics fields to default bottom semantics.
-        constraintsSemantics = Semantics.bottom(assembly.getAssemblyId());
+        // New states default to ANY constraints (top semantics).
+        constraintsSemantics = Semantics.top(assembly);
+        rawConstraintText = "ANY";
         reactiveSemantics = new HashSet<ExitZone>();
     }
 

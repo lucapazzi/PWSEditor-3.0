@@ -919,6 +919,20 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         popup.add(addStateItem);
         
         popup.addSeparator();
+
+        JCheckBoxMenuItem editModeItem = new JCheckBoxMenuItem("Edit mode", isEditMode());
+        editModeItem.addActionListener(ae -> {
+            boolean enabled = editModeItem.isSelected();
+            java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+            if (w instanceof PWSEditor pe) {
+                pe.setEditModeEnabled(enabled);
+            } else {
+                setEditMode(enabled);
+            }
+        });
+        popup.add(editModeItem);
+        
+        popup.addSeparator();
         
         // Controller Report menu item
         JMenuItem reportItem = new JMenuItem("Controller Report...");

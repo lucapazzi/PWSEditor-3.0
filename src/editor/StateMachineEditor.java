@@ -16,6 +16,7 @@ public class StateMachineEditor extends JFrame {
     protected StateMachinePanel statePanel;
     protected Assembly assembly;
     private Runnable closeCallback = null;
+    private JCheckBoxMenuItem editModeItem;
 
     // Callback interface for close requests
     public void setCloseCallback(Runnable callback) {
@@ -39,6 +40,7 @@ public class StateMachineEditor extends JFrame {
 
     private void initComponents() {
         statePanel = new StateMachinePanel(stateMachine);
+        statePanel.setOwningEditor(this);
         getContentPane().add(statePanel, BorderLayout.CENTER);
         setJMenuBar(createMenuBar());
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -187,8 +189,8 @@ public class StateMachineEditor extends JFrame {
 //        editMenu.add(addTransitionItem);
 
 // 4. Edit mode (checkbox)
-        JCheckBoxMenuItem editModeItem = new JCheckBoxMenuItem("Edit mode", true);
-        editModeItem.addActionListener(e -> statePanel.setEditMode(editModeItem.isSelected()));
+        editModeItem = new JCheckBoxMenuItem("Edit mode", true);
+        editModeItem.addActionListener(e -> setEditModeEnabled(editModeItem.isSelected()));
         editMenu.add(editModeItem);
 
         menuBar.add(editMenu);
@@ -235,6 +237,16 @@ public class StateMachineEditor extends JFrame {
 
     public StateMachinePanel getStateMachinePanel() {
         return statePanel;
+    }
+
+    /** Keeps the Edit mode menu item and panel in sync. */
+    public void setEditModeEnabled(boolean enabled) {
+        if (editModeItem != null) {
+            editModeItem.setSelected(enabled);
+        }
+        if (statePanel != null) {
+            statePanel.setEditMode(enabled);
+        }
     }
 
     public void setStateMachine(PWSStateMachine stateMachine) {

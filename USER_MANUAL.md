@@ -414,6 +414,10 @@ PWSEditor provides a visual Constraints Editor that makes it easy to build const
 
 > **Note**: Pseudostates always have constraint "ANY" and cannot be edited.
 
+> **Tip**: When the constraints editor is empty (effectively `ANY`), the dashboard shows "ANY" in the constraints line. Once you add a constraint, the explicit text replaces ANY, and deleting all constraints resumes the default ANY display.
+
+> **New behavior:** The implicit `ANY` constraint is now treated like any other constraint. When no text is entered, the editor records `ANY` and the extended dashboard/controller report skip exit-zone and true-deadlock warnings, because "allow everything" is considered a deliberate design choice. You only start seeing red warnings once you specify a constraint that forbids the problematic configuration.
+
 #### The Visual Constraints Editor
 
 The editor uses an **"add machine constraint"** approach where you explicitly add only the machines you want to constrain:
@@ -590,7 +594,10 @@ In the state annotation dashboard, each configuration has two independent visual
 | Underline | Meaning |
 |-----------|---------|
 | **Green underline** | Configuration can evolve internally via autonomous transitions |
-| **No underline** | Configuration is a deadlock (cannot evolve) OR is covered by an outgoing transition |
+| **Red underline** | True deadlock: cannot evolve internally **and** not covered by any outgoing transition |
+| **No underline** | Internally stuck but **covered** by an outgoing transition |
+
+> **Tip:** Empty constraint boxes mean the constraint semantics are `ANY`, so every computed configuration satisfies them (green text). The underline, exit-zone list, and controller report still tell you whether each configuration can evolve or is a true deadlock.
 
 #### Combined Meanings
 
@@ -599,13 +606,15 @@ The text color and underline are **independent** — a configuration can have an
 | Example | Text | Underline | Meaning |
 |---------|------|-----------|---------|
 | `(m1.S)` | Green | Green underline | Satisfies constraints AND can evolve internally ✓ |
-| `(m1.S)` | Green | No underline | Satisfies constraints, is a deadlock but covered by transition ✓ |
+| `(m1.S)` | Green | No underline | Satisfies constraints, internally stuck but covered ✓ |
+| `(m1.S)` | Green | Red underline | Satisfies constraints but is a **true deadlock** ✗ |
 | `(m1.S)` | Red | Green underline | **Violates constraints** but can evolve internally ⚠ |
-| `(m1.S)` | Red | No underline | Violates constraints AND is a deadlock — critical issue ✗ |
+| `(m1.S)` | Red | No underline | Violates constraints, internally stuck but covered ⚠ |
+| `(m1.S)` | Red | Red underline | Violates constraints AND is a **true deadlock** ✗ |
 
 **Example from screenshot**: State S1 has constraint `(m1.T)` but computed semantics `(m1.T) (m1.S)`:
-- `(m1.T)` is **green** (satisfies constraint) with **no underline** (T is a deadlock state but covered)
-- `(m1.S)` is **red** (violates constraint) with **green underline** (S can evolve via autonomous transition)
+- `(m1.T)` is **green** (satisfies constraint) with **no underline** (internally stuck but covered)
+- `(m1.S)` is **red** (violates constraint) with **green underline** (can evolve via autonomous transition)
 
 ### Dashboard Border Color
 
@@ -620,7 +629,7 @@ The border color of the state dashboard indicates the overall health of the stat
 - **Unreachable state**: Empty state semantics (no configurations) — the state cannot be reached
 - **Constraint violations**: Computed configurations that don't satisfy user-defined constraints
 - **Uncovered exit zones**: Exit zones not handled by any autonomous transition
-- **Uncovered deadlocks**: Deadlock configurations with no way out
+- **True deadlocks**: Internally stuck configurations with no way out
 
 ### Unreachable States
 
@@ -651,7 +660,7 @@ A configuration is considered a **true deadlock** if it meets BOTH of these cond
 1. **Cannot evolve internally**: The configuration has no autonomous transitions available — no component machine in the configuration can fire an autonomous transition from its current state
 2. **Not covered by any transition**: No outgoing transition (triggered or autonomous) has a guard that matches this configuration
 
-A configuration that cannot evolve internally but IS covered by an outgoing transition is NOT a deadlock—it has a "way out" through the transition.
+A configuration that cannot evolve internally but IS covered by an outgoing transition is NOT a **true deadlock**—it has a "way out" through the transition.
 
 ### How Deadlock Detection Works
 
@@ -691,14 +700,14 @@ In the state semantics annotation dashboard:
 
 | Visual | Meaning |
 |--------|---------|
-| **Red** | True deadlock: configuration cannot evolve AND is not covered by any transition |
-| **Green** | Covered: configuration has a way out via an outgoing transition |
+| **Red underline** | True deadlock: configuration cannot evolve AND is not covered by any transition |
+| **No underline** | Internally stuck but covered by an outgoing transition |
 | **Green underline** | Configuration can evolve internally (not a deadlock risk) |
 
 **Examples**:
 1. If `(m1.A, m2.X)` can evolve to `(m1.B, m2.X)` via an autonomous transition in m1 → **OK** (green underline)
-2. If `(m1.A, m2.X)` cannot evolve but is covered by transition guard `[m1.A]` → **OK** (green)
-3. If `(m1.A, m2.X)` cannot evolve AND no transition covers it → **DEADLOCK** (red)
+2. If `(m1.A, m2.X)` cannot evolve but is covered by transition guard `[m1.A]` → **OK** (no underline)
+3. If `(m1.A, m2.X)` cannot evolve AND no transition covers it → **DEADLOCK** (red underline)
 
 ### Resolving Deadlocks
 
@@ -976,8 +985,8 @@ Lists configurations that appear in computed state semantics but violate user-de
 
 **How to Fix:** Review and adjust either the constraints or the transition structure.
 
-#### Deadlock Configurations
-Lists configurations where the system can get stuck — no autonomous evolution and no covering transition. These are warnings that may indicate design issues.
+#### True Deadlock Configurations
+Lists configurations where the system can get stuck — no autonomous evolution and **not covered** by any outgoing transition. These are warnings that may indicate design issues.
 
 **How to Fix:** Add transitions that can fire from these configurations, or verify that the deadlock is intentional (e.g., final/sink states).
 
@@ -992,7 +1001,9 @@ Shows a final assessment: either **"CONTROLLER IS WELL-FORMED"** (no issues) or 
 The report correlates with visual indicators on the diagram:
 - **Red guard labels**: Problematic guards (FALSE, TRUE on autonomous, orphan)
 - **Red action labels**: Orphan actions (not reachable from source state semantics)
-- **Red configurations in dashboards**: Constraint violations
+- **Red text in dashboards**: Constraint violations
+- **Red underline in dashboards**: True deadlocks (internally stuck and not covered)
+- **True deadlocks also appear in the controller report’s “True deadlock configurations” section, even when no explicit constraint is specified.**
 - **Uncovered exit zones**: No visual indicator on transitions, but shown in state dashboards
 
 Use the report to get a comprehensive overview, then use the diagram to locate and fix individual issues.
@@ -1009,7 +1020,7 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 4. **Name clearly**: Use descriptive names for states and machines for clarity
 5. **Align visually**: Use grid snapping and arrow keys to keep diagrams organized
 6. **Export documentation**: Use PDF export to document your designs
-7. **Monitor deadlocks**: Pay attention to red configurations—they indicate potential issues
+7. **Monitor deadlocks**: Pay attention to red underlines—they indicate true deadlocks
 
 ### Understanding Visual Feedback
 
@@ -1021,14 +1032,16 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 | Green text | Configuration satisfies constraints |
 | Red text | Configuration violates constraints |
 | Green underline | Configuration can evolve internally via autonomous transitions |
+| Red underline | True deadlock: internally stuck and not covered by any outgoing transition |
+| No underline | Internally stuck but covered by an outgoing transition |
 | Red (in exit zone list) | Exit zone is not covered by any PWS autonomous transition |
 | Green (in exit zone list) | Exit zone is covered by a PWS autonomous transition |
 
 **Tip**: Right-click on the dashboard and select **"Show Extended Details..."** for detailed exit zone origin analysis.
 - Drag annotations to reorganize (they snap to grid)
 
-#### "Red configurations appear"
-- **Cause**: Configurations that violate constraints or true deadlocks (cannot evolve and not covered)
+#### "Red text or red underline appears"
+- **Cause**: Constraint violations (red text) or true deadlocks (red underline)
 - **Solution**: 
   - Add autonomous transitions in component machines
   - Add PWS transitions with guards covering the deadlock
@@ -1168,7 +1181,7 @@ For more information about Part-Whole Statecharts theory, see the project README
 #### Enhanced Deadlock Detection
 - **Refined logic**: A configuration is a deadlock if it cannot evolve at all (no autonomous transitions available) AND is not covered by any outgoing transition
 - **Correct single-config handling**: Configurations like `(m1.T)` are correctly identified as deadlocks when state T has no outgoing autonomous transitions
-- **Visual indicators**: Red for true deadlocks, green for covered configurations, green underline for configurations that can evolve internally
+- **Visual indicators**: Red underline for true deadlocks, green underline for configurations that can evolve internally, no underline for internally stuck but covered
 - **Border feedback**: State annotation border color reflects overall state health
 
 #### Automatic Semantics Recalculation

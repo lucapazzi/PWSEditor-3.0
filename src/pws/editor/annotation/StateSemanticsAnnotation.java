@@ -230,6 +230,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             // Pseudostate always shows "ANY"
             constraintSem = "ANY";
         } else if (raw != null && !raw.isBlank()) {
+            if ("ANY".equalsIgnoreCase(raw.trim())) {
+                constraintSem = "ANY";
+            } else {
             // Show the user-entered compact constraints as (line1), (line2), ...
             String[] lines = raw.split("\\r?\\n");
             StringJoiner sjRaw = new StringJoiner(", ");
@@ -240,6 +243,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 sjRaw.add(s);
             }
             constraintSem = sjRaw.toString();
+            }
         } else {
             // Build a parenthesized OR‑joined constraint string
             Semantics cs = state.getConstraintsSemantics();
@@ -266,6 +270,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                     constraintSem = sj.toString();
                 }
             }
+        }
+        if (constraintSem.isBlank()) {
+            constraintSem = "ANY";
         }
         g2d.setColor(new Color(0, 70, 180)); // Darker blue for better contrast
         int w1 = fm.stringWidth(constraintSem);
@@ -340,29 +347,31 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             boolean isDeadlock = deadlockCfgStrs.contains(s);
             boolean isCovered = coveredCfgStrs.contains(s);
             boolean canEvolve = !isDeadlock && !isEmptyConfig; // Empty config can't evolve (nothing to evolve)
-            boolean satisfiesConstraint = state.isPseudoState() || constraintStrs.contains(s);
+            boolean satisfiesConstraint = state.isPseudoState() || constraintStrs.isEmpty() || constraintStrs.contains(s);
+            boolean isTrueDeadlock = isDeadlock && !isCovered;
             
-            // Color logic (new scheme):
-            // - Gray: Empty config (no component machines) - neutral, informational
-            // - Red: True deadlock (can't evolve AND not covered)
-            // - Green: Covered by transition OR can evolve internally
+            // Color logic:
+            // - Gray: Empty config (no component machines) - neutral/informational
+            // - Green: Satisfies constraints
+            // - Red: Violates constraints
             if (isEmptyConfig) {
                 g2d.setColor(new Color(100, 100, 100)); // Gray for empty config
-            } else if (isDeadlock && !isCovered) {
-                g2d.setColor(Color.RED);
-            } else if (isCovered) {
-                g2d.setColor(Color.GREEN.darker());
             } else {
                 g2d.setColor(satisfiesConstraint ? Color.GREEN.darker() : Color.RED);
             }
             g2d.drawString(s, x, y);
             
-            // Underline logic (new scheme):
-            // - Green underline: can evolve internally (not a deadlock risk)
-            // - No underline for empty config
-            if (canEvolve && !isCovered) {
+            // Underline logic:
+            // - Green underline: can evolve internally
+            // - Red underline: true deadlock (internally stuck and not covered)
+            // - No underline for empty config or covered-but-stuck
+            if (canEvolve) {
                 int sw = fm.stringWidth(s);
                 g2d.setColor(Color.GREEN.darker());
+                g2d.drawLine(x, y + 1, x + sw, y + 1);
+            } else if (isTrueDeadlock) {
+                int sw = fm.stringWidth(s);
+                g2d.setColor(Color.RED);
                 g2d.drawLine(x, y + 1, x + sw, y + 1);
             }
             x += fm.stringWidth(s) + fm.charWidth(' ');
@@ -527,88 +536,92 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
      * Returns true if all OK (green), false if has issues (red).
      */
     private boolean computeOverallStatus() {
-        if (content == null) return true;
-        
+        return getOverallStatusIssues().isEmpty();
+    }
+
+    public List<String> getOverallStatusIssues() {
+        List<String> issues = new ArrayList<>();
+        if (content == null) return issues;
+
         PWSState state = content;
         try {
-            // Get parent panel's state machine
             PWSStateMachine sm = null;
             if (getParent() instanceof PWSStateMachinePanel p) {
                 sm = p.getStateMachine();
             } else if (panel != null) {
                 sm = panel.getStateMachine();
             }
-            if (sm == null) return true;
-            
-            // Check 0: empty state semantics (unreachable state)
-            // A state with no configurations cannot be reached, which is a problem
-            // Exception: pseudo-state always has ANY semantics
-            if (!state.isPseudoState() && 
+            if (sm == null) return issues;
+
+            if (!state.isPseudoState() &&
                 (state.getStateSemantics() == null || state.getStateSemantics().getConfigurations().isEmpty())) {
-                return false;
+                issues.add("State is unreachable (no configurations).");
             }
-            
-            // Determine covered guards
-            Set<smalgebra.BasicStateProposition> covered = new HashSet<>();
+
+            Set<smalgebra.BasicStateProposition> coveredGuards = new HashSet<>();
             for (machinery.TransitionInterface ti : sm.getTransitions()) {
                 if (ti instanceof pws.PWSTransition pt) {
                     if (pt.isEnabled() && !pt.isTriggerable() && pt.getSource() == state
                             && pt.getGuardProposition() instanceof smalgebra.BasicStateProposition) {
-                        covered.add((smalgebra.BasicStateProposition) pt.getGuardProposition());
+                        coveredGuards.add((smalgebra.BasicStateProposition) pt.getGuardProposition());
                     }
                 }
             }
-            
-            // Check 1: actual semantics vs constraints
-            Set<String> constraintStrs = new HashSet<>();
-            if (state.getConstraintsSemantics() != null) {
-                for (Object cfg : state.getConstraintsSemantics().getConfigurations()) {
-                    constraintStrs.add(cfg.toString());
-                }
-            }
-            if (state.getStateSemantics() != null) {
-                for (Object cfg : state.getStateSemantics().getConfigurations()) {
-                    if (!state.isPseudoState() && !constraintStrs.contains(cfg.toString())) {
-                        return false;
+
+            String rawConstraint = state.getRawConstraintText();
+            boolean hasUserConstraint = rawConstraint != null && !rawConstraint.isBlank();
+            boolean hasExplicitConstraint = hasUserConstraint || state.getConstraintsSemantics() != null;
+            if (hasUserConstraint) {
+                Semantics cs = state.getConstraintsSemantics();
+                if (cs != null && !cs.getConfigurations().isEmpty()) {
+                    Set<String> constraintStrs = new HashSet<>();
+                    for (Object cfg : cs.getConfigurations()) {
+                        constraintStrs.add(cfg.toString());
+                    }
+                    if (state.getStateSemantics() != null) {
+                        for (Object cfg : state.getStateSemantics().getConfigurations()) {
+                            if (!state.isPseudoState() && !constraintStrs.contains(cfg.toString())) {
+                                issues.add("Some configurations violate constraints.");
+                                break;
+                            }
+                        }
                     }
                 }
             }
-            
-            // Check 2: exit zones coverage
-            if (state.getReactiveSemantics() != null) {
+
+            if (hasExplicitConstraint && state.getReactiveSemantics() != null) {
                 for (ExitZone ez : state.getReactiveSemantics()) {
-                    if (!covered.contains(ez.getTarget())) {
-                        return false;
+                    if (!coveredGuards.contains(ez.getTarget())) {
+                        issues.add("Some exit zones are not covered by autonomous transitions.");
+                        break;
                     }
                 }
             }
-            
-            // Check 3: deadlock configurations
+
             Set<pws.editor.semantics.Configuration> deadlocks = state.getDeadlockConfigurations();
-            if (deadlocks != null && !deadlocks.isEmpty()) {
-                // Compute covered config strings
+            if (hasExplicitConstraint && deadlocks != null && !deadlocks.isEmpty()) {
                 Assembly asm = sm.getAssembly();
                 Set<String> coveredCfgStrs = new HashSet<>();
                 for (machinery.TransitionInterface ti : sm.getTransitions()) {
                     if (ti instanceof pws.PWSTransition pt && pt.getSource() == state && pt.isEnabled()) {
                         smalgebra.SMProposition guardProp = pt.getGuardProposition();
                         Semantics guardSem = guardProp.toSemantics(asm).AND(state.getStateSemantics());
-                        for (Object c : guardSem.getConfigurations()) {
-                            coveredCfgStrs.add(c.toString());
+                        for (Object cfg : guardSem.getConfigurations()) {
+                            coveredCfgStrs.add(cfg.toString());
                         }
                     }
                 }
                 for (pws.editor.semantics.Configuration dc : deadlocks) {
                     if (!coveredCfgStrs.contains(dc.toString())) {
-                        return false;
+                        issues.add("True deadlock configurations exist.");
+                        break;
                     }
                 }
             }
-            
-            return true;
         } catch (Exception e) {
-            return true; // Default to OK on error
+            // ignore and default to OK
         }
+        return issues;
     }
 
     @Override
@@ -626,6 +639,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         if (state.isPseudoState()) {
             constraintSem = "ANY";
         } else if (raw != null && !raw.isBlank()) {
+            if ("ANY".equalsIgnoreCase(raw.trim())) {
+                constraintSem = "ANY";
+            } else {
             // Show compact user-entered constraints wrapped in parentheses
             String[] linesRaw = raw.split("\\r?\\n");
             StringJoiner sjRaw = new StringJoiner(", ");
@@ -636,6 +652,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 sjRaw.add(s);
             }
             constraintSem = sjRaw.toString();
+            }
         } else {
             // Fallback to full expanded semantics only if no raw text
             Semantics cs = state.getConstraintsSemantics();

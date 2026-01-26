@@ -280,7 +280,7 @@ public class ControllerReportDialog extends JDialog {
             }
             if (deadlockProblems > 0) {
                 appendText("    ⚠ ", STYLE_ORANGE);
-                appendText("Deadlock configurations: " + deadlockProblems + "\n", STYLE_NORMAL);
+                appendText("True deadlock configurations: " + deadlockProblems + "\n", STYLE_NORMAL);
             }
             appendText("\n", STYLE_NORMAL);
         }
@@ -594,8 +594,10 @@ public class ControllerReportDialog extends JDialog {
             
             Semantics ss = ps.getStateSemantics();
             Semantics cs = ps.getConstraintsSemantics();
+            String rawConstraint = ps.getRawConstraintText();
             
             if (ss == null || cs == null) continue;
+            if (rawConstraint == null || rawConstraint.isBlank()) continue;
             
             // Check if state semantics violates constraints
             Set<String> constraintStrs = new HashSet<>();
@@ -694,7 +696,7 @@ public class ControllerReportDialog extends JDialog {
     
     private void appendDeadlockProblemsSection(Map<PWSState, Set<Configuration>> problemMap) {
         appendText("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", STYLE_GRAY);
-        appendText("DEADLOCK CONFIGURATIONS\n", STYLE_SECTION);
+        appendText("TRUE DEADLOCK CONFIGURATIONS\n", STYLE_SECTION);
         appendText("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n", STYLE_GRAY);
         
         appendText("  These configurations have no autonomous evolution path and are not\n", STYLE_NORMAL);
@@ -744,7 +746,7 @@ public class ControllerReportDialog extends JDialog {
             appendText("    All guards are properly configured.\n", STYLE_GREEN);
             appendText("    All exit zones are covered by transitions.\n", STYLE_GREEN);
             appendText("    All configurations satisfy constraints.\n", STYLE_GREEN);
-            appendText("    No unrecoverable deadlock configurations.\n\n", STYLE_GREEN);
+            appendText("    No true deadlock configurations.\n\n", STYLE_GREEN);
         } else {
             appendText("  ⚠ CONTROLLER HAS " + totalProblems + " ISSUE" + (totalProblems > 1 ? "S" : "") + "\n\n", STYLE_RED);
             appendText("    Review the sections above and address each issue.\n", STYLE_NORMAL);

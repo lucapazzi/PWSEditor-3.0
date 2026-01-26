@@ -19,6 +19,13 @@ computed semantics and reactive spaces.
   space*.  Semantic violations (misaligned configurations) and uncovered
   reactive successors are highlighted.
 
+- **State status cues:**  
+  The state dashboard highlights issues with a red banner plus
+  contextual detail (constraint violations, uncovered exit zones, true
+  deadlocks) so you always know whether the state is well-formed.  Hovering
+  or opening the Extended Dashboard reveals the same list of issues for
+  quick diagnostics.
+
 - **Event- and guard-triggered transitions:**  
   Supports event-triggered transitions with guard predicates and action
   emissions, as well as guard-only transitions for autonomous evolution and
@@ -55,3 +62,13 @@ scripts/generate-javadoc.sh
 ```
 
 The output is written to `docs/javadoc/index.html`.
+
+## Building Locally
+
+The `scripts/build.sh` helper compiles the editor against the bundled libraries (PDFBox, FontBox, pdfbox-graphics2d, etc.) and mirrors the manual `javac` command:
+
+```sh
+./scripts/build.sh
+```
+
+It cleans `out/` before compiling, so rerun when dependencies or sources change. You can then run the editor with `java -cp out:...`.

@@ -21,6 +21,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected StateMachine stateMachine;
     protected StateInterface selectedState = null;
     protected Point dragOffset = null;
+    private StateMachineEditor owningEditor = null;
 
     // Link mode fields
     protected boolean linkMode = false;
@@ -123,6 +124,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     public void setEditMode(boolean editMode) {
         this.editMode = editMode;
         repaint();
+    }
+
+    /** Optional back-reference to the editor (for menu sync). */
+    public void setOwningEditor(StateMachineEditor editor) {
+        this.owningEditor = editor;
     }
 
     public void enableLinkMode() {
@@ -706,6 +712,24 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             addNewStateAt(e.getPoint());
         });
         popup.add(addStateItem);
+
+        popup.addSeparator();
+
+        JCheckBoxMenuItem editModeItem = new JCheckBoxMenuItem("Edit mode", isEditMode());
+        editModeItem.addActionListener(ae -> {
+            boolean enabled = editModeItem.isSelected();
+            if (owningEditor != null) {
+                owningEditor.setEditModeEnabled(enabled);
+            } else {
+                java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                if (w instanceof StateMachineEditor sme) {
+                    sme.setEditModeEnabled(enabled);
+                } else {
+                    setEditMode(enabled);
+                }
+            }
+        });
+        popup.add(editModeItem);
         popup.show(this, e.getX(), e.getY());
     }
 
@@ -749,21 +773,6 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     private void showTransitionPopup(MouseEvent e, TransitionInterface t) {
         JPopupMenu popup = new JPopupMenu();
 
-        // Voce di menu per eliminare la transizione
-        JMenuItem deleteItem = new JMenuItem("Delete Transition");
-        deleteItem.addActionListener(ae -> {
-            // Utilizza il metodo helper per rimuovere la transizione e tutti i riferimenti associati
-            deleteTransition(t);
-            // Schedule semantics recalculation if inside PWSEditor
-            java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
-            if (win instanceof pws.editor.PWSEditor) {
-                ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
-            }
-            revalidate();
-            repaint();
-        });
-        popup.add(deleteItem);
-        
         // Enable/Disable transition (only for PWSTransition)
         if (t instanceof pws.PWSTransition pt) {
             String toggleText = pt.isEnabled() ? "Disable Transition" : "Enable Transition";
@@ -805,6 +814,21 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         }
         
         popup.addSeparator();
+
+        // Voce di menu per eliminare la transizione
+        JMenuItem deleteItem = new JMenuItem("Delete Transition");
+        deleteItem.addActionListener(ae -> {
+            // Utilizza il metodo helper per rimuovere la transizione e tutti i riferimenti associati
+            deleteTransition(t);
+            // Schedule semantics recalculation if inside PWSEditor
+            java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+            if (win instanceof pws.editor.PWSEditor) {
+                ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+            }
+            revalidate();
+            repaint();
+        });
+        popup.add(deleteItem);
 
         // Se necessario, qui puoi aggiungere ulteriori voci per gestire annotazioni (guard, action, semantics),
         // per esempio "Toggle Guard Annotation", "Toggle Action Annotation", ecc.

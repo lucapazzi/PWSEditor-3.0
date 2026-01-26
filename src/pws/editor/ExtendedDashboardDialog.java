@@ -9,6 +9,7 @@ import pws.editor.semantics.Semantics;
 import assembly.Assembly;
 import machinery.TransitionInterface;
 import smalgebra.BasicStateProposition;
+import pws.editor.annotation.StateSemanticsAnnotation;
 
 import javax.swing.*;
 import javax.swing.text.*;
@@ -127,7 +128,7 @@ public class ExtendedDashboardDialog extends JDialog {
         StyleConstants.setForeground(greenUnderline, new Color(0, 128, 0));
         StyleConstants.setUnderline(greenUnderline, true);
         
-        // Red underline style (violates constraint but can evolve internally)
+        // Red underline style (constraint-violating config with evolution)
         Style redUnderline = doc.addStyle(STYLE_RED_UNDERLINE, normal);
         StyleConstants.setForeground(redUnderline, new Color(180, 0, 0));
         StyleConstants.setUnderline(redUnderline, true);
@@ -176,6 +177,11 @@ public class ExtendedDashboardDialog extends JDialog {
         }
 
         String raw = state.getRawConstraintText();
+        if (raw != null && !raw.isBlank() && "ANY".equalsIgnoreCase(raw.trim())) {
+            appendText("  Explicit constraint:\n", STYLE_GRAY);
+            appendText("    ANY (all configurations allowed)\n\n", STYLE_BLUE);
+            return;
+        }
         if (raw != null && !raw.isBlank()) {
             appendText("  Raw constraint text:\n", STYLE_GRAY);
             for (String line : raw.split("\\r?\\n")) {
@@ -242,12 +248,15 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText("    Legend: ", STYLE_GRAY);
             appendText("GRAY", STYLE_GRAY);
             appendText(" = no machines, ", STYLE_GRAY);
-            appendText("RED", STYLE_RED);
-            appendText(" = deadlock, ", STYLE_GRAY);
             appendText("GREEN", STYLE_GREEN);
-            appendText(" = covered, ", STYLE_GRAY);
-            appendText("GREEN UNDERLINE", STYLE_GREEN_UNDERLINE);
-            appendText(" = can evolve\n\n", STYLE_GRAY);
+            appendText(" text = satisfies constraints, ", STYLE_GRAY);
+            appendText("RED", STYLE_RED);
+            appendText(" text = violates constraints, ", STYLE_GRAY);
+            appendText("UNDERLINE", STYLE_GREEN_UNDERLINE);
+            appendText(" = can evolve internally, ", STYLE_GRAY);
+            appendText("NO UNDERLINE", STYLE_GRAY);
+            appendText(" = internally stuck (covered or true deadlock)\n", STYLE_GRAY);
+            appendText("    Note: true deadlocks are explicitly labeled below and appear with a red underline in the dashboard.\n\n", STYLE_GRAY);
             
             for (Configuration cfg : ss.getConfigurations()) {
                 String cfgStr = cfg.toString();
@@ -259,16 +268,13 @@ public class ExtendedDashboardDialog extends JDialog {
                 boolean isCovered = coveredCfgStrs.contains(cfgStr);
                 boolean isDeadlock = deadlockStrs.contains(cfgStr);
                 boolean canEvolve = !isDeadlock && !isEmptyConfig; // Empty config can't evolve
+                boolean isTrueDeadlock = isDeadlock && !isCovered;
                 
                 // Determine style matching the dashboard:
-                // Text color: determined by constraint satisfaction (green=satisfies, red=violates)
-                // Underline: determined by evolution capability (underlined=can evolve internally)
-                // The two attributes are INDEPENDENT - a config can violate constraints but still evolve
-                // - Gray: Empty config (no component machines) - neutral/informational
-                // - Red: Violates constraint AND can't evolve (true problem)
-                // - Red underline: Violates constraint BUT can evolve (less severe)
-                // - Green: Satisfies constraint AND covered (best case)
-                // - Green underline: Satisfies constraint AND can evolve (good)
+                // Text color = constraint satisfaction (green/red).
+                // Underline = internal evolution status:
+                //   - Underline: can evolve internally
+                //   - No underline: internally stuck (covered or true deadlock)
                 String style;
                 String indicator;
                 
@@ -276,33 +282,24 @@ public class ExtendedDashboardDialog extends JDialog {
                     // EMPTY CONFIG: Gray - means no component machines configured
                     style = STYLE_GRAY;
                     indicator = " ○ No component machines configured";
-                } else if (!satisfiesConstraint) {
-                    // Violates constraint - red text, underline if can evolve
-                    if (canEvolve) {
-                        style = STYLE_RED_UNDERLINE;
-                        indicator = " ⚠ Violates constraint (can evolve)";
-                    } else if (!isCovered) {
-                        style = STYLE_RED;
-                        indicator = " ⛔ Violates constraint (DEADLOCK)";
-                    } else {
-                        style = STYLE_RED;
-                        indicator = " ⚠ Violates constraint (covered)";
-                    }
-                } else if (isDeadlock && !isCovered) {
-                    // TRUE DEADLOCK: Red (no underline) - satisfies constraint but stuck
-                    style = STYLE_RED;
-                    indicator = " ⛔ TRUE DEADLOCK";
-                } else if (isCovered) {
-                    // COVERED: Green (no underline)
-                    style = STYLE_GREEN;
-                    indicator = " ✓ Covered by transition";
                 } else if (canEvolve) {
-                    // CAN EVOLVE: Green underline
-                    style = STYLE_GREEN_UNDERLINE;
-                    indicator = " ↻ Can evolve internally";
+                    // CAN EVOLVE: underline reflects internal evolution
+                    style = satisfiesConstraint ? STYLE_GREEN_UNDERLINE : STYLE_RED_UNDERLINE;
+                    indicator = satisfiesConstraint
+                        ? " ↻ Can evolve internally (satisfies constraints)"
+                        : " ⚠ Violates constraints (can evolve internally)";
                 } else {
-                    style = STYLE_NORMAL;
-                    indicator = "";
+                    // Internally stuck (covered or true deadlock)
+                    style = satisfiesConstraint ? STYLE_GREEN : STYLE_RED;
+                    if (isTrueDeadlock) {
+                        indicator = satisfiesConstraint
+                            ? " ⛔ TRUE DEADLOCK (satisfies constraints)"
+                            : " ⛔ TRUE DEADLOCK (violates constraints)";
+                    } else {
+                        indicator = satisfiesConstraint
+                            ? " ✓ Covered by transition (internally stuck)"
+                            : " ⚠ Violates constraints (covered, internally stuck)";
+                    }
                 }
                 
                 appendText("    ", STYLE_NORMAL);
@@ -412,8 +409,8 @@ public class ExtendedDashboardDialog extends JDialog {
         Set<Configuration> deadlocks = state.getDeadlockConfigurations();
         
         if (deadlocks == null || deadlocks.isEmpty()) {
-            appendText("  No deadlock configurations detected.\n", STYLE_GREEN);
-            appendText("  All configurations can either evolve internally or are covered by transitions.\n\n", STYLE_GRAY);
+            appendText("  No internally stuck configurations detected.\n", STYLE_GREEN);
+            appendText("  All configurations can evolve internally.\n\n", STYLE_GRAY);
             return;
         }
 
@@ -434,7 +431,7 @@ public class ExtendedDashboardDialog extends JDialog {
             }
         }
 
-        appendText("  Deadlock configurations (cannot evolve internally):\n\n", STYLE_GRAY);
+        appendText("  Internally stuck configurations (cannot evolve internally):\n\n", STYLE_GRAY);
 
         int trueDeadlocks = 0;
         for (Configuration cfg : deadlocks) {
@@ -465,89 +462,19 @@ public class ExtendedDashboardDialog extends JDialog {
         appendText("│ OVERALL STATUS                                              │\n", STYLE_SUBHEADING);
         appendText("└─────────────────────────────────────────────────────────────┘\n", STYLE_SUBHEADING);
 
-        boolean hasConstraintViolations = false;
-        boolean hasUncoveredExitZones = false;
-        boolean hasTrueDeadlocks = false;
-
-        Semantics ss = state.getStateSemantics();
-        Semantics cs = state.getConstraintsSemantics();
-
-        // Check constraint violations
-        if (!state.isPseudoState() && ss != null && cs != null) {
-            Set<String> constraintStrs = new HashSet<>();
-            for (Configuration cfg : cs.getConfigurations()) {
-                constraintStrs.add(cfg.toString());
-            }
-            for (Configuration cfg : ss.getConfigurations()) {
-                if (!constraintStrs.contains(cfg.toString())) {
-                    hasConstraintViolations = true;
-                    break;
-                }
-            }
-        }
-
-        // Check uncovered exit zones
-        Set<ExitZone> reactiveZones = state.getReactiveSemantics();
-        Set<BasicStateProposition> coveredGuards = new HashSet<>();
-        if (stateMachine != null) {
-            for (TransitionInterface ti : stateMachine.getTransitions()) {
-                if (ti instanceof PWSTransition pt && pt.isEnabled() && !pt.isTriggerable() 
-                        && pt.getSource() == state 
-                        && pt.getGuardProposition() instanceof BasicStateProposition) {
-                    coveredGuards.add((BasicStateProposition) pt.getGuardProposition());
-                }
-            }
-        }
-        if (reactiveZones != null) {
-            for (ExitZone ez : reactiveZones) {
-                if (!coveredGuards.contains(ez.getTarget())) {
-                    hasUncoveredExitZones = true;
-                    break;
-                }
-            }
-        }
-
-        // Check true deadlocks
-        Set<Configuration> deadlocks = state.getDeadlockConfigurations();
-        Set<String> coveredCfgStrs = new HashSet<>();
-        if (stateMachine != null && ss != null && assembly != null) {
-            for (TransitionInterface ti : stateMachine.getTransitions()) {
-                if (ti instanceof PWSTransition pt && pt.isEnabled() && pt.getSource() == state) {
-                    if (pt.getGuardProposition() != null) {
-                        for (Configuration cfg : ss.getConfigurations()) {
-                            if (pt.getGuardProposition().evaluateConfiguration(cfg, assembly)) {
-                                coveredCfgStrs.add(cfg.toString());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if (deadlocks != null) {
-            for (Configuration cfg : deadlocks) {
-                if (!coveredCfgStrs.contains(cfg.toString())) {
-                    hasTrueDeadlocks = true;
-                    break;
-                }
-            }
-        }
-
         // Report status
-        if (!hasConstraintViolations && !hasUncoveredExitZones && !hasTrueDeadlocks) {
+        java.util.List<String> issues = state.getAnnotation() instanceof StateSemanticsAnnotation ann
+                ? ann.getOverallStatusIssues()
+                : Collections.emptyList();
+        if (issues.isEmpty()) {
             appendText("  ✓ STATE IS WELL-FORMED\n\n", STYLE_GREEN);
             appendText("    • All computed configurations satisfy constraints\n", STYLE_GREEN);
             appendText("    • All exit zones are covered by autonomous transitions\n", STYLE_GREEN);
             appendText("    • No true deadlock configurations\n", STYLE_GREEN);
         } else {
             appendText("  ⚠ STATE HAS ISSUES\n\n", STYLE_RED);
-            if (hasConstraintViolations) {
-                appendText("    ✗ Some configurations violate constraints\n", STYLE_RED);
-            }
-            if (hasUncoveredExitZones) {
-                appendText("    ✗ Some exit zones are not covered by transitions\n", STYLE_RED);
-            }
-            if (hasTrueDeadlocks) {
-                appendText("    ✗ True deadlock configurations exist\n", STYLE_RED);
+            for (String issue : issues) {
+                appendText("    ✗ " + issue + "\n", STYLE_RED);
             }
         }
         appendText("\n", STYLE_NORMAL);

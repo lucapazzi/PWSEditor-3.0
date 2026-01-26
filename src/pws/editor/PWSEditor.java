@@ -170,7 +170,9 @@ public class PWSEditor extends JFrame {
         }
 
         // Right area: assembly list + embedded machine editor container (also with header)
-        assemblyPanel = new PWSPanel(pwsStateMachine.getAssembly());
+        assemblyPanel = (controllerEditorVisible && pwsStateMachine != null)
+                ? new PWSPanel(pwsStateMachine.getAssembly())
+                : null;
 
         JPanel rightTop = new JPanel(new BorderLayout());
         // Create a split view: Assembly | Library
@@ -181,7 +183,13 @@ public class PWSEditor extends JFrame {
         rightHeader.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
         rightHeader.setFont(rightHeader.getFont().deriveFont(Font.BOLD));
         assemblyWrapper.add(rightHeader, BorderLayout.NORTH);
-        assemblyWrapper.add(assemblyPanel, BorderLayout.CENTER);
+        if (assemblyPanel != null) {
+            assemblyWrapper.add(assemblyPanel, BorderLayout.CENTER);
+        } else {
+            JLabel placeholderAsm = new JLabel("No controller loaded. Use File -> New or Open.", SwingConstants.CENTER);
+            placeholderAsm.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+            assemblyWrapper.add(placeholderAsm, BorderLayout.CENTER);
+        }
 
         JPanel libraryWrapper = new JPanel(new BorderLayout());
         JLabel libHeader = new JLabel("Library", SwingConstants.CENTER);
@@ -205,11 +213,18 @@ public class PWSEditor extends JFrame {
         btnLibraryToggle = new JToggleButton("Library");
         ButtonGroup bg = new ButtonGroup();
         bg.add(btnAssembly); bg.add(btnLibraryToggle);
-        btnAssembly.setSelected(true);
+        btnAssembly.setSelected(controllerEditorVisible);
+        if (!controllerEditorVisible) {
+            btnLibraryToggle.setSelected(true);
+        }
         tb.add(btnAssembly); tb.add(btnLibraryToggle);
 
         btnAssembly.addActionListener(a -> topCardsLayout.show(topSwitchPanel, "assembly"));
         btnLibraryToggle.addActionListener(a -> topCardsLayout.show(topSwitchPanel, "library"));
+        if (!controllerEditorVisible) {
+            btnAssembly.setEnabled(false);
+            topCardsLayout.show(topSwitchPanel, "library");
+        }
 
         topCardPanel.add(tb, BorderLayout.NORTH);
         topCardPanel.add(topSwitchPanel, BorderLayout.CENTER);
@@ -229,7 +244,8 @@ public class PWSEditor extends JFrame {
         getContentPane().add(split, BorderLayout.CENTER);
 
         // Wire selection from the assembly panel to show the selected machine in the embedded editor
-        assemblyPanel.setMachineSelectionListener(new pws.editor.PWSPanel.MachineSelectionListener() {
+        if (assemblyPanel != null) {
+            assemblyPanel.setMachineSelectionListener(new pws.editor.PWSPanel.MachineSelectionListener() {
             @Override
             public void machineSelected(String id) {
                 StateMachine machine = pwsStateMachine.getAssembly().getStateMachines().get(id);
@@ -358,6 +374,7 @@ public class PWSEditor extends JFrame {
                 });
             }
         });
+        }
 
         // Wire library selection to show selected library machine in the same embedded editor
         libraryPanel.setLibrarySelectionListener(new MachineLibraryPanel.LibrarySelectionListener() {
@@ -701,8 +718,7 @@ public class PWSEditor extends JFrame {
 
         editModeItem = new JCheckBoxMenuItem("Edit mode", true);
         editModeItem.addActionListener(e -> {
-            if (baseEditor == null) return;
-            baseEditor.getStateMachinePanel().setEditMode(editModeItem.isSelected());
+            setEditModeEnabled(editModeItem.isSelected());
         });
         editMenu.add(editModeItem);
 
@@ -838,6 +854,16 @@ public class PWSEditor extends JFrame {
         if (gridSizeItem != null) gridSizeItem.setEnabled(ctrl);
         if (ltlEditorItem != null) ltlEditorItem.setEnabled(ctrl);
         if (ltlCheckNowItem != null) ltlCheckNowItem.setEnabled(ctrl);
+    }
+
+    /** Keeps the Edit mode menu item and panel in sync. */
+    public void setEditModeEnabled(boolean enabled) {
+        if (editModeItem != null) {
+            editModeItem.setSelected(enabled);
+        }
+        if (baseEditor != null) {
+            baseEditor.getStateMachinePanel().setEditMode(enabled);
+        }
     }
 
     /** Schedule an asynchronous semantics recalculation for the current model. */

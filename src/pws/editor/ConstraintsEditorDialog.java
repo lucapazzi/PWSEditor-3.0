@@ -145,6 +145,10 @@ public class ConstraintsEditorDialog extends JDialog {
             for (String line : rawText.split("\\r?\\n")) {
                 String trimmed = line.trim();
                 if (trimmed.isEmpty()) continue;
+                if ("ANY".equalsIgnoreCase(trimmed)) {
+                    // Explicit ANY means no constraints for this line.
+                    continue;
+                }
                 
                 // Remove surrounding parentheses if present
                 if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
@@ -224,7 +228,7 @@ public class ConstraintsEditorDialog extends JDialog {
             }
         }
         if (sb.length() == 0) {
-            previewLabel.setText("<html><i>No constraints (allows all configurations)</i></html>");
+            previewLabel.setText("<html><i>ANY</i></html>");
         } else {
             previewLabel.setText("<html><code>" + sb.toString() + "</code></html>");
         }
@@ -234,8 +238,12 @@ public class ConstraintsEditorDialog extends JDialog {
         Semantics result = Semantics.bottom(assembly);
         StringBuilder rawText = new StringBuilder();
         boolean firstLine = true;
+        boolean hasAnyConstraint = false;
         
         for (ConstraintLinePanel line : constraintLines) {
+            if (line.hasAnyConstraint()) {
+                hasAnyConstraint = true;
+            }
             Semantics lineSem = line.toSemantics();
             if (lineSem != null) {
                 result = result.OR(lineSem);
@@ -249,8 +257,14 @@ public class ConstraintsEditorDialog extends JDialog {
             }
         }
         
+        String raw = rawText.toString().trim();
+        if (!hasAnyConstraint) {
+            // Explicit ANY = top semantics (all configurations allowed).
+            result = Semantics.top(assembly);
+            raw = "ANY";
+        }
         state.setConstraintsSemantics(result);
-        state.setRawConstraintText(rawText.toString().trim());
+        state.setRawConstraintText(raw);
     }
     
     /**
@@ -377,6 +391,13 @@ public class ConstraintsEditorDialog extends JDialog {
             }
             return configSem;
         }
+
+        boolean hasAnyConstraint() {
+            if (machineConstraints.isEmpty()) {
+                return false;
+            }
+            return true;
+        }
         
         /**
          * Inner class representing a single machine:state constraint chip.
@@ -427,4 +448,3 @@ public class ConstraintsEditorDialog extends JDialog {
         }
     }
 }
-
