@@ -209,6 +209,11 @@ public class ExtendedDashboardDialog extends JDialog {
 
         Semantics ss = state.getStateSemantics();
         Semantics cs = state.getConstraintsSemantics();
+        String rawConstraint = state.getRawConstraintText();
+        boolean hasRaw = rawConstraint != null && !rawConstraint.isBlank();
+        boolean rawAny = hasRaw && "ANY".equalsIgnoreCase(rawConstraint.trim());
+        boolean hasCs = cs != null && !cs.getConfigurations().isEmpty();
+        boolean anyConstraint = state.isPseudoState() || rawAny || (!hasRaw && !hasCs);
         
         // Get covered configurations from outgoing transitions
         Set<String> coveredCfgStrs = new HashSet<>();
@@ -235,14 +240,6 @@ public class ExtendedDashboardDialog extends JDialog {
             }
         }
 
-        // Constraint strings for comparison
-        Set<String> constraintStrs = new HashSet<>();
-        if (cs != null) {
-            for (Configuration cfg : cs.getConfigurations()) {
-                constraintStrs.add(cfg.toString());
-            }
-        }
-
         if (ss != null && !ss.getConfigurations().isEmpty()) {
             appendText("  Configurations (shown as in dashboard):\n", STYLE_GRAY);
             appendText("    Legend: ", STYLE_GRAY);
@@ -264,7 +261,8 @@ public class ExtendedDashboardDialog extends JDialog {
                 // Special case: empty configuration "()" means no component machines configured
                 boolean isEmptyConfig = cfgStr.equals("()");
                 
-                boolean satisfiesConstraint = state.isPseudoState() || constraintStrs.isEmpty() || constraintStrs.contains(cfgStr);
+                boolean satisfiesConstraint = anyConstraint
+                        || (cs != null && cfg.implies(cs));
                 boolean isCovered = coveredCfgStrs.contains(cfgStr);
                 boolean isDeadlock = deadlockStrs.contains(cfgStr);
                 boolean canEvolve = !isDeadlock && !isEmptyConfig; // Empty config can't evolve

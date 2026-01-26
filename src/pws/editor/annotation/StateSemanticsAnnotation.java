@@ -292,17 +292,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
 
         // 2) Actual state semantics: each configuration green if in constraints, red otherwise
         y += lineHeight;
-        Set<?> constraintsConfigs = state.getConstraintsSemantics() == null
-                ? Collections.emptySet()
-                : state.getConstraintsSemantics().getConfigurations();
+        Semantics constraintsSem = state.getConstraintsSemantics();
         Set<?> stateConfigs = state.getStateSemantics() == null
                 ? Collections.emptySet()
                 : state.getStateSemantics().getConfigurations();
-        // prepare string set of constraint configurations
-        Set<String> constraintStrs = new HashSet<>();
-        for (Object cfg : constraintsConfigs) {
-            constraintStrs.add(cfg.toString());
-        }
+        String rawConstraint = state.getRawConstraintText();
+        boolean hasRaw = rawConstraint != null && !rawConstraint.isBlank();
+        boolean rawAny = hasRaw && "ANY".equalsIgnoreCase(rawConstraint.trim());
+        boolean hasCs = constraintsSem != null && !constraintsSem.getConfigurations().isEmpty();
+        boolean anyConstraint = state.isPseudoState() || rawAny || (!hasRaw && !hasCs);
         List<String> cfgStrs = new ArrayList<>();
         // Compute which state configurations are covered by at least one outgoing guard
         // Note: disabled transitions do not contribute to coverage
@@ -347,7 +345,16 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             boolean isDeadlock = deadlockCfgStrs.contains(s);
             boolean isCovered = coveredCfgStrs.contains(s);
             boolean canEvolve = !isDeadlock && !isEmptyConfig; // Empty config can't evolve (nothing to evolve)
-            boolean satisfiesConstraint = state.isPseudoState() || constraintStrs.isEmpty() || constraintStrs.contains(s);
+            boolean satisfiesConstraint = anyConstraint;
+            if (!satisfiesConstraint && constraintsSem != null && stateConfigs != null) {
+                // Rebuild configuration object from stateConfigs for implication check
+                for (Object cfgObj : stateConfigs) {
+                    if (cfgObj instanceof pws.editor.semantics.Configuration cfg && cfg.toString().equals(s)) {
+                        satisfiesConstraint = cfg.implies(constraintsSem);
+                        break;
+                    }
+                }
+            }
             boolean isTrueDeadlock = isDeadlock && !isCovered;
             
             // Color logic:
@@ -453,16 +460,14 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
             
             // 1) Check actual semantics vs. constraints
-            constraintStrs.clear();
-            if (state.getConstraintsSemantics() != null) {
-                for (Object cfg : state.getConstraintsSemantics().getConfigurations()) {
-                    constraintStrs.add(cfg.toString());
-                }
-            }
-            for (Object cfg : state.getStateSemantics().getConfigurations()) {
-                if (!state.isPseudoState() && !constraintStrs.contains(cfg.toString())) {
-                    allOk = false;
-                    break;
+            if (!anyConstraint && constraintsSem != null && state.getStateSemantics() != null) {
+                for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
+                    if (cfgObj instanceof pws.editor.semantics.Configuration cfg) {
+                        if (!cfg.implies(constraintsSem)) {
+                            allOk = false;
+                            break;
+                        }
+                    }
                 }
             }
             // 2) Check reactive exit-zones coverage
@@ -569,21 +574,18 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
 
             String rawConstraint = state.getRawConstraintText();
-            boolean hasUserConstraint = rawConstraint != null && !rawConstraint.isBlank();
-            boolean hasExplicitConstraint = hasUserConstraint || state.getConstraintsSemantics() != null;
-            if (hasUserConstraint) {
-                Semantics cs = state.getConstraintsSemantics();
-                if (cs != null && !cs.getConfigurations().isEmpty()) {
-                    Set<String> constraintStrs = new HashSet<>();
-                    for (Object cfg : cs.getConfigurations()) {
-                        constraintStrs.add(cfg.toString());
-                    }
-                    if (state.getStateSemantics() != null) {
-                        for (Object cfg : state.getStateSemantics().getConfigurations()) {
-                            if (!state.isPseudoState() && !constraintStrs.contains(cfg.toString())) {
-                                issues.add("Some configurations violate constraints.");
-                                break;
-                            }
+            boolean hasRaw = rawConstraint != null && !rawConstraint.isBlank();
+            boolean rawAny = hasRaw && "ANY".equalsIgnoreCase(rawConstraint.trim());
+            Semantics cs = state.getConstraintsSemantics();
+            boolean hasCs = cs != null && !cs.getConfigurations().isEmpty();
+            boolean anyConstraint = state.isPseudoState() || rawAny || (!hasRaw && !hasCs);
+            boolean hasExplicitConstraint = hasRaw || hasCs;
+            if (!anyConstraint && hasExplicitConstraint && cs != null && state.getStateSemantics() != null) {
+                for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
+                    if (cfgObj instanceof pws.editor.semantics.Configuration cfg) {
+                        if (!cfg.implies(cs)) {
+                            issues.add("Some configurations violate constraints.");
+                            break;
                         }
                     }
                 }

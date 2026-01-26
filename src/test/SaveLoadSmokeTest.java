@@ -1,3 +1,5 @@
+package test;
+
 import pws.PWSStateMachine;
 import machinery.StateMachine;
 import serializer.BinaryModelSerializer;

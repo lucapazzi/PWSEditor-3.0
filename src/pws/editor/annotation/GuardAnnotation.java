@@ -103,8 +103,6 @@ public class GuardAnnotation extends Annotation<SMProposition> {
      * Checks if this guard is problematic and needs red highlighting.
      * Problematic conditions:
      * - FALSE guard (placeholder that needs to be set)
-     * - TRUE guard on autonomous transition (fires immediately - usually unintended)
-     *   Exception: Initial transitions (from pseudo-state) are treated as triggered by a hidden startup event
      * - Orphan guard (references exit zone that no longer exists)
      */
     private void checkProblematicStatus() {
@@ -118,19 +116,6 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             isProblematic = true;
             problemReason = "FALSE guard - transition will never fire";
             return;
-        }
-        
-        // Check for TRUE guard on autonomous transition
-        // Exception: Initial transitions (from pseudo-state) are triggered by a hidden startup event,
-        // so TRUE is valid for them
-        if (content instanceof TrueProposition && associatedTransition != null && associatedTransition.isAutonomous()) {
-            machinery.StateInterface src = associatedTransition.getSource();
-            boolean isInitialTransition = (src instanceof PWSState ps && ps.isPseudoState());
-            if (!isInitialTransition) {
-                isProblematic = true;
-                problemReason = "TRUE guard on autonomous transition - fires immediately";
-                return;
-            }
         }
         
         // Check for orphan guard (guard references exit zone that doesn't exist)
@@ -194,10 +179,44 @@ public class GuardAnnotation extends Annotation<SMProposition> {
     @Override
     protected void showPopup(MouseEvent e) {
         JPopupMenu popup = new JPopupMenu();
+        boolean isTrue = content instanceof TrueProposition;
+        boolean isFalse = content instanceof FalseProposition;
+        boolean isTrueAutonomous = false;
+        pws.PWSState srcState = null;
+        if (associatedTransition != null) {
+            machinery.StateInterface src = associatedTransition.getSource();
+            if (src instanceof pws.PWSState ps) {
+                srcState = ps;
+                isTrueAutonomous = associatedTransition.isAutonomous() && !ps.isPseudoState();
+            }
+        }
+        boolean hasExitZones = srcState != null
+                && srcState.getReactiveSemantics() != null
+                && !srcState.getReactiveSemantics().isEmpty();
 
         // Treat both TRUE and FALSE as "no guard set" - need to select a guard
         // FALSE is a placeholder indicating the guard was removed and needs to be set
-        if (content instanceof TrueProposition || content instanceof FalseProposition) {
+        if (isTrue || isFalse) {
+            if (isTrueAutonomous && !hasExitZones) {
+                if (isTrue) {
+                    JMenuItem removeItem = new JMenuItem("Remove guard");
+                    removeItem.addActionListener(ev -> applyGuard(new FalseProposition()));
+                    popup.add(removeItem);
+                } else {
+                    JMenuItem trueItem = new JMenuItem("TRUE");
+                    trueItem.addActionListener(ev -> applyGuard(new TrueProposition()));
+                    popup.add(trueItem);
+                }
+                popup.show(this, e.getX(), e.getY());
+                return;
+            }
+
+            if (isTrue) {
+                JMenuItem removeItem = new JMenuItem("Remove guard");
+                removeItem.addActionListener(ev -> applyGuard(new FalseProposition()));
+                popup.add(removeItem);
+                popup.addSeparator();
+            }
             List list = assembly.getAssemblyGuards();
             List<SMProposition> guards = (List<SMProposition>) list;
 
@@ -211,8 +230,6 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 if (src instanceof PWSState p) {
                     // Check if this is a TRUE autonomous transition (not from pseudo-state)
                     // Initial transitions from pseudo-state are event-triggered with hidden startup event
-                    boolean isTrueAutonomous = associatedTransition.isAutonomous() && !p.isPseudoState();
-                    
                     if (isTrueAutonomous) {
                         // True autonomous transitions -> use reactiveSemantics ExitZone targets
                         java.util.HashSet<pws.editor.semantics.ExitZone> reactive = p.getReactiveSemantics();
@@ -245,19 +262,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                     if (candidateStrings.contains(guardOption.toString())) {
                         JMenuItem item = new JMenuItem(guardOption.toString());
                         item.addActionListener(ev -> {
-                            setContent(guardOption);
-                            updateCallback.accept(guardOption);
-                            java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
-                            if (w instanceof pws.editor.PWSEditor pe) {
-                                pe.markDocumentDirty();
-                                pe.scheduleSemanticsRecalculation();
-                            }
-                            revalidate();
-                            repaint();
-                            if (getParent() != null) {
-                                getParent().revalidate();
-                                getParent().repaint();
-                            }
+                            applyGuard(guardOption);
                         });
                         popup.add(item);
                     }
@@ -276,19 +281,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                     for (SMProposition guardOption : guards) {
                         JMenuItem item = new JMenuItem(guardOption.toString());
                         item.addActionListener(ev -> {
-                            setContent(guardOption);
-                            updateCallback.accept(guardOption);
-                            java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
-                            if (w instanceof pws.editor.PWSEditor pe) {
-                                pe.markDocumentDirty();
-                                pe.scheduleSemanticsRecalculation();
-                            }
-                            revalidate();
-                            repaint();
-                            if (getParent() != null) {
-                                getParent().revalidate();
-                                getParent().repaint();
-                            }
+                            applyGuard(guardOption);
                         });
                         popup.add(item);
                     }
@@ -318,14 +311,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                     defaultGuard = new FalseProposition();
                 }
                 
-                setContent(defaultGuard);
-                updateCallback.accept(defaultGuard);
-                java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
-                if (w instanceof pws.editor.PWSEditor pe) {
-                    pe.markDocumentDirty();
-                    pe.scheduleSemanticsRecalculation();
-                }
-                repaint();
+                applyGuard(defaultGuard);
             });
             popup.add(removeItem);
             
@@ -372,19 +358,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                     
                     JMenuItem item = new JMenuItem("Change to: " + guardStr);
                     item.addActionListener(ev -> {
-                        setContent(guardOption);
-                        updateCallback.accept(guardOption);
-                        java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
-                        if (w instanceof pws.editor.PWSEditor pe) {
-                            pe.markDocumentDirty();
-                            pe.scheduleSemanticsRecalculation();
-                        }
-                        revalidate();
-                        repaint();
-                        if (getParent() != null) {
-                            getParent().revalidate();
-                            getParent().repaint();
-                        }
+                        applyGuard(guardOption);
                     });
                     popup.add(item);
                     hasOptions = true;
@@ -413,19 +387,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                     item.addActionListener(ev -> {
                         // Create AND proposition with existing guard and new proposition
                         SMProposition newGuard = new AndProposition(content, guardOption);
-                        setContent(newGuard);
-                        updateCallback.accept(newGuard);
-                        java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
-                        if (w instanceof pws.editor.PWSEditor pe) {
-                            pe.markDocumentDirty();
-                            pe.scheduleSemanticsRecalculation();
-                        }
-                        revalidate();
-                        repaint();
-                        if (getParent() != null) {
-                            getParent().revalidate();
-                            getParent().repaint();
-                        }
+                        applyGuard(newGuard);
                     });
                     popup.add(item);
                     hasExtendOptions = true;
@@ -439,6 +401,22 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             }
         }
         popup.show(this, e.getX(), e.getY());
+    }
+
+    private void applyGuard(SMProposition guard) {
+        setContent(guard);
+        updateCallback.accept(guard);
+        java.awt.Window w = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
+        if (w instanceof pws.editor.PWSEditor pe) {
+            pe.markDocumentDirty();
+            pe.scheduleSemanticsRecalculation();
+        }
+        revalidate();
+        repaint();
+        if (getParent() != null) {
+            getParent().revalidate();
+            getParent().repaint();
+        }
     }
     
     /**

@@ -53,6 +53,7 @@ public class ControllerReportDialog extends JDialog {
     private int exitZoneProblems = 0;
     private int constraintProblems = 0;
     private int deadlockProblems = 0;
+    private int unreachableProblems = 0;
     
     public ControllerReportDialog(Frame owner, PWSStateMachine stateMachine) {
         super(owner, "Controller Report", true);
@@ -159,13 +160,15 @@ public class ControllerReportDialog extends JDialog {
         Map<PWSState, List<ExitZoneProblem>> exitZoneProblemMap = collectExitZoneProblems();
         Map<PWSState, List<String>> constraintProblemMap = collectConstraintProblems();
         Map<PWSState, Set<Configuration>> deadlockMap = collectDeadlockProblems();
+        List<PWSState> unreachableStates = collectUnreachableStates();
         
         guardProblems = guardProblemsList.size();
         actionProblems = actionProblemsList.size();
         exitZoneProblems = exitZoneProblemMap.values().stream().mapToInt(List::size).sum();
         constraintProblems = constraintProblemMap.values().stream().mapToInt(List::size).sum();
         deadlockProblems = deadlockMap.values().stream().mapToInt(Set::size).sum();
-        totalProblems = guardProblems + actionProblems + exitZoneProblems + constraintProblems + deadlockProblems;
+        unreachableProblems = unreachableStates.size();
+        totalProblems = guardProblems + actionProblems + exitZoneProblems + constraintProblems + deadlockProblems + unreachableProblems;
         
         // Summary section
         appendSummarySection();
@@ -189,6 +192,10 @@ public class ControllerReportDialog extends JDialog {
         
         if (deadlockProblems > 0) {
             appendDeadlockProblemsSection(deadlockMap);
+        }
+        
+        if (unreachableProblems > 0) {
+            appendUnreachableStatesSection(unreachableStates);
         }
         
         // LTL section placeholder
@@ -282,6 +289,10 @@ public class ControllerReportDialog extends JDialog {
                 appendText("    ⚠ ", STYLE_ORANGE);
                 appendText("True deadlock configurations: " + deadlockProblems + "\n", STYLE_NORMAL);
             }
+            if (unreachableProblems > 0) {
+                appendText("    ✗ ", STYLE_RED);
+                appendText("Unreachable states: " + unreachableProblems + "\n", STYLE_NORMAL);
+            }
             appendText("\n", STYLE_NORMAL);
         }
     }
@@ -325,18 +336,6 @@ public class ControllerReportDialog extends JDialog {
                         "FALSE Guard (Placeholder)",
                         "This transition will never fire. Set a meaningful guard condition."));
                 continue;
-            }
-            
-            // Check TRUE on autonomous (but not initial transitions - they have a hidden startup trigger)
-            if (guard instanceof TrueProposition && pt.isAutonomous()) {
-                // Initial transitions (from pseudo-state) are treated as triggered by a hidden startup event
-                boolean isInitialTransition = (src instanceof PWSState ps && ps.isPseudoState());
-                if (!isInitialTransition) {
-                    problems.add(new GuardProblem(pt, srcName, tgtName, guardStr,
-                            "TRUE on Autonomous",
-                            "Fires immediately when entering source state. Add a trigger event or specific guard."));
-                    continue;
-                }
             }
             
             // Check orphan guard (guard references exit zone that doesn't exist)
@@ -597,17 +596,16 @@ public class ControllerReportDialog extends JDialog {
             String rawConstraint = ps.getRawConstraintText();
             
             if (ss == null || cs == null) continue;
-            if (rawConstraint == null || rawConstraint.isBlank()) continue;
+            boolean hasRaw = rawConstraint != null && !rawConstraint.isBlank();
+            boolean rawAny = hasRaw && "ANY".equalsIgnoreCase(rawConstraint.trim());
+            boolean hasCs = cs != null && !cs.getConfigurations().isEmpty();
+            boolean anyConstraint = ps.isPseudoState() || rawAny || (!hasRaw && !hasCs);
+            if (anyConstraint) continue;
             
             // Check if state semantics violates constraints
-            Set<String> constraintStrs = new HashSet<>();
-            for (Configuration cfg : cs.getConfigurations()) {
-                constraintStrs.add(cfg.toString());
-            }
-            
             List<String> violations = new ArrayList<>();
             for (Configuration cfg : ss.getConfigurations()) {
-                if (!constraintStrs.contains(cfg.toString())) {
+                if (!cfg.implies(cs)) {
                     violations.add(cfg.toString());
                 }
             }
@@ -721,6 +719,38 @@ public class ControllerReportDialog extends JDialog {
         appendText("Add transitions that can fire from these configurations, or verify deadlock is intended.\n\n", STYLE_GRAY);
     }
     
+    // ==================== Unreachable States ====================
+    
+    private List<PWSState> collectUnreachableStates() {
+        List<PWSState> unreachable = new ArrayList<>();
+        for (StateInterface si : stateMachine.getStates()) {
+            if (!(si instanceof PWSState ps) || ps.isPseudoState()) continue;
+            Semantics ss = ps.getStateSemantics();
+            if (ss == null || ss.getConfigurations().isEmpty()) {
+                unreachable.add(ps);
+            }
+        }
+        return unreachable;
+    }
+    
+    private void appendUnreachableStatesSection(List<PWSState> states) {
+        appendText("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", STYLE_GRAY);
+        appendText("UNREACHABLE STATES\n", STYLE_SECTION);
+        appendText("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n", STYLE_GRAY);
+        
+        appendText("  These states have no computed configurations and cannot be reached.\n\n", STYLE_NORMAL);
+        
+        for (PWSState ps : states) {
+            appendText("  State: ", STYLE_BOLD);
+            appendText(ps.getName() + "\n", STYLE_CODE);
+        }
+        appendText("\n", STYLE_NORMAL);
+        
+        appendText("  ", STYLE_NORMAL);
+        appendText("Fix: ", STYLE_BOLD);
+        appendText("Check incoming transitions and guards, or remove the unreachable state.\n\n", STYLE_GRAY);
+    }
+    
     // ==================== LTL Placeholder ====================
     
     private void appendLTLPlaceholderSection() {
@@ -746,7 +776,8 @@ public class ControllerReportDialog extends JDialog {
             appendText("    All guards are properly configured.\n", STYLE_GREEN);
             appendText("    All exit zones are covered by transitions.\n", STYLE_GREEN);
             appendText("    All configurations satisfy constraints.\n", STYLE_GREEN);
-            appendText("    No true deadlock configurations.\n\n", STYLE_GREEN);
+            appendText("    No true deadlock configurations.\n", STYLE_GREEN);
+            appendText("    No unreachable states.\n\n", STYLE_GREEN);
         } else {
             appendText("  ⚠ CONTROLLER HAS " + totalProblems + " ISSUE" + (totalProblems > 1 ? "S" : "") + "\n\n", STYLE_RED);
             appendText("    Review the sections above and address each issue.\n", STYLE_NORMAL);

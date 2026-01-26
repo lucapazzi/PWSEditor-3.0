@@ -250,6 +250,13 @@ public class PWSStateMachine extends StateMachine {
         PWSState src = (PWSState) t.getSource();
         // Get the current full semantics of the source state
         Semantics stateSem = src.getStateSemantics();
+        if (t.getGuardProposition() instanceof TrueProposition) {
+            Semantics result = (stateSem == null) ? Semantics.bottom(assembly.getAssemblyId()) : stateSem.clone();
+            for (Action a : t.getActionList()) {
+                result = result.transformByMachineEvent(a.getMachineId(), a.getEvent(), assembly);
+            }
+            return result;
+        }
         // Cast the transition guard to a BasicStateProposition to use as the reactive trigger
         // Determine the guard proposition for this transition (could be BasicStateProposition or TrueProposition)
         SMProposition guardProp = t.getGuardProposition();
@@ -285,6 +292,13 @@ public class PWSStateMachine extends StateMachine {
      * @return the transition’s contribution
      */
     public Semantics computeReactiveTransitionSemantics(PWSTransition t, Semantics base) {
+        if (t.getGuardProposition() instanceof TrueProposition) {
+            Semantics result = (base == null) ? Semantics.bottom(assembly.getAssemblyId()) : base.clone();
+            for (Action a : t.getActionList()) {
+                result = result.transformByMachineEvent(a.getMachineId(), a.getEvent(), assembly);
+            }
+            return result;
+        }
         Semantics result = Semantics.bottom(assembly.getAssemblyId());
         PWSState src = (PWSState) t.getSource();
         for (ExitZone ez : src.getReactiveSemantics()) {
