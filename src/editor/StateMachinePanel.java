@@ -21,6 +21,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected StateMachine stateMachine;
     protected StateInterface selectedState = null;
     protected Point dragOffset = null;
+    // Canvas drag state (panning)
+    protected boolean canvasDragActive = false;
+    protected Point canvasDragLast = null;
+    protected int canvasDragAccumX = 0;
+    protected int canvasDragAccumY = 0;
     private StateMachineEditor owningEditor = null;
 
     // Link mode fields
@@ -421,12 +426,10 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     }
 
     /**
-     * Shift every state position and transition control point by the given delta.
+     * Shift every state position and transition control point by the given pixel delta.
      */
-    private void translateAllStates(int dx, int dy) {
-        // Treat dx/dy as grid steps; convert to pixels using current grid size
-        int px = dx * gridSize;
-        int py = dy * gridSize;
+    protected void translateAllStatesByPixels(int px, int py) {
+        if (px == 0 && py == 0) return;
 
         for (StateInterface s : stateMachine.getStates()) {
             State st = (State) s;
@@ -475,7 +478,42 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 }
             }
         }
+
+        for (DraggableTriggerLabel label : triggerLabels.values()) {
+            Rectangle r = label.getBounds();
+            label.setBounds(r.x + px, r.y + py, r.width, r.height);
+        }
+
         repaint();
+    }
+
+    /**
+     * Shift every state position and transition control point by the given delta in grid steps.
+     */
+    private void translateAllStates(int dx, int dy) {
+        // Treat dx/dy as grid steps; convert to pixels using current grid size
+        translateAllStatesByPixels(dx * gridSize, dy * gridSize);
+    }
+
+    protected void panCanvasTo(Point newPoint) {
+        if (canvasDragLast == null) return;
+        int dx = newPoint.x - canvasDragLast.x;
+        int dy = newPoint.y - canvasDragLast.y;
+
+        if (snapToGrid && gridSize > 0) {
+            canvasDragAccumX += dx;
+            canvasDragAccumY += dy;
+            int moveX = (canvasDragAccumX / gridSize) * gridSize;
+            int moveY = (canvasDragAccumY / gridSize) * gridSize;
+            if (moveX != 0 || moveY != 0) {
+                translateAllStatesByPixels(moveX, moveY);
+                canvasDragAccumX -= moveX;
+                canvasDragAccumY -= moveY;
+            }
+        } else {
+            translateAllStatesByPixels(dx, dy);
+        }
+        canvasDragLast = newPoint;
     }
 
     // --------------- MOUSE EVENT HANDLING ---------------
@@ -516,8 +554,16 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             selectedState = state;
             Point posState = ((State) state).getPosition();
             dragOffset = new Point(p.x - posState.x, p.y - posState.y);
+            canvasDragActive = false;
+            canvasDragLast = null;
         } else {
             selectedState = null;
+            if (SwingUtilities.isLeftMouseButton(e)) {
+                canvasDragActive = true;
+                canvasDragLast = p;
+                canvasDragAccumX = 0;
+                canvasDragAccumY = 0;
+            }
         }
         repaint();
     }
@@ -553,11 +599,19 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         controlDragOffset = null;
         selectedState = null;
         dragOffset = null;
+        canvasDragActive = false;
+        canvasDragLast = null;
+        canvasDragAccumX = 0;
+        canvasDragAccumY = 0;
         repaint();
     }
 
     @Override
     public void mouseDragged(MouseEvent e) {
+        if (canvasDragActive && canvasDragLast != null) {
+            panCanvasTo(e.getPoint());
+            return;
+        }
         if (selectedTransitionForControl != null && controlDragOffset != null) {
             Point newPoint = e.getPoint();
             Point newControlPoint = new Point(newPoint.x - controlDragOffset.x, newPoint.y - controlDragOffset.y);

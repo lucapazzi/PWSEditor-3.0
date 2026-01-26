@@ -606,14 +606,26 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             selectedState = state;
             Point pos = ((machinery.State) state).getPosition();
             dragOffset = new Point(p.x - pos.x, p.y - pos.y);
+            canvasDragActive = false;
+            canvasDragLast = null;
         } else {
             selectedState = null;
+            if (SwingUtilities.isLeftMouseButton(e)) {
+                canvasDragActive = true;
+                canvasDragLast = p;
+                canvasDragAccumX = 0;
+                canvasDragAccumY = 0;
+            }
         }
         repaint();
     }
 
     @Override
     public void mouseDragged(MouseEvent e) {
+        if (canvasDragActive && canvasDragLast != null) {
+            panCanvasTo(e.getPoint());
+            return;
+        }
         if (selectedSelfLoopTransition != null && (draggingSelfLoopStart || draggingSelfLoopEnd)) {
             // Dragging self-loop endpoint
             PWSTransition trans = (PWSTransition) selectedSelfLoopTransition;
@@ -707,6 +719,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         selectedSelfLoopTransition = null;
         draggingSelfLoopStart = false;
         draggingSelfLoopEnd = false;
+        canvasDragActive = false;
+        canvasDragLast = null;
+        canvasDragAccumX = 0;
+        canvasDragAccumY = 0;
         repaint();
         java.awt.Window w = SwingUtilities.getWindowAncestor(this);
         if (w instanceof PWSEditor pe) pe.markDocumentDirty();
