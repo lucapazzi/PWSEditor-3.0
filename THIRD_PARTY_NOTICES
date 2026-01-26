@@ -28,3 +28,8 @@ Copyright 1991-2015 Unicode, Inc.
 
 Includes parts of TwelveMonkeys ImageIO
 Copyright 2008-2016 Harald Kuhr
+
+---
+JSON serialization
+The project uses an in-house JSON reader/writer (`src/serializer/JsonIO.java`).
+No third-party JSON library is bundled, so there is no additional JSON license.
