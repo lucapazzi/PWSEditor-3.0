@@ -394,16 +394,35 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         g2d.setFont(getFont().deriveFont(Font.ITALIC, 9f));
         g2d.setColor(new Color(150, 150, 150));
         g2d.drawString("exit zones", padding, y);
+        // Legend line for exit zone colors (inline with dashboard)
+        y += smallLineHeight;
+        int legendX = padding;
+        g2d.setColor(new Color(150, 150, 150));
+        g2d.drawString("legend: ", legendX, y);
+        legendX += fmSmall.stringWidth("legend: ");
+        g2d.setColor(new Color(120, 120, 120));
+        g2d.drawString("internal", legendX, y);
+        legendX += fmSmall.stringWidth("internal");
+        g2d.setColor(new Color(150, 150, 150));
+        g2d.drawString(" / ", legendX, y);
+        legendX += fmSmall.stringWidth(" / ");
+        g2d.setColor(Color.GREEN.darker());
+        g2d.drawString("covered", legendX, y);
+        legendX += fmSmall.stringWidth("covered");
+        g2d.setColor(new Color(150, 150, 150));
+        g2d.drawString(" / ", legendX, y);
+        legendX += fmSmall.stringWidth(" / ");
+        g2d.setColor(new Color(180, 0, 0));
+        g2d.drawString("uncovered", legendX, y);
         g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
 
         // 3) Reactive exit zones: centered, comma-separated, colored by origin and coverage
         y += lineHeight;
         try {
-            PWSStateMachine sm = ((PWSStateMachinePanel) getParent()).getStateMachine();
             // Determine covered guards for coloring
             // Note: disabled transitions do not contribute to coverage
             Set<smalgebra.BasicStateProposition> covered = new HashSet<>();
-            for (machinery.TransitionInterface ti : sm.getTransitions()) {
+            for (machinery.TransitionInterface ti : pwsMachine.getTransitions()) {
                 if (ti instanceof pws.PWSTransition) {
                     pws.PWSTransition pt = (pws.PWSTransition) ti;
                     if (pt.isEnabled() && !pt.isTriggerable() && pt.getSource() == state
@@ -415,6 +434,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             // Get CS-only and SS-only sets for later detailed analysis (used in extended dashboard)
             Set<ExitZone> csOnly = state.getCsOnlyExitZones();
             Set<ExitZone> ssOnly = state.getSsOnlyExitZones();
+            Semantics ss = state.getStateSemantics();
             // Prepare list of exit-zones
             List<ExitZone> zones = new ArrayList<>(state.getReactiveSemantics());
             // Compute total width of comma-separated exit-zone list
@@ -436,7 +456,14 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 ExitZone ez = zones.get(i);
                 String txt = ez.toString();
                 boolean isCovered = covered.contains(ez.getTarget());
-                Color ezColor = isCovered ? Color.GREEN.darker() : new Color(180, 0, 0);
+                boolean isInternal = false;
+                if (ss != null && asm != null && ez.getTarget() != null) {
+                    Semantics targetAndSem = ez.getTarget().toSemantics(asm).AND(ss);
+                    isInternal = !targetAndSem.ISEMPTY();
+                }
+                Color ezColor = isInternal
+                        ? new Color(120, 120, 120)
+                        : (isCovered ? Color.GREEN.darker() : new Color(180, 0, 0));
                 g2d.setColor(ezColor);
                 g2d.setFont(baseFont);
                 g2d.drawString(txt, exitX, y);
@@ -472,8 +499,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
             // 2) Check reactive exit-zones coverage
             if (allOk) {
+                Semantics ssCheck = state.getStateSemantics();
+                Assembly asmCheck = asm;
                 for (ExitZone ez : state.getReactiveSemantics()) {
-                    if (!covered.contains(ez.getTarget())) {
+                    boolean isInternal = false;
+                    if (ssCheck != null && asmCheck != null && ez.getTarget() != null) {
+                        Semantics targetAndSem = ez.getTarget().toSemantics(asmCheck).AND(ssCheck);
+                        isInternal = !targetAndSem.ISEMPTY();
+                    }
+                    if (!isInternal && !covered.contains(ez.getTarget())) {
                         allOk = false;
                         break;
                     }
@@ -592,8 +626,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
 
             if (hasExplicitConstraint && state.getReactiveSemantics() != null) {
+                Semantics ssCheck = state.getStateSemantics();
+                Assembly asmCheck = sm.getAssembly();
                 for (ExitZone ez : state.getReactiveSemantics()) {
-                    if (!coveredGuards.contains(ez.getTarget())) {
+                    boolean isInternal = false;
+                    if (ssCheck != null && asmCheck != null && ez.getTarget() != null) {
+                        Semantics targetAndSem = ez.getTarget().toSemantics(asmCheck).AND(ssCheck);
+                        isInternal = !targetAndSem.ISEMPTY();
+                    }
+                    if (!isInternal && !coveredGuards.contains(ez.getTarget())) {
                         issues.add("Some exit zones are not covered by autonomous transitions.");
                         break;
                     }
@@ -676,6 +717,8 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
         // Account for section labels width
         maxWidth = Math.max(maxWidth, fmSmall.stringWidth("exit zones") + 20);
+        // Account for exit zones legend width
+        maxWidth = Math.max(maxWidth, fmSmall.stringWidth("legend: internal / covered / uncovered") + 20);
         
         // Match the exact y-positions used in paintComponent:
         // padding=6, then for each section: smallLineHeight + lineHeight + separator(~4)
@@ -689,7 +732,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         int totalHeight = padding +
                           smallLineHeight + lineHeight +  // constraints section
                           4 + smallLineHeight + lineHeight +  // configs section (with separator)
-                          4 + smallLineHeight + lineHeight +  // exit zones section (with separator)
+                          4 + smallLineHeight + smallLineHeight + lineHeight +  // exit zones section (label + legend + content)
                           padding;
         
         // Add padding for borders

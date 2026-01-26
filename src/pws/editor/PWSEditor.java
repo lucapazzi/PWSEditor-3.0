@@ -336,6 +336,8 @@ public class PWSEditor extends JFrame {
                         } catch (Exception ignored) {}
                     });
                 }
+                // Recompute semantics since assembly changes affect configurations/exit zones
+                SwingUtilities.invokeLater(() -> scheduleSemanticsRecalculation());
             }
 
             @Override

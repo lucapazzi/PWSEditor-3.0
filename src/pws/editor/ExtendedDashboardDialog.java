@@ -331,16 +331,34 @@ public class ExtendedDashboardDialog extends JDialog {
             }
         }
 
+        Semantics ss = state.getStateSemantics();
+
         if (reactiveZones == null || reactiveZones.isEmpty()) {
             appendText("  No exit zones detected for this state.\n", STYLE_GRAY);
-            appendText("  (This is normal if constraints don't restrict component machine states)\n\n", STYLE_GRAY);
+            appendText("  (No enabled autonomous component transitions from current semantics.)\n\n", STYLE_GRAY);
             return;
         }
 
-        appendText("  Exit zones (reactive semantics):\n\n", STYLE_GRAY);
+        appendText("  Exit zones (enabled autonomous transitions):\n", STYLE_GRAY);
+        appendText("  Legend: ", STYLE_GRAY);
+        appendText("GRAY", STYLE_GRAY);
+        appendText(" = internal (target already in semantics), ", STYLE_GRAY);
+        appendText("GREEN", STYLE_GREEN);
+        appendText(" = covered (handled by PWS transition), ", STYLE_GRAY);
+        appendText("RED", STYLE_RED);
+        appendText(" = uncovered (needs PWS transition)\n\n", STYLE_GRAY);
+
+        int internalCount = 0;
+        int coveredCount = 0;
+        int uncoveredCount = 0;
 
         for (ExitZone ez : reactiveZones) {
-            boolean isCovered = coveredGuards.contains(ez.getTarget());
+            boolean isInternal = false;
+            if (ss != null && assembly != null && ez.getTarget() != null) {
+                Semantics targetAndSem = ez.getTarget().toSemantics(assembly).AND(ss);
+                isInternal = !targetAndSem.ISEMPTY();
+            }
+            boolean isCovered = !isInternal && coveredGuards.contains(ez.getTarget());
             boolean isCsOnly = csOnlyZones != null && csOnlyZones.contains(ez);
             boolean isSsOnly = ssOnlyZones != null && ssOnlyZones.contains(ez);
             
@@ -355,13 +373,31 @@ public class ExtendedDashboardDialog extends JDialog {
             }
 
             appendText("    Exit Zone: ", STYLE_BOLD);
-            appendText(ez.toString() + "\n", isCovered ? STYLE_GREEN : STYLE_RED);
+            if (isInternal) {
+                appendText(ez.toString() + "\n", STYLE_GRAY);
+            } else {
+                appendText(ez.toString() + "\n", isCovered ? STYLE_GREEN : STYLE_RED);
+            }
             
             appendText("      Machine:     ", STYLE_GRAY);
             appendText(ez.getStateMachineId() + "\n", STYLE_NORMAL);
             
             appendText("      Transition:  ", STYLE_GRAY);
             appendText(ez.getSource().getStateName() + " → " + ez.getTarget().getStateName() + "\n", STYLE_NORMAL);
+
+            appendText("      Source cfg:  ", STYLE_GRAY);
+            if (ez.getSource() != null) {
+                appendText("(" + ez.getSource().toString() + ")\n", STYLE_CODE);
+            } else {
+                appendText("(unknown)\n", STYLE_CODE);
+            }
+
+            appendText("      Target cfg:  ", STYLE_GRAY);
+            if (ez.getTarget() != null) {
+                appendText("(" + ez.getTarget().toString() + ")\n", STYLE_CODE);
+            } else {
+                appendText("(unknown)\n", STYLE_CODE);
+            }
             
             appendText("      Origin:      ", STYLE_GRAY);
             if (isCsOnly) {
@@ -372,30 +408,33 @@ public class ExtendedDashboardDialog extends JDialog {
                 appendText(origin + "\n", STYLE_NORMAL);
             }
             
-            appendText("      Coverage:    ", STYLE_GRAY);
-            if (isCovered) {
-                appendText("✓ COVERED by autonomous PWS transition\n", STYLE_GREEN);
+            appendText("      Status:      ", STYLE_GRAY);
+            if (isInternal) {
+                appendText("internal (target already in semantics)\n", STYLE_GRAY);
+            } else if (isCovered) {
+                appendText("covered by autonomous PWS transition\n", STYLE_GREEN);
             } else {
-                appendText("✗ NOT COVERED - needs PWS transition with guard [" + 
+                appendText("uncovered — needs PWS transition with guard [" +
                           ez.getTarget().toString() + "]\n", STYLE_RED);
             }
             appendText("\n", STYLE_NORMAL);
+
+            if (isInternal) {
+                internalCount++;
+            } else if (isCovered) {
+                coveredCount++;
+            } else {
+                uncoveredCount++;
+            }
         }
 
         // Summary
-        long coveredCount = reactiveZones.stream()
-            .filter(ez -> coveredGuards.contains(ez.getTarget()))
-            .count();
-        long uncoveredCount = reactiveZones.size() - coveredCount;
-        
         appendText("  Summary: ", STYLE_BOLD);
+        appendText(internalCount + " internal", STYLE_GRAY);
+        appendText(", ", STYLE_NORMAL);
         appendText(coveredCount + " covered", STYLE_GREEN);
         appendText(", ", STYLE_NORMAL);
-        if (uncoveredCount > 0) {
-            appendText(uncoveredCount + " uncovered", STYLE_RED);
-        } else {
-            appendText("0 uncovered", STYLE_GREEN);
-        }
+        appendText(uncoveredCount + " uncovered", uncoveredCount > 0 ? STYLE_RED : STYLE_GREEN);
         appendText(" (total: " + reactiveZones.size() + ")\n\n", STYLE_GRAY);
     }
 

@@ -521,6 +521,7 @@ public class ControllerReportDialog extends JDialog {
             
             HashSet<ExitZone> reactive = ps.getReactiveSemantics();
             if (reactive == null || reactive.isEmpty()) continue;
+            Semantics ss = ps.getStateSemantics();
             
             // Collect guards from autonomous transitions leaving this state
             Set<String> coveredGuards = new HashSet<>();
@@ -535,6 +536,14 @@ public class ControllerReportDialog extends JDialog {
             // Check for uncovered exit zones
             List<ExitZoneProblem> stateProblems = new ArrayList<>();
             for (ExitZone ez : reactive) {
+                boolean isInternal = false;
+                if (ss != null && assembly != null && ez.getTarget() != null) {
+                    Semantics targetAndSem = ez.getTarget().toSemantics(assembly).AND(ss);
+                    isInternal = !targetAndSem.ISEMPTY();
+                }
+                if (isInternal) {
+                    continue;
+                }
                 if (ez.getTarget() != null && !coveredGuards.contains(ez.getTarget().toString())) {
                     String desc = "Exit zone '" + ez.getTarget() + "' has no covering autonomous transition.";
                     stateProblems.add(new ExitZoneProblem(ez, desc));

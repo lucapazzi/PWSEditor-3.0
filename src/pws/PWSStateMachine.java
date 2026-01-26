@@ -340,11 +340,10 @@ public class PWSStateMachine extends StateMachine {
      *
      * <p>Concretely, for each autonomous transition:</p>
      * <ol>
-     *   <li>The transition’s <i>source state</i> must be included in the provided base semantics, and</li>
-     *   <li>The transition’s <i>target state</i> must <em>not</em> yet be part of those semantics.</li>
+     *   <li>The transition’s <i>source state</i> must be included in the provided base semantics.</li>
      * </ol>
-     * <p>If both conditions hold, an ExitZone is recorded indicating that firing
-     * this transition would add the target state into the semantics.</p>
+     * <p>If the source condition holds, an ExitZone is recorded for the autonomous transition.
+     * The target may already be part of the semantics (internal evolution) or may extend it.</p>
      *
      * @param baseSemantics the current fixed-point semantics of a source state
      * @return a set of ExitZone objects indicating configurations that immediately trigger
@@ -368,22 +367,18 @@ public class PWSStateMachine extends StateMachine {
                                 State targetState = (State) transition.getTarget();
                                 BasicStateProposition bs_source = new BasicStateProposition(machineId, sourceState.getName());
                                 BasicStateProposition bs_target = null;
-                                // una trans. autononome da luogo a una EZ se e solo se:
-                                // - la sorgente della bsp ha un'intersezione non nulla con la sem. dello stato
-                                // - il target della bsp ha un'intersezione nulla con la sem. dello stato
+                                // An autonomous transition yields an exit-zone when its source
+                                // intersects the current semantics (target may or may not be included).
                                 Semantics sourceAndSem = bs_source.toSemantics( assembly ).AND(baseSemantics);
-                                if( !sourceAndSem.ISEMPTY()) {
+                                if (!sourceAndSem.ISEMPTY()) {
                                     bs_target = new BasicStateProposition(machineId, targetState.getName());
-                                    Semantics targetAndSem = bs_target.toSemantics( assembly ).AND(baseSemantics);
-                                    if( targetAndSem.ISEMPTY()) {
-                                        ExitZone ez = new ExitZone(
-                                                machineId,
-                                                transition,
-                                                bs_source,
-                                                bs_target
-                                        );
-                                        reactiveSem.add(ez);
-                                    }
+                                    ExitZone ez = new ExitZone(
+                                            machineId,
+                                            transition,
+                                            bs_source,
+                                            bs_target
+                                    );
+                                    reactiveSem.add(ez);
                                 }
                             }
                         }
