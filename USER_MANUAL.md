@@ -203,7 +203,6 @@ Example: A transition with guard `[m1.Failed ∨ m2.Error]` (no trigger) fires a
 - When the controller starts, the system "emits" this hidden event, triggering the initial transition(s)
 - Multiple initial transitions can have different guards to select the appropriate starting state
 - Initial transitions **accept TRUE as a valid guard** — this simply means "fire at startup without additional conditions"
-- They do NOT trigger the "TRUE on autonomous" warning because they ARE triggered (by `_init`)
 
 **Key insight**: Initial transitions behave like triggered transitions, not autonomous transitions:
 - Autonomous transitions monitor exit zones and fire when component machines reach certain states
@@ -224,6 +223,10 @@ The guard expression determines when a transition can fire. PWSEditor provides v
 - **Initial transitions** (from pseudo-state): Default to **TRUE** guard — fire at system startup
 - **Autonomous transitions** (no event, not from pseudo-state): Default to **FALSE** guard — this is a **placeholder** indicating you need to specify a meaningful guard
 
+When editing an autonomous transition guard:
+- If the source state has **exit zones**, the guard menu lists those exit-zone propositions.
+- If the source state has **no exit zones**, the menu offers **TRUE** (fire immediately). Use **Remove guard** to go back to **FALSE** (never fires).
+
 #### Problematic Guards (Red Highlighting)
 
 Guards that appear in **red** indicate potential issues:
@@ -231,14 +234,14 @@ Guards that appear in **red** indicate potential issues:
 | Guard Condition | Problem | Explanation |
 |-----------------|---------|-------------|
 | **FALSE** on any transition | Placeholder | The transition can never fire. Edit the guard to specify a real condition. |
-| **TRUE** on autonomous transition | Immediate firing | With no event required and guard always true, this transition fires immediately upon entering the source state, which is usually unintended. **Exception**: Initial transitions (from pseudo-state) are NOT flagged — they have a hidden startup trigger. |
 | **Orphan guard** | Exit zone no longer exists | The guard references an exit zone that is no longer present in the state’s reactive semantics. |
 
 **Tooltips**: Hover over a red guard to see an explanation of the specific problem.
 
+**Note:** A **TRUE** guard on an autonomous transition is **allowed** and shown in black. It means the transition fires immediately upon entering the source state, and the destination inherits the source state's full semantics.
+
 **How to Fix:**
 - **FALSE guards**: Replace with a meaningful condition like `m1.Active` or `m1.Failed ∨ m2.Error`
-- **TRUE on autonomous**: Either add a trigger event (making it triggered), or change the guard to a specific condition
 - **Orphan guards**: Update the guard to reference exit zones that still exist in the state’s reactive semantics
 
 ### Autonomous Transitions and Exit Zones
@@ -416,7 +419,7 @@ PWSEditor provides a visual Constraints Editor that makes it easy to build const
 
 > **Tip**: When the constraints editor is empty (effectively `ANY`), the dashboard shows "ANY" in the constraints line. Once you add a constraint, the explicit text replaces ANY, and deleting all constraints resumes the default ANY display.
 
-> **New behavior:** The implicit `ANY` constraint is now treated like any other constraint. When no text is entered, the editor records `ANY` and the extended dashboard/controller report skip exit-zone and true-deadlock warnings, because "allow everything" is considered a deliberate design choice. You only start seeing red warnings once you specify a constraint that forbids the problematic configuration.
+> **New behavior:** When the editor is empty, the constraint is recorded as an explicit `ANY` (Semantics.top). This means **all configurations satisfy constraints**, but exit-zone and deadlock analyses still run as usual. If you later add or delete constraints, the dashboards and reports update immediately.
 
 #### The Visual Constraints Editor
 
@@ -956,13 +959,13 @@ Lists transitions with problematic guard conditions:
 | Problem Type | Description | Visual Indicator |
 |--------------|-------------|------------------|
 | **FALSE Guard** | Placeholder that needs to be set — transition will never fire | Red guard label `[FALSE]` |
-| **TRUE on Autonomous** | Fires immediately upon entering source state | Red guard label `[TRUE]` |
 | **Orphan Guard** | References an exit zone that no longer exists | Red guard label |
 
 **How to Fix:**
 - **FALSE**: Edit the guard to specify a meaningful condition (e.g., `m1.Failed`)
-- **TRUE on Autonomous**: Either add a trigger event or change to a specific guard
 - **Orphan**: Update the guard to reference exit zones that still exist
+
+**Note:** A **TRUE** guard on an autonomous transition is allowed and is **not** reported as a problem. It means the transition fires immediately upon entering the source state.
 
 #### Action Problems (Orphan Actions)
 Lists actions that reference events not reachable from the source state's semantics or constraints. An action is "orphan" when:
@@ -985,6 +988,11 @@ Lists configurations that appear in computed state semantics but violate user-de
 
 **How to Fix:** Review and adjust either the constraints or the transition structure.
 
+#### Unreachable States
+Lists states with **no computed configurations** (the state is unreachable). These states show a red dashboard with the message **"State is unreachable (no configurations)"**.
+
+**How to Fix:** Add or adjust incoming transitions/guards so the state can be reached, or remove the unused state.
+
 #### True Deadlock Configurations
 Lists configurations where the system can get stuck — no autonomous evolution and **not covered** by any outgoing transition. These are warnings that may indicate design issues.
 
@@ -999,12 +1007,13 @@ Shows a final assessment: either **"CONTROLLER IS WELL-FORMED"** (no issues) or 
 ### Report and Diagram Correlation
 
 The report correlates with visual indicators on the diagram:
-- **Red guard labels**: Problematic guards (FALSE, TRUE on autonomous, orphan)
+- **Red guard labels**: Problematic guards (FALSE, orphan)
 - **Red action labels**: Orphan actions (not reachable from source state semantics)
 - **Red text in dashboards**: Constraint violations
 - **Red underline in dashboards**: True deadlocks (internally stuck and not covered)
 - **True deadlocks also appear in the controller report’s “True deadlock configurations” section, even when no explicit constraint is specified.**
 - **Uncovered exit zones**: No visual indicator on transitions, but shown in state dashboards
+- **Unreachable states**: Red dashboard with "State is unreachable (no configurations)"
 
 Use the report to get a comprehensive overview, then use the diagram to locate and fix individual issues.
 
