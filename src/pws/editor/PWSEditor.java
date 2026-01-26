@@ -8,7 +8,6 @@ import editor.StateMachinePanel;
 import machinery.StateMachine;
 import pws.PWSState;
 import pws.PWSStateMachine;
-import serializer.BinaryModelSerializer;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;

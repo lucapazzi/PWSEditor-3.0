@@ -3,11 +3,10 @@ package pws.editor;
 import javax.swing.*;
 import java.io.*;
 import pws.PWSStateMachine;
-import serializer.BinaryModelSerializer;
+import serializer.JsonModelSerializer;
 
 /**
- * Minimal file manager for PWS: New, Open, Save, Save As using existing serializer and
- * the panel annotation stream methods.
+ * Minimal file manager for PWS: New, Open, Save, Save As using JSON serialization.
  */
 public class PWSFileManager {
     private final PWSEditor editor;
@@ -34,11 +33,9 @@ public class PWSFileManager {
         if (fc.showOpenDialog(editor) == JFileChooser.APPROVE_OPTION) {
             File file = fc.getSelectedFile();
             try {
-                Object[] pair = BinaryModelSerializer.loadModelAndLibrary(file.getAbsolutePath());
-                Object loadedModel = pair[0];
-                Object libOrAnn = pair[1];
-                if (loadedModel instanceof PWSStateMachine) {
-                    PWSStateMachine model = (PWSStateMachine) loadedModel;
+                JsonModelSerializer.LoadedWorkspace loaded = JsonModelSerializer.loadPwsWorkspace(file);
+                PWSStateMachine model = loaded.getModel();
+                if (model != null) {
                     // Normalize model name to the file name (without extension) so logs
                     // and UI reflect the loaded workspace identity.
                     try {
@@ -57,49 +54,22 @@ public class PWSFileManager {
                     editor.setControllerEditorVisible(true);
                     editor.rebuildUIForNewModel(model);
 
-                    // Attempt to restore annotations. The file format may contain the annotations
-                    // as the second object (older files) or as a third appended object. Try both.
                     try {
-                        // Case 1: BinaryModelSerializer returned a byte[] as second object
-                        if (libOrAnn instanceof byte[]) {
-                            byte[] annotationsBytes = (byte[]) libOrAnn;
-                            try (ObjectInputStream annIn = new ObjectInputStream(new ByteArrayInputStream(annotationsBytes))) {
-                                ((PWSStateMachinePanel) editor.getBaseEditor().getStateMachinePanel()).loadAnnotationsFromStream(annIn);
-                            }
-                        } else {
-                            // Case 2: Try to read a third object from the file (annotations appended after model+lib)
-                            try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
-                                // skip model
-                                try { ois.readObject(); } catch (Exception ignore) {}
-                                // skip library or annotations placeholder
-                                try { ois.readObject(); } catch (Exception ignore) {}
-                                try {
-                                    Object maybeAnn = ois.readObject();
-                                    if (maybeAnn instanceof byte[]) {
-                                        byte[] annotationsBytes = (byte[]) maybeAnn;
-                                        try (ObjectInputStream annIn = new ObjectInputStream(new ByteArrayInputStream(annotationsBytes))) {
-                                            ((PWSStateMachinePanel) editor.getBaseEditor().getStateMachinePanel()).loadAnnotationsFromStream(annIn);
-                                        }
-                                    }
-                                } catch (EOFException eof) {
-                                    // no annotations present
-                                }
-                            } catch (IOException | ClassNotFoundException ex) {
-                                // non-fatal: annotations may not be present or in older format
-                            }
+                        PWSStateMachinePanel panel = (PWSStateMachinePanel) editor.getBaseEditor().getStateMachinePanel();
+                        if (loaded.getAnnotations() != null) {
+                            panel.importAnnotations(loaded.getAnnotations());
                         }
 
                         // Ensure dashboards are visible and restored
                         try {
-                            PWSStateMachinePanel panel = (PWSStateMachinePanel) editor.getBaseEditor().getStateMachinePanel();
                             panel.setShowStateAnnotations(true);
                             panel.restoreVisibleStateAnnotations();
                             panel.repaint();
                         } catch (Exception ignore) {}
-                        
+
                         // Recalculate semantics after loading to ensure all computed fields are up-to-date
                         editor.scheduleSemanticsRecalculation();
-                    } catch (IOException | ClassNotFoundException ex) {
+                    } catch (Exception ex) {
                         // Non-fatal: show a warning but continue
                         JOptionPane.showMessageDialog(editor, "Warning: annotations could not be restored: " + ex.getMessage(), "Warning", JOptionPane.WARNING_MESSAGE);
                     }
@@ -110,7 +80,7 @@ public class PWSFileManager {
                 } else {
                     JOptionPane.showMessageDialog(editor, "The selected file does not contain a valid model.");
                 }
-            } catch (IOException | ClassNotFoundException ex) {
+            } catch (IOException | IllegalArgumentException ex) {
                 ex.printStackTrace();
                 JOptionPane.showMessageDialog(editor, "Error opening file: " + ex.getMessage());
             }
@@ -143,44 +113,17 @@ public class PWSFileManager {
             PWSDocument doc = editor.getDocument();
             if (doc == null) return false;
             PWSStateMachine model = doc.getModel();
-
-            // Serialize annotations into bytes first
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
-                ((PWSStateMachinePanel) editor.getBaseEditor().getStateMachinePanel()).saveAnnotationsToStream(oos);
-            }
-            byte[] ann = baos.toByteArray();
-
-            // Save model + library using serializer
-            BinaryModelSerializer.saveModelAndLibrary(model, model.getAssembly().getMachineLibrary(), file.getAbsolutePath());
-
-            // Append annotations bytes
-            try (FileOutputStream fos = new FileOutputStream(file, true);
-                 AppendingObjectOutputStream aout = new AppendingObjectOutputStream(fos)) {
-                aout.writeObject(ann);
-                aout.flush();
-            }
+            PWSStateMachinePanel panel = (PWSStateMachinePanel) editor.getBaseEditor().getStateMachinePanel();
+            JsonModelSerializer.savePwsWorkspace(model, panel.exportAnnotations(), file);
 
             doc.setFile(file);
             doc.setDirty(false);
             editor.updateWindowTitle();
             return true;
-        } catch (IOException ex) {
+        } catch (IOException | IllegalArgumentException ex) {
             ex.printStackTrace();
             JOptionPane.showMessageDialog(editor, "Error saving: " + ex.getMessage());
             return false;
-        }
-    }
-
-    // Helper to append objects without writing a new stream header
-    private static class AppendingObjectOutputStream extends ObjectOutputStream {
-        public AppendingObjectOutputStream(OutputStream out) throws IOException {
-            super(out);
-        }
-
-        @Override
-        protected void writeStreamHeader() throws IOException {
-            // Do not write a header when appending
         }
     }
 }

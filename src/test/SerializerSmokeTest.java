@@ -1,15 +1,17 @@
-import serializer.BinaryModelSerializer;
+package test;
+
+import machinery.StateMachine;
+import serializer.JsonModelSerializer;
+import java.io.File;
 
 public class SerializerSmokeTest {
     public static void main(String[] args) throws Exception {
-        String filename = "test_serializer.bin";
-        String model = "hello-model";
-        String lib = "hello-lib";
-        System.out.println("Saving model+library to: " + filename);
-        BinaryModelSerializer.saveModelAndLibrary(model, lib, filename);
+        String filename = "test_state_machine.sm";
+        StateMachine model = new StateMachine("hello-model");
+        System.out.println("Saving state machine to: " + filename);
+        JsonModelSerializer.saveStateMachine(model, new File(filename));
         System.out.println("Loading back: " + filename);
-        Object[] pair = BinaryModelSerializer.loadModelAndLibrary(filename);
-        System.out.println("Loaded model: " + pair[0] + " (" + (pair[0] != null ? pair[0].getClass().getName() : "null") + ")");
-        System.out.println("Loaded library: " + pair[1] + " (" + (pair[1] != null ? pair[1].getClass().getName() : "null") + ")");
+        StateMachine loaded = JsonModelSerializer.loadStateMachine(new File(filename));
+        System.out.println("Loaded model: " + loaded.getName() + " (" + loaded.getClass().getName() + ")");
     }
 }

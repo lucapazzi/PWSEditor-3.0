@@ -4,7 +4,8 @@ import pws.PWSStateMachine;
 import machinery.StateMachine;
 import pws.editor.PWSEditor;
 import editor.StateMachineEditor;
-import serializer.BinaryModelSerializer;
+import serializer.JsonModelSerializer;
+import assembly.MachineLibrary;
 
 import javax.swing.*;
 import java.awt.*;
@@ -22,11 +23,11 @@ public class LibraryMenuSmokeTest {
 
         // Save the MachineLibrary to a temporary file
         File tmp = new File("test_lib.mlib");
-        BinaryModelSerializer.saveModel(pws.getAssembly().getMachineLibrary(), tmp.getAbsolutePath());
+        JsonModelSerializer.saveMachineLibrary(pws.getAssembly().getMachineLibrary(), tmp);
         System.out.println("Saved MachineLibrary to " + tmp.getAbsolutePath());
 
         // Load it back
-        Object loaded = BinaryModelSerializer.loadModel(tmp.getAbsolutePath());
+        MachineLibrary loaded = JsonModelSerializer.loadMachineLibrary(tmp);
         System.out.println("Loaded object class: " + (loaded != null ? loaded.getClass().getName() : "null"));
 
         // Now create the PWSEditor (in EDT) and simulate embedding and closing the editor

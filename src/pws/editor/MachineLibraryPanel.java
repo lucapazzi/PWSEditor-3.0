@@ -11,7 +11,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
-import serializer.BinaryModelSerializer;
+import serializer.JsonModelSerializer;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 /** Panel for listing and importing machines in the library. */
@@ -168,20 +168,20 @@ public class MachineLibraryPanel extends JPanel {
 
     private void onLoad() {
         JFileChooser fc = new JFileChooser();
+        fc.setFileFilter(new FileNameExtensionFilter("Machine File (.sm)", "sm"));
         int res = fc.showOpenDialog(this);
         if (res != JFileChooser.APPROVE_OPTION) return;
         File file = fc.getSelectedFile();
         try {
-            Object obj = BinaryModelSerializer.loadModel(file.getAbsolutePath());
-            if (obj instanceof StateMachine) {
-                StateMachine sm = (StateMachine) obj;
+            StateMachine sm = JsonModelSerializer.loadStateMachine(file);
+            if (sm != null) {
                 String key = assembly.getMachineLibrary().addMachine(sm);
                 refreshList();
                 if (listener != null) listener.libraryLoaded(key);
             } else {
                 JOptionPane.showMessageDialog(this, "File does not contain a StateMachine.", "Error", JOptionPane.ERROR_MESSAGE);
             }
-        } catch (IOException | ClassNotFoundException ex) {
+        } catch (IOException | IllegalArgumentException ex) {
             JOptionPane.showMessageDialog(this, "Error loading machine: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
@@ -196,9 +196,8 @@ public class MachineLibraryPanel extends JPanel {
         if (res != JFileChooser.APPROVE_OPTION) return;
         File file = fc.getSelectedFile();
         try {
-            Object obj = BinaryModelSerializer.loadModel(file.getAbsolutePath());
-            if (obj instanceof MachineLibrary) {
-                MachineLibrary loaded = (MachineLibrary) obj;
+            MachineLibrary loaded = JsonModelSerializer.loadMachineLibrary(file);
+            if (loaded != null) {
                 MachineLibrary current = assembly.getMachineLibrary();
                 current.clear();
                 for (java.util.Map.Entry<String, machinery.StateMachine> entry : loaded.getMachines().entrySet()) {
@@ -211,10 +210,8 @@ public class MachineLibraryPanel extends JPanel {
                     if (firstKey != null) listener.libraryLoaded(firstKey);
                 }
                 JOptionPane.showMessageDialog(this, "Library loaded successfully.");
-            } else {
-                JOptionPane.showMessageDialog(this, "The selected file does not contain a MachineLibrary.", "Error", JOptionPane.ERROR_MESSAGE);
             }
-        } catch (IOException | ClassNotFoundException ex) {
+        } catch (IOException | IllegalArgumentException ex) {
             JOptionPane.showMessageDialog(this, "Error loading library: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
@@ -228,9 +225,9 @@ public class MachineLibraryPanel extends JPanel {
             file = new File(file.getAbsolutePath() + ".mlib");
         }
         try {
-            BinaryModelSerializer.saveModel(assembly.getMachineLibrary(), file.getAbsolutePath());
+            JsonModelSerializer.saveMachineLibrary(assembly.getMachineLibrary(), file);
             JOptionPane.showMessageDialog(this, "Library saved successfully.");
-        } catch (IOException ex) {
+        } catch (IOException | IllegalArgumentException ex) {
             JOptionPane.showMessageDialog(this, "Error saving library: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }

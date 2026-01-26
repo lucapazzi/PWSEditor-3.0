@@ -2,7 +2,8 @@ package test;
 
 import pws.PWSStateMachine;
 import machinery.StateMachine;
-import serializer.BinaryModelSerializer;
+import serializer.JsonModelSerializer;
+import java.io.File;
 
 public class SaveLoadSmokeTest {
     public static void main(String[] args) throws Exception {
@@ -10,13 +11,13 @@ public class SaveLoadSmokeTest {
         StateMachine m = new StateMachine("M1");
         p.getAssembly().addStateMachine("m1", m);
 
-        String filename = "test_pws.bin";
+        String filename = "test_pws.pws";
         System.out.println("Saving to: " + filename);
-        BinaryModelSerializer.saveModelAndLibrary(p, p.getAssembly().getMachineLibrary(), filename);
+        JsonModelSerializer.savePwsWorkspace(p, null, new File(filename));
 
         System.out.println("Loading from: " + filename);
-        Object[] pair = BinaryModelSerializer.loadModelAndLibrary(filename);
-        System.out.println("Loaded model class: " + (pair[0] != null ? pair[0].getClass().getName() : "null"));
-        System.out.println("Loaded library class: " + (pair[1] != null ? pair[1].getClass().getName() : "null"));
+        JsonModelSerializer.LoadedWorkspace loaded = JsonModelSerializer.loadPwsWorkspace(new File(filename));
+        System.out.println("Loaded model class: " + (loaded.getModel() != null ? loaded.getModel().getClass().getName() : "null"));
+        System.out.println("Loaded library class: " + (loaded.getModel() != null ? loaded.getModel().getAssembly().getMachineLibrary().getClass().getName() : "null"));
     }
 }

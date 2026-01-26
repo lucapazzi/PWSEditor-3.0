@@ -3,6 +3,7 @@ package editor;
 import assembly.Assembly;
 import machinery.*;
 import pws.PWSStateMachine;
+import serializer.JsonModelSerializer;
 // SVG export removed: not used when exporting PDFs
 
 import javax.swing.*;
@@ -63,27 +64,17 @@ public class StateMachineEditor extends JFrame {
             int option = fileChooser.showOpenDialog(StateMachineEditor.this);
             if (option == JFileChooser.APPROVE_OPTION) {
                 File file = fileChooser.getSelectedFile();
-                try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
-                    // Assume the file contains a serialized StateMachine object.
-                    StateMachine loadedMachine = (StateMachine) ois.readObject();
+                try {
+                    StateMachine loadedMachine = JsonModelSerializer.loadStateMachine(file);
 
-                    // Create a deep clone using your new clone() method.
-                    StateMachine clonedMachine = loadedMachine.clone();
-
-                    // Option B: Update the current state machine with the clone's data.
-                    stateMachine.setStates(clonedMachine.getStates());
-                    stateMachine.setTransitions(clonedMachine.getTransitions());
-                    stateMachine.setEvents(clonedMachine.getEvents());
-                    stateMachine.setName(clonedMachine.getName());
-
-                    // If pseudoState is accessible via a getter, update it as well:
-                    // (Alternatively, ensure that your clone() method already updates the pseudoState field.)
-                    stateMachine.setPseudoState(clonedMachine.getPseudoState());
-                    // Or if pseudoState is a protected field you can do:
-                    // stateMachine.pseudoState = clonedMachine.getPseudoState();
+                    stateMachine.setStates(loadedMachine.getStates());
+                    stateMachine.setTransitions(loadedMachine.getTransitions());
+                    stateMachine.setEvents(loadedMachine.getEvents());
+                    stateMachine.setName(loadedMachine.getName());
+                    stateMachine.setPseudoState(loadedMachine.getPseudoState());
 
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
-                            "Machine successfully loaded: " + clonedMachine.getName());
+                            "Machine successfully loaded: " + loadedMachine.getName());
                     statePanel.repaint();
                 } catch (Exception ex) {
                     ex.printStackTrace();
@@ -104,9 +95,8 @@ public class StateMachineEditor extends JFrame {
                 if (!file.getName().toLowerCase().endsWith(".sm")) {
                     file = new File(file.getAbsolutePath() + ".sm");
                 }
-                try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(file))) {
-                    oos.writeObject(stateMachine);
-                    oos.flush();
+                try {
+                    JsonModelSerializer.saveStateMachine(stateMachine, file);
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
                             "Machine saved: " + stateMachine.getName());
                 } catch (Exception ex) {

@@ -67,6 +67,12 @@ public class Transition implements TransitionInterface {
         return id;
     }
 
+    /** Sets a specific id (used during deserialization). */
+    public void setId(String id) {
+        if (id == null || id.trim().isEmpty()) return;
+        this.id = id;
+    }
+
     @Override
     public StateInterface getSource() {
         return source;
