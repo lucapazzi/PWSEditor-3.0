@@ -6,6 +6,7 @@ Summary: UI integration and robustness improvements for the PWS editor.
 - File management: integrated `PWSFileManager` / `PWSDocument` with `Save`, `Save As`, `Open`, `New`, `Close` and menu enable/disable tied to document presence.
 - Assembly/Library: `PWSPanel` and `MachineLibraryPanel` listeners open machines in the embedded editor; library machines use `lib:` prefix for `embeddedMachineId`.
 - Semantics & LTL: added cancellable `scheduleSemanticsRecalculation()` worker that calls `recalculateSemantics()`, updates annotations, marks document dirty, and triggers `runLTLChecks()`; added `ltlEditor` + checks dialog integration.
+- Semantics: fix for autonomous transition exit zones after reload by recomputing reactive zones from current base/constraints instead of relying on stale cached semantics.
 - Export & utilities: PDF export menu (vector preference) using `utility.PDFExporter` with graceful handling when PDFBox is unavailable.
 - Misc: simplified logging in `main()`, helper `AppendingObjectOutputStream`, improved focus handling and many EDT/safety wrappers.
 

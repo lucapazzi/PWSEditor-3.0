@@ -301,7 +301,17 @@ public class PWSStateMachine extends StateMachine {
         }
         Semantics result = Semantics.bottom(assembly.getAssemblyId());
         PWSState src = (PWSState) t.getSource();
-        for (ExitZone ez : src.getReactiveSemantics()) {
+        // Compute exit zones on the fly from the current base semantics and constraints.
+        // This avoids relying on cached reactiveSemantics that may be stale after load.
+        HashSet<ExitZone> reactiveZones = new HashSet<>();
+        if (base != null) {
+            reactiveZones.addAll(findExitZones(base));
+        }
+        Semantics cs = src.getConstraintsSemantics();
+        if (cs != null) {
+            reactiveZones.addAll(findExitZones(cs));
+        }
+        for (ExitZone ez : reactiveZones) {
             if (t.getGuardProposition() instanceof TrueProposition
                     || ez.getTarget().equals(t.getGuardProposition())) {
                 Semantics frag = base.transformByMachineTransition(
