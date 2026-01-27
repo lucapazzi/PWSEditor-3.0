@@ -16,6 +16,7 @@ import java.util.StringJoiner;
 
 import pws.editor.semantics.ExitZone;
 import pws.editor.semantics.Semantics;
+import smalgebra.BasicStateProposition;
 import java.awt.Color;
 import assembly.Assembly;
 
@@ -152,6 +153,29 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 });
                 popup.add(editConstraintsItem);
             }
+
+            JMenuItem adaptConstraintsItem = new JMenuItem("Adapt Constraints to Configurations");
+            Semantics currentSem = content.getStateSemantics();
+            boolean hasConfigs = currentSem != null && !currentSem.getConfigurations().isEmpty();
+            boolean canAdapt = !content.isPseudoState() && hasConfigs;
+            adaptConstraintsItem.setEnabled(canAdapt);
+            adaptConstraintsItem.addActionListener(ae -> {
+                Semantics sem = content.getStateSemantics();
+                if (sem == null || sem.getConfigurations().isEmpty()) return;
+                content.setConstraintsSemantics(sem.clone());
+                content.setRawConstraintText(buildRawConstraintTextFromSemantics(sem));
+                PWSStateMachine sm = panel.getStateMachine();
+                if (sm != null) {
+                    sm.updateExitZonesForState(content);
+                }
+                java.awt.Window w = SwingUtilities.getWindowAncestor(panel);
+                if (w instanceof pws.editor.PWSEditor pe) {
+                    pe.markDocumentDirty();
+                    pe.scheduleSemanticsRecalculation();
+                }
+                panel.repaint();
+            });
+            popup.add(adaptConstraintsItem);
             
             // Add "Show Extended Details" menu item
             JMenuItem showExtendedItem = new JMenuItem("Show Extended Details...");
@@ -166,6 +190,21 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
         
         popup.show(this, e.getX(), e.getY());
+    }
+
+    private String buildRawConstraintTextFromSemantics(Semantics sem) {
+        if (sem == null || sem.getConfigurations().isEmpty()) return "";
+        StringJoiner lines = new StringJoiner("\n");
+        for (pws.editor.semantics.Configuration cfg : sem.getConfigurations()) {
+            java.util.List<BasicStateProposition> props = cfg.getBasicStatePropositions();
+            if (props == null || props.isEmpty()) continue;
+            StringJoiner sj = new StringJoiner(", ");
+            for (BasicStateProposition bsp : props) {
+                sj.add(bsp.getMachineId() + "." + bsp.getStateName());
+            }
+            lines.add("(" + sj.toString() + ")");
+        }
+        return lines.toString();
     }
 
     @Override

@@ -76,7 +76,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected boolean initialTransitionMode = false;
 
     // Graphic constants
-    protected final int DIAMETER = 50;
+    protected final int DIAMETER = 70;
     protected final int RADIUS = DIAMETER / 2;
     // Reduce pseudostate diameter to one third of the normal diameter.
     protected final int PSEUDO_DIAMETER = DIAMETER / 3;
@@ -251,34 +251,38 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     }
 
     protected void drawStates(Graphics g) {
+        Graphics2D g2d = (Graphics2D) g;
+        Stroke oldStroke = g2d.getStroke();
+        g2d.setStroke(new BasicStroke(2.0f));
         List<StateInterface> states = stateMachine.getStates();
         for (StateInterface state : states) {
             Point pos = ((State) state).getPosition();
             int x = pos.x;
             int y = pos.y;
             if (state.getName().equals("PseudoState")) {
-                g.setColor(Color.BLACK);
-                g.fillOval(x, y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
-                g.setColor(Color.BLACK);
-                g.drawOval(x, y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+                g2d.setColor(Color.BLACK);
+                g2d.fillOval(x, y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+                g2d.setColor(Color.BLACK);
+                g2d.drawOval(x, y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
             } else {
-                g.setColor(Color.WHITE);
-                g.fillOval(x, y, DIAMETER, DIAMETER);
+                g2d.setColor(new Color(245, 245, 245));
+                g2d.fillOval(x, y, DIAMETER, DIAMETER);
                 if (state == selectedState || state == transitionSourceState) {
-                    g.setColor(Color.RED);
+                    g2d.setColor(Color.RED);
                 } else {
-                    g.setColor(Color.BLACK);
+                    g2d.setColor(Color.BLACK);
                 }
-                g.drawOval(x, y, DIAMETER, DIAMETER);
+                g2d.drawOval(x, y, DIAMETER, DIAMETER);
                 String name = state.getName();
-                FontMetrics fm = g.getFontMetrics();
+                FontMetrics fm = g2d.getFontMetrics();
                 int textWidth = fm.stringWidth(name);
                 int textHeight = fm.getHeight();
                 int textX = x + (DIAMETER - textWidth) / 2;
                 int textY = y + (DIAMETER - textHeight) / 2 + fm.getAscent();
-                g.drawString(name, textX, textY);
+                g2d.drawString(name, textX, textY);
             }
         }
+        g2d.setStroke(oldStroke);
     }
 
     protected void drawTransitions(Graphics g) {
