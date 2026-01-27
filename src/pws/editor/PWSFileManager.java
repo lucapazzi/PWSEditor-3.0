@@ -2,6 +2,9 @@ package pws.editor;
 
 import javax.swing.*;
 import java.io.*;
+import java.util.Map;
+import assembly.MachineLibrary;
+import machinery.StateMachine;
 import pws.PWSStateMachine;
 import serializer.JsonModelSerializer;
 
@@ -16,7 +19,9 @@ public class PWSFileManager {
     }
 
     public void newDocument() {
+        MachineLibrary preservedLibrary = editor.getCurrentLibrary();
         PWSStateMachine model = new PWSStateMachine("Untitled");
+        applyPreservedLibrary(model, preservedLibrary);
         PWSDocument doc = new PWSDocument(model, model.getAssembly().getMachineLibrary());
         // New documents should start clean (no unsaved changes)
         doc.setDirty(false);
@@ -33,9 +38,40 @@ public class PWSFileManager {
         if (fc.showOpenDialog(editor) == JFileChooser.APPROVE_OPTION) {
             File file = fc.getSelectedFile();
             try {
+                MachineLibrary preservedLibrary = editor.getCurrentLibrary();
                 JsonModelSerializer.LoadedWorkspace loaded = JsonModelSerializer.loadPwsWorkspace(file);
                 PWSStateMachine model = loaded.getModel();
                 if (model != null) {
+                    boolean keepCurrentLibrary = false;
+                    if (preservedLibrary != null && !preservedLibrary.getMachines().isEmpty()) {
+                        MachineLibrary loadedLibrary = model.getAssembly().getMachineLibrary();
+                        boolean loadedNotEmpty = loadedLibrary != null && !loadedLibrary.getMachines().isEmpty();
+                        if (loadedNotEmpty) {
+                            Object[] options = new Object[] {
+                                "Keep current library",
+                                "Use file library",
+                                "Cancel"
+                            };
+                            int opt = JOptionPane.showOptionDialog(
+                                editor,
+                                "Current machine library is not empty.\nChoose which library to use for the opened file.",
+                                "Library conflict",
+                                JOptionPane.YES_NO_CANCEL_OPTION,
+                                JOptionPane.QUESTION_MESSAGE,
+                                null,
+                                options,
+                                options[1]);
+                            if (opt == 2 || opt == JOptionPane.CLOSED_OPTION) {
+                                return;
+                            }
+                            keepCurrentLibrary = (opt == 0);
+                        } else {
+                            keepCurrentLibrary = true;
+                        }
+                    }
+                    if (keepCurrentLibrary) {
+                        applyPreservedLibrary(model, preservedLibrary);
+                    }
                     // Normalize model name to the file name (without extension) so logs
                     // and UI reflect the loaded workspace identity.
                     try {
@@ -84,6 +120,16 @@ public class PWSFileManager {
                 ex.printStackTrace();
                 JOptionPane.showMessageDialog(editor, "Error opening file: " + ex.getMessage());
             }
+        }
+    }
+
+    private void applyPreservedLibrary(PWSStateMachine model, MachineLibrary preservedLibrary) {
+        if (model == null || preservedLibrary == null) return;
+        MachineLibrary target = model.getAssembly().getMachineLibrary();
+        if (target == preservedLibrary) return;
+        target.clear();
+        for (Map.Entry<String, StateMachine> entry : preservedLibrary.getMachines().entrySet()) {
+            target.addMachine(entry.getKey(), entry.getValue());
         }
     }
 

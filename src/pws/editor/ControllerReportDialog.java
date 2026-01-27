@@ -51,6 +51,7 @@ public class ControllerReportDialog extends JDialog {
     private int guardProblems = 0;
     private int actionProblems = 0;
     private int exitZoneProblems = 0;
+    private int orphanExitZoneProblems = 0;
     private int constraintProblems = 0;
     private int deadlockProblems = 0;
     private int unreachableProblems = 0;
@@ -158,6 +159,7 @@ public class ControllerReportDialog extends JDialog {
         List<GuardProblem> guardProblemsList = collectGuardProblems();
         List<ActionProblem> actionProblemsList = collectActionProblems();
         Map<PWSState, List<ExitZoneProblem>> exitZoneProblemMap = collectExitZoneProblems();
+        Map<PWSState, List<ExitZoneProblem>> orphanExitZoneProblemMap = collectOrphanExitZoneProblems();
         Map<PWSState, List<String>> constraintProblemMap = collectConstraintProblems();
         Map<PWSState, Set<Configuration>> deadlockMap = collectDeadlockProblems();
         List<PWSState> unreachableStates = collectUnreachableStates();
@@ -165,10 +167,12 @@ public class ControllerReportDialog extends JDialog {
         guardProblems = guardProblemsList.size();
         actionProblems = actionProblemsList.size();
         exitZoneProblems = exitZoneProblemMap.values().stream().mapToInt(List::size).sum();
+        orphanExitZoneProblems = orphanExitZoneProblemMap.values().stream().mapToInt(List::size).sum();
         constraintProblems = constraintProblemMap.values().stream().mapToInt(List::size).sum();
         deadlockProblems = deadlockMap.values().stream().mapToInt(Set::size).sum();
         unreachableProblems = unreachableStates.size();
-        totalProblems = guardProblems + actionProblems + exitZoneProblems + constraintProblems + deadlockProblems + unreachableProblems;
+        totalProblems = guardProblems + actionProblems + exitZoneProblems + orphanExitZoneProblems
+                + constraintProblems + deadlockProblems + unreachableProblems;
         
         // Summary section
         appendSummarySection();
@@ -184,6 +188,10 @@ public class ControllerReportDialog extends JDialog {
         
         if (exitZoneProblems > 0) {
             appendExitZoneProblemsSection(exitZoneProblemMap);
+        }
+
+        if (orphanExitZoneProblems > 0) {
+            appendOrphanExitZoneProblemsSection(orphanExitZoneProblemMap);
         }
         
         if (constraintProblems > 0) {
@@ -280,6 +288,10 @@ public class ControllerReportDialog extends JDialog {
             if (exitZoneProblems > 0) {
                 appendText("    ✗ ", STYLE_RED);
                 appendText("Uncovered exit zones: " + exitZoneProblems + "\n", STYLE_NORMAL);
+            }
+            if (orphanExitZoneProblems > 0) {
+                appendText("    ✗ ", STYLE_RED);
+                appendText("Orphan exit zones: " + orphanExitZoneProblems + "\n", STYLE_NORMAL);
             }
             if (constraintProblems > 0) {
                 appendText("    ✗ ", STYLE_RED);
@@ -536,6 +548,7 @@ public class ControllerReportDialog extends JDialog {
             // Check for uncovered exit zones
             List<ExitZoneProblem> stateProblems = new ArrayList<>();
             for (ExitZone ez : reactive) {
+                if (ez.isOrphanSource(assembly)) continue;
                 boolean isInternal = false;
                 if (ss != null && assembly != null && ez.getTarget() != null) {
                     Semantics targetAndSem = ez.getTarget().toSemantics(assembly).AND(ss);
@@ -555,6 +568,31 @@ public class ControllerReportDialog extends JDialog {
             }
         }
         
+        return problemMap;
+    }
+
+    private Map<PWSState, List<ExitZoneProblem>> collectOrphanExitZoneProblems() {
+        Map<PWSState, List<ExitZoneProblem>> problemMap = new LinkedHashMap<>();
+
+        for (StateInterface si : stateMachine.getStates()) {
+            if (!(si instanceof PWSState ps) || ps.isPseudoState()) continue;
+
+            HashSet<ExitZone> reactive = ps.getReactiveSemantics();
+            if (reactive == null || reactive.isEmpty()) continue;
+
+            List<ExitZoneProblem> stateProblems = new ArrayList<>();
+            for (ExitZone ez : reactive) {
+                if (ez.isOrphanSource(assembly)) {
+                    String desc = "Orphan exit zone — no matching source state.";
+                    stateProblems.add(new ExitZoneProblem(ez, desc));
+                }
+            }
+
+            if (!stateProblems.isEmpty()) {
+                problemMap.put(ps, stateProblems);
+            }
+        }
+
         return problemMap;
     }
     
@@ -590,6 +628,44 @@ public class ControllerReportDialog extends JDialog {
         appendText("  ", STYLE_NORMAL);
         appendText("Fix: ", STYLE_BOLD);
         appendText("Add autonomous transitions with guards matching these exit zones.\n\n", STYLE_GRAY);
+    }
+
+    private void appendOrphanExitZoneProblemsSection(Map<PWSState, List<ExitZoneProblem>> problemMap) {
+        appendText("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", STYLE_GRAY);
+        appendText("ORPHAN EXIT ZONES\n", STYLE_SECTION);
+        appendText("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n", STYLE_GRAY);
+
+        appendText("  Exit zones whose source state no longer exists in the assembly.\n", STYLE_NORMAL);
+        appendText("  These typically indicate stale data or inconsistent models.\n\n", STYLE_NORMAL);
+
+        for (Map.Entry<PWSState, List<ExitZoneProblem>> entry : problemMap.entrySet()) {
+            PWSState state = entry.getKey();
+            List<ExitZoneProblem> problems = entry.getValue();
+
+            appendText("  State: ", STYLE_BOLD);
+            appendText(state.getName() + "\n", STYLE_CODE);
+
+            for (ExitZoneProblem ezp : problems) {
+                appendText("    ✗ ", STYLE_RED);
+                appendText(ezp.description + "\n", STYLE_NORMAL);
+
+                if (ezp.exitZone.getSource() != null || ezp.exitZone.getTarget() != null) {
+                    appendText("      From: ", STYLE_GRAY);
+                    if (ezp.exitZone.getSource() != null && ezp.exitZone.getTarget() != null) {
+                        appendText(ezp.exitZone.getSource().toString() + " → " + ezp.exitZone.getTarget().toString() + "\n", STYLE_CODE);
+                    } else if (ezp.exitZone.getSource() != null) {
+                        appendText(ezp.exitZone.getSource().toString() + " → (unknown)\n", STYLE_CODE);
+                    } else {
+                        appendText("(unknown) → " + ezp.exitZone.getTarget().toString() + "\n", STYLE_CODE);
+                    }
+                }
+            }
+            appendText("\n", STYLE_NORMAL);
+        }
+
+        appendText("  ", STYLE_NORMAL);
+        appendText("Fix: ", STYLE_BOLD);
+        appendText("Restore the missing source state/transition or recompute semantics to remove stale exit zones.\n\n", STYLE_GRAY);
     }
     
     // ==================== Constraint Problems ====================
@@ -783,7 +859,7 @@ public class ControllerReportDialog extends JDialog {
         if (totalProblems == 0) {
             appendText("  ✓ CONTROLLER IS WELL-FORMED\n\n", STYLE_GREEN);
             appendText("    All guards are properly configured.\n", STYLE_GREEN);
-            appendText("    All exit zones are covered by transitions.\n", STYLE_GREEN);
+            appendText("    All exit zones are covered and none are orphan.\n", STYLE_GREEN);
             appendText("    All configurations satisfy constraints.\n", STYLE_GREEN);
             appendText("    No true deadlock configurations.\n", STYLE_GREEN);
             appendText("    No unreachable states.\n\n", STYLE_GREEN);

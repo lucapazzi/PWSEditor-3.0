@@ -16,8 +16,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
+import pws.PWSTransition;
 import pws.PWSState;
 import pws.editor.semantics.Configuration;
+import pws.editor.semantics.ExitZone;
 import pws.editor.semantics.Semantics;
 import machinery.StateMachine;
 import machinery.TransitionInterface;
@@ -231,15 +233,14 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                     // Check if this is a TRUE autonomous transition (not from pseudo-state)
                     // Initial transitions from pseudo-state are event-triggered with hidden startup event
                     if (isTrueAutonomous) {
-                        // True autonomous transitions -> use reactiveSemantics ExitZone targets
-                        java.util.HashSet<pws.editor.semantics.ExitZone> reactive = p.getReactiveSemantics();
-                        if (reactive != null && !reactive.isEmpty()) {
+                        // True autonomous transitions -> use eligible reactive exit zones
+                        Set<String> eligibleTargets = collectEligibleAutonomousExitTargets(p, associatedTransition);
+                        if (!eligibleTargets.isEmpty()) {
                             filteredBySemantics = true;
-                            for (pws.editor.semantics.ExitZone zone : reactive) {
-                                if (zone != null && zone.getTarget() != null) {
-                                    candidateStrings.add(zone.getTarget().toString());
-                                }
-                            }
+                            candidateStrings.addAll(eligibleTargets);
+                        } else if (p.getReactiveSemantics() != null && !p.getReactiveSemantics().isEmpty()) {
+                            // Reactive semantics exist but none are eligible (internal/covered)
+                            filteredBySemantics = true;
                         }
                     } else {
                         // Non-autonomous: preserve previous behavior using stateSemantics configurations
@@ -257,6 +258,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             }
 
             if (filteredBySemantics) {
+                boolean added = false;
                 for (SMProposition guardOption : guards) {
                     if (!(guardOption instanceof BasicStateProposition)) continue;
                     if (candidateStrings.contains(guardOption.toString())) {
@@ -265,9 +267,10 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                             applyGuard(guardOption);
                         });
                         popup.add(item);
+                        added = true;
                     }
                 }
-                if (popup.getComponentCount() == 0) {
+                if (!added) {
                     JMenuItem none = new JMenuItem("No guards available");
                     none.setEnabled(false);
                     popup.add(none);
@@ -337,14 +340,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 Set<String> candidateStrings = new LinkedHashSet<>();
                 machinery.StateInterface src = associatedTransition.getSource();
                 if (src instanceof PWSState p) {
-                    java.util.HashSet<pws.editor.semantics.ExitZone> reactive = p.getReactiveSemantics();
-                    if (reactive != null && !reactive.isEmpty()) {
-                        for (pws.editor.semantics.ExitZone zone : reactive) {
-                            if (zone != null && zone.getTarget() != null) {
-                                candidateStrings.add(zone.getTarget().toString());
-                            }
-                        }
-                    }
+                    candidateStrings.addAll(collectEligibleAutonomousExitTargets(p, associatedTransition));
                 }
                 
                 // Show available exit zones (excluding the current guard)
@@ -417,6 +413,50 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             getParent().revalidate();
             getParent().repaint();
         }
+    }
+
+    /**
+     * Collects eligible exit-zone targets for autonomous transitions.
+     * Excludes internal (gray) exit zones and those already covered by other
+     * enabled autonomous PWS transitions from the same source state.
+     */
+    private Set<String> collectEligibleAutonomousExitTargets(PWSState srcState, TransitionInterface self) {
+        Set<String> eligible = new LinkedHashSet<>();
+        if (srcState == null) {
+            return eligible;
+        }
+        Set<String> coveredByOthers = new HashSet<>();
+        for (TransitionInterface ti : srcState.getOutgoingTransitions()) {
+            if (ti == null || ti == self) continue;
+            if (!(ti instanceof PWSTransition pt)) continue;
+            if (!pt.isEnabled() || pt.isTriggerable()) continue;
+            if (pt.getGuardProposition() instanceof BasicStateProposition bsp) {
+                coveredByOthers.add(bsp.toString());
+            }
+        }
+        Semantics stateSem = srcState.getStateSemantics();
+        Set<ExitZone> reactive = srcState.getReactiveSemantics();
+        if (reactive == null || reactive.isEmpty()) {
+            return eligible;
+        }
+        for (ExitZone zone : reactive) {
+            if (zone == null || zone.getTarget() == null) continue;
+            BasicStateProposition target = zone.getTarget();
+            String targetStr = target.toString();
+            if (coveredByOthers.contains(targetStr)) continue;
+            if (assembly != null && stateSem != null) {
+                try {
+                    Semantics targetAndSem = target.toSemantics(assembly).AND(stateSem);
+                    if (!targetAndSem.ISEMPTY()) {
+                        continue; // internal (gray) exit zone
+                    }
+                } catch (Exception ignored) {
+                    // If semantics calculation fails, don't classify as internal.
+                }
+            }
+            eligible.add(targetStr);
+        }
+        return eligible;
     }
     
     /**

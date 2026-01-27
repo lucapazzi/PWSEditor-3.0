@@ -947,9 +947,22 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             }
         });
         popup.add(editModeItem);
-        
+
+        JMenuItem leastFixpointItem = new JMenuItem("Least Fixpoint");
+        leastFixpointItem.addActionListener(ae -> {
+            java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+            if (w instanceof PWSEditor pe) {
+                pe.scheduleSemanticsRecalculation();
+            } else if (stateMachine instanceof PWSStateMachine pwsm) {
+                pwsm.recalculateSemantics();
+                revalidate();
+                repaint();
+            }
+        });
+        popup.add(leastFixpointItem);
+
         popup.addSeparator();
-        
+
         // Controller Report menu item
         JMenuItem reportItem = new JMenuItem("Controller Report...");
         reportItem.addActionListener(ae -> {

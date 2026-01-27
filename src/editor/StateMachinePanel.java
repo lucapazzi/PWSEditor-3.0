@@ -841,6 +841,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                         pwsEd.getDocument().setDirty(true);
                     }
                 }
+                if (owningEditor != null) {
+                    owningEditor.notifyModelChanged();
+                }
                 repaint();
             });
             popup.add(toggleEnableItem);
@@ -861,6 +864,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                     if (pwsEd.getBaseEditor() != null) {
                         pwsEd.getBaseEditor().getStateMachinePanel().repaint();
                     }
+                }
+                if (owningEditor != null) {
+                    owningEditor.notifyModelChanged();
                 }
                 repaint();
             });

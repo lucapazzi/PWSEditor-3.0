@@ -1,6 +1,9 @@
 package pws.editor.semantics;
 
 import machinery.Transition;
+import machinery.StateInterface;
+import machinery.StateMachine;
+import assembly.AssemblyInterface;
 import smalgebra.BasicStateProposition;
 
 import java.io.Serializable;
@@ -118,6 +121,35 @@ public class ExitZone implements Serializable {
      */
     public BasicStateProposition getTarget() {
         return target;
+    }
+
+    /**
+     * Returns true if the source proposition still matches a state in the assembly.
+     */
+    public boolean hasMatchingSourceState(AssemblyInterface assembly) {
+        if (source == null) {
+            return false;
+        }
+        if (assembly == null) {
+            return true; // can't verify without assembly; avoid false positives
+        }
+        StateMachine machine = assembly.getStateMachines().get(source.getMachineId());
+        if (machine == null || machine.getStates() == null) {
+            return false;
+        }
+        for (StateInterface s : machine.getStates()) {
+            if (s != null && source.getStateName().equals(s.getName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns true if the exit zone refers to a source state that no longer exists.
+     */
+    public boolean isOrphanSource(AssemblyInterface assembly) {
+        return !hasMatchingSourceState(assembly);
     }
 
     @Override

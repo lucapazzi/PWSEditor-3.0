@@ -17,11 +17,24 @@ public class StateMachineEditor extends JFrame {
     protected StateMachinePanel statePanel;
     protected Assembly assembly;
     private Runnable closeCallback = null;
+    private Runnable modelChangedCallback = null;
     private JCheckBoxMenuItem editModeItem;
 
     // Callback interface for close requests
     public void setCloseCallback(Runnable callback) {
         this.closeCallback = callback;
+    }
+
+    /** Optional callback for model changes (used by embedding editors). */
+    public void setModelChangedCallback(Runnable callback) {
+        this.modelChangedCallback = callback;
+    }
+
+    /** Notify host that the model changed (e.g., enabling/disabling transitions). */
+    public void notifyModelChanged() {
+        if (modelChangedCallback != null) {
+            modelChangedCallback.run();
+        }
     }
 
     // Default constructor (uses title "StateMachine Editor")

@@ -413,7 +413,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         g2d.drawString(" / ", legendX, y);
         legendX += fmSmall.stringWidth(" / ");
         g2d.setColor(new Color(180, 0, 0));
-        g2d.drawString("uncovered", legendX, y);
+        g2d.drawString("uncovered/orphan", legendX, y);
         g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
 
         // 3) Reactive exit zones: centered, comma-separated, colored by origin and coverage
@@ -455,15 +455,17 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             for (int i = 0; i < zones.size(); i++) {
                 ExitZone ez = zones.get(i);
                 String txt = ez.toString();
-                boolean isCovered = covered.contains(ez.getTarget());
+                boolean isOrphan = ez.isOrphanSource(asm);
                 boolean isInternal = false;
                 if (ss != null && asm != null && ez.getTarget() != null) {
                     Semantics targetAndSem = ez.getTarget().toSemantics(asm).AND(ss);
                     isInternal = !targetAndSem.ISEMPTY();
                 }
-                Color ezColor = isInternal
-                        ? new Color(120, 120, 120)
-                        : (isCovered ? Color.GREEN.darker() : new Color(180, 0, 0));
+                boolean isCovered = !isOrphan && !isInternal && covered.contains(ez.getTarget());
+                Color ezColor = isOrphan
+                        ? new Color(180, 0, 0)
+                        : (isInternal ? new Color(120, 120, 120)
+                                      : (isCovered ? Color.GREEN.darker() : new Color(180, 0, 0)));
                 g2d.setColor(ezColor);
                 g2d.setFont(baseFont);
                 g2d.drawString(txt, exitX, y);
@@ -502,6 +504,10 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 Semantics ssCheck = state.getStateSemantics();
                 Assembly asmCheck = asm;
                 for (ExitZone ez : state.getReactiveSemantics()) {
+                    if (ez.isOrphanSource(asmCheck)) {
+                        allOk = false;
+                        break;
+                    }
                     boolean isInternal = false;
                     if (ssCheck != null && asmCheck != null && ez.getTarget() != null) {
                         Semantics targetAndSem = ez.getTarget().toSemantics(asmCheck).AND(ssCheck);
@@ -628,16 +634,27 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             if (hasExplicitConstraint && state.getReactiveSemantics() != null) {
                 Semantics ssCheck = state.getStateSemantics();
                 Assembly asmCheck = sm.getAssembly();
+                boolean hasOrphan = false;
+                boolean hasUncovered = false;
                 for (ExitZone ez : state.getReactiveSemantics()) {
+                    if (ez.isOrphanSource(asmCheck)) {
+                        hasOrphan = true;
+                        continue;
+                    }
                     boolean isInternal = false;
                     if (ssCheck != null && asmCheck != null && ez.getTarget() != null) {
                         Semantics targetAndSem = ez.getTarget().toSemantics(asmCheck).AND(ssCheck);
                         isInternal = !targetAndSem.ISEMPTY();
                     }
                     if (!isInternal && !coveredGuards.contains(ez.getTarget())) {
-                        issues.add("Some exit zones are not covered by autonomous transitions.");
-                        break;
+                        hasUncovered = true;
                     }
+                }
+                if (hasUncovered) {
+                    issues.add("Some exit zones are not covered by autonomous transitions.");
+                }
+                if (hasOrphan) {
+                    issues.add("Orphan exit zones — no matching source state.");
                 }
             }
 
@@ -718,7 +735,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         // Account for section labels width
         maxWidth = Math.max(maxWidth, fmSmall.stringWidth("exit zones") + 20);
         // Account for exit zones legend width
-        maxWidth = Math.max(maxWidth, fmSmall.stringWidth("legend: internal / covered / uncovered") + 20);
+        maxWidth = Math.max(maxWidth, fmSmall.stringWidth("legend: internal / covered / uncovered/orphan") + 20);
         
         // Match the exact y-positions used in paintComponent:
         // padding=6, then for each section: smallLineHeight + lineHeight + separator(~4)

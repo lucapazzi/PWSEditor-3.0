@@ -154,11 +154,14 @@ public class ExtendedDashboardDialog extends JDialog {
         
         // Section 3: Exit Zones Analysis
         appendExitZonesSection();
+
+        // Section 4: Orphan Exit Zones
+        appendOrphanExitZonesSection();
         
-        // Section 4: Deadlock Analysis
+        // Section 5: Deadlock Analysis
         appendDeadlockAnalysisSection();
         
-        // Section 5: Overall Status
+        // Section 6: Overall Status
         appendOverallStatusSection();
 
         // Scroll to top
@@ -346,19 +349,20 @@ public class ExtendedDashboardDialog extends JDialog {
         appendText("GREEN", STYLE_GREEN);
         appendText(" = covered (handled by PWS transition), ", STYLE_GRAY);
         appendText("RED", STYLE_RED);
-        appendText(" = uncovered (needs PWS transition)\n\n", STYLE_GRAY);
+        appendText(" = uncovered or orphan (needs attention)\n\n", STYLE_GRAY);
 
         int internalCount = 0;
         int coveredCount = 0;
         int uncoveredCount = 0;
 
         for (ExitZone ez : reactiveZones) {
+            boolean isOrphan = ez.isOrphanSource(assembly);
             boolean isInternal = false;
             if (ss != null && assembly != null && ez.getTarget() != null) {
                 Semantics targetAndSem = ez.getTarget().toSemantics(assembly).AND(ss);
                 isInternal = !targetAndSem.ISEMPTY();
             }
-            boolean isCovered = !isInternal && coveredGuards.contains(ez.getTarget());
+            boolean isCovered = !isOrphan && !isInternal && coveredGuards.contains(ez.getTarget());
             boolean isCsOnly = csOnlyZones != null && csOnlyZones.contains(ez);
             boolean isSsOnly = ssOnlyZones != null && ssOnlyZones.contains(ez);
             
@@ -373,7 +377,9 @@ public class ExtendedDashboardDialog extends JDialog {
             }
 
             appendText("    Exit Zone: ", STYLE_BOLD);
-            if (isInternal) {
+            if (isOrphan) {
+                appendText(ez.toString() + "\n", STYLE_RED);
+            } else if (isInternal) {
                 appendText(ez.toString() + "\n", STYLE_GRAY);
             } else {
                 appendText(ez.toString() + "\n", isCovered ? STYLE_GREEN : STYLE_RED);
@@ -383,20 +389,24 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText(ez.getStateMachineId() + "\n", STYLE_NORMAL);
             
             appendText("      Transition:  ", STYLE_GRAY);
-            appendText(ez.getSource().getStateName() + " → " + ez.getTarget().getStateName() + "\n", STYLE_NORMAL);
+            if (ez.getSource() != null && ez.getTarget() != null) {
+                appendText(ez.getSource().getStateName() + " → " + ez.getTarget().getStateName() + "\n", STYLE_NORMAL);
+            } else {
+                appendText("(unknown)\n", STYLE_NORMAL);
+            }
 
             appendText("      Source cfg:  ", STYLE_GRAY);
             if (ez.getSource() != null) {
-                appendText("(" + ez.getSource().toString() + ")\n", STYLE_CODE);
+                appendText("(" + ez.getSource().toString() + ")\n", STYLE_NORMAL);
             } else {
-                appendText("(unknown)\n", STYLE_CODE);
+                appendText("(unknown)\n", STYLE_NORMAL);
             }
 
             appendText("      Target cfg:  ", STYLE_GRAY);
             if (ez.getTarget() != null) {
-                appendText("(" + ez.getTarget().toString() + ")\n", STYLE_CODE);
+                appendText("(" + ez.getTarget().toString() + ")\n", STYLE_NORMAL);
             } else {
-                appendText("(unknown)\n", STYLE_CODE);
+                appendText("(unknown)\n", STYLE_NORMAL);
             }
             
             appendText("      Origin:      ", STYLE_GRAY);
@@ -409,7 +419,9 @@ public class ExtendedDashboardDialog extends JDialog {
             }
             
             appendText("      Status:      ", STYLE_GRAY);
-            if (isInternal) {
+            if (isOrphan) {
+                appendText("orphan exit zone — no matching source state\n", STYLE_RED);
+            } else if (isInternal) {
                 appendText("internal (target already in semantics)\n", STYLE_GRAY);
             } else if (isCovered) {
                 appendText("covered by autonomous PWS transition\n", STYLE_GREEN);
@@ -436,6 +448,49 @@ public class ExtendedDashboardDialog extends JDialog {
         appendText(", ", STYLE_NORMAL);
         appendText(uncoveredCount + " uncovered", uncoveredCount > 0 ? STYLE_RED : STYLE_GREEN);
         appendText(" (total: " + reactiveZones.size() + ")\n\n", STYLE_GRAY);
+    }
+
+    private void appendOrphanExitZonesSection() {
+        appendText("┌─────────────────────────────────────────────────────────────┐\n", STYLE_SUBHEADING);
+        appendText("│ ORPHAN EXIT ZONES                                           │\n", STYLE_SUBHEADING);
+        appendText("└─────────────────────────────────────────────────────────────┘\n", STYLE_SUBHEADING);
+
+        Set<ExitZone> reactiveZones = state.getReactiveSemantics();
+        if (reactiveZones == null || reactiveZones.isEmpty()) {
+            appendText("  No exit zones detected for this state.\n\n", STYLE_GRAY);
+            return;
+        }
+
+        List<ExitZone> orphans = new ArrayList<>();
+        for (ExitZone ez : reactiveZones) {
+            if (ez.isOrphanSource(assembly)) {
+                orphans.add(ez);
+            }
+        }
+
+        if (orphans.isEmpty()) {
+            appendText("  No orphan exit zones detected.\n\n", STYLE_GREEN);
+            return;
+        }
+
+        appendText("  The following exit zones reference a missing source state:\n\n", STYLE_GRAY);
+        for (ExitZone ez : orphans) {
+            appendText("    ✗ ", STYLE_RED);
+            appendText("Orphan exit zone — no matching source state\n", STYLE_RED);
+            appendText("      Machine:     ", STYLE_GRAY);
+            appendText(ez.getStateMachineId() + "\n", STYLE_NORMAL);
+            appendText("      Transition:  ", STYLE_GRAY);
+            if (ez.getSource() != null && ez.getTarget() != null) {
+                appendText(ez.getSource().getStateName() + " → " + ez.getTarget().getStateName() + "\n", STYLE_NORMAL);
+            } else {
+                appendText("(unknown)\n", STYLE_NORMAL);
+            }
+            appendText("      Source cfg:  ", STYLE_GRAY);
+            appendText((ez.getSource() != null ? "(" + ez.getSource().toString() + ")\n" : "(unknown)\n"), STYLE_NORMAL);
+            appendText("      Target cfg:  ", STYLE_GRAY);
+            appendText((ez.getTarget() != null ? "(" + ez.getTarget().toString() + ")\n" : "(unknown)\n"), STYLE_NORMAL);
+            appendText("\n", STYLE_NORMAL);
+        }
     }
 
     private void appendDeadlockAnalysisSection() {

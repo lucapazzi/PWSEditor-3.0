@@ -225,6 +225,7 @@ The guard expression determines when a transition can fire. PWSEditor provides v
 
 When editing an autonomous transition guard:
 - If the source state has **exit zones**, the guard menu lists those exit-zone propositions.
+- Internal (gray) exit zones are **not selectable** for autonomous guards.
 - If the source state has **no exit zones**, the menu offers **TRUE** (fire immediately). Use **Remove guard** to go back to **FALSE** (never fires).
 
 #### Problematic Guards (Red Highlighting)
@@ -823,9 +824,12 @@ The dashboard uses a simple two-color scheme for exit zones:
 | Color | Meaning |
 |-------|---------|  
 | **Green** | Exit zone is covered by an autonomous PWS transition ✓ |
-| **Red** | Exit zone is NOT covered by any autonomous PWS transition ✗ |
+| **Red** | Exit zone is uncovered or orphan (no matching source state) ✗ |
+| **Gray** | Internal exit zone (target already in semantics) — not selectable for autonomous guards |
 
-**Note**: For detailed analysis including exit zone origin (CS-only, SS-only, or both), right-click on the state dashboard and select **"Show Extended Details..."** to open a comprehensive analysis window.
+Internal exit zones (gray) represent autonomous component evolution that stays within the current state's semantics. They are **not selectable** as guards for autonomous PWS transitions.
+
+**Note**: For detailed analysis including exit zone origin (CS-only, SS-only, or both) and orphan exit zones, right-click on the state dashboard and select **"Show Extended Details..."**.
 
 2. **Precise Control**: Use fully-specified configurations when you need exact control over which component states are allowed. This generates exit zones for any transition that would leave those exact configurations.
 
@@ -983,6 +987,11 @@ Lists exit zones that have no covering autonomous transition. Each exit zone sho
 
 **How to Fix:** Add autonomous transitions with guards matching the listed exit zones.
 
+#### Orphan Exit Zones
+Lists exit zones whose **source state no longer exists** in the assembly. These are inconsistent/stale exit zones and are shown in **red**.
+
+**How to Fix:** Restore the missing source state/transition or recompute semantics to remove stale exit zones.
+
 #### Constraint Violations
 Lists configurations that appear in computed state semantics but violate user-defined constraints. These are also shown in **red** in state dashboards.
 
@@ -1013,6 +1022,7 @@ The report correlates with visual indicators on the diagram:
 - **Red underline in dashboards**: True deadlocks (internally stuck and not covered)
 - **True deadlocks also appear in the controller report’s “True deadlock configurations” section, even when no explicit constraint is specified.**
 - **Uncovered exit zones**: No visual indicator on transitions, but shown in state dashboards
+- **Orphan exit zones**: Shown in red in state dashboards and listed in the report
 - **Unreachable states**: Red dashboard with "State is unreachable (no configurations)"
 
 Use the report to get a comprehensive overview, then use the diagram to locate and fix individual issues.
@@ -1043,8 +1053,9 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 | Green underline | Configuration can evolve internally via autonomous transitions |
 | Red underline | True deadlock: internally stuck and not covered by any outgoing transition |
 | No underline | Internally stuck but covered by an outgoing transition |
-| Red (in exit zone list) | Exit zone is not covered by any PWS autonomous transition |
+| Red (in exit zone list) | Exit zone is uncovered or orphan (no matching source state) |
 | Green (in exit zone list) | Exit zone is covered by a PWS autonomous transition |
+| Gray (in exit zone list) | Internal exit zone (target already in semantics) — not selectable for autonomous guards |
 
 **Tip**: Right-click on the dashboard and select **"Show Extended Details..."** for detailed exit zone origin analysis.
 - Drag annotations to reorganize (they snap to grid)
@@ -1060,6 +1071,7 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 - **Cause**: One or more issues detected:
   - Configurations violate constraints
   - Exit zones not covered by transitions
+  - Orphan exit zones (missing source state)
   - Deadlock configurations present
 - **Solution**: Check each row of the annotation for red items and address them
 

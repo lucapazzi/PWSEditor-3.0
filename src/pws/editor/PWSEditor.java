@@ -255,6 +255,7 @@ public class PWSEditor extends JFrame {
                             String title = id + " : " + (machine.getName() != null ? machine.getName() : "");
                             if (embeddedEditor == null) {
                                 embeddedEditor = new StateMachineEditor(machine, pwsStateMachine.getAssembly(), title);
+                                embeddedEditor.setModelChangedCallback(() -> scheduleSemanticsRecalculation());
                                 embeddedEditor.setCloseCallback(() -> {
                                     embeddedEditor = null;
                                     machineEditorContainer.removeAll();
@@ -389,6 +390,7 @@ public class PWSEditor extends JFrame {
                             String title = machine.getName() != null ? machine.getName() : "Unnamed";
                             if (embeddedEditor == null) {
                                 embeddedEditor = new StateMachineEditor(machine, pwsStateMachine.getAssembly(), title);
+                                embeddedEditor.setModelChangedCallback(() -> scheduleSemanticsRecalculation());
                                 embeddedEditor.setCloseCallback(() -> {
                                     embeddedEditor = null;
                                     machineEditorContainer.removeAll();
@@ -926,6 +928,16 @@ public class PWSEditor extends JFrame {
 
     // Helper for PWSFileManager to access the base editor
     public StateMachineEditor getBaseEditor() { return this.baseEditor; }
+
+    // Expose the currently loaded machine library (if any) for preservation on New/Open
+    public assembly.MachineLibrary getCurrentLibrary() {
+        if (pwsStateMachine == null) return null;
+        try {
+            return pwsStateMachine.getAssembly().getMachineLibrary();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
 
     // Rebuild UI when a new model is provided (used by open/new)
     public void rebuildUIForNewModel(PWSStateMachine model) {
