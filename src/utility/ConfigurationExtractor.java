@@ -8,18 +8,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * La classe ConfigurationExtractor trasforma una SMProposition (formula logica)
- * in un insieme di configurazioni possibili.
+ * The ConfigurationExtractor class transforms an SMProposition (logical formula)
+ * into a set of possible configurations.
  *
- * Ogni configurazione è rappresentata come una mappa ({@code Map<String, String>})
- * che associa a ciascuna macchina il nome dello stato in cui essa si trova.
+ * Each configuration is represented as a map ({@code Map<String, String>})
+ * that associates each machine with the name of the state it is in.
  *
- * L'algoritmo prevede:
- *   1. Conversione della formula in forma DNF (disgiunzione di congiunzioni) tramite il metodo toDNF().
- *   2. Appiattimento della disgiunzione in una lista di termini.
- *   3. Per ciascun termine (cioè, ciascun prodotto) vengono estratti i literali.
- *      Se per una macchina compaiono due condizioni contrastanti, il termine viene scartato.
- *   4. L'insieme dei termini "validi" viene restituito come insieme di configurazioni.
+ * The algorithm:
+ *   1. Convert the formula to DNF (disjunction of conjunctions) using toDNF().
+ *   2. Flatten the disjunction into a list of terms.
+ *   3. For each term (i.e., each product), extract the literals.
+ *      If a machine appears with conflicting conditions, the term is discarded.
+ *   4. Return the set of "valid" terms as the set of configurations.
  */
 public class ConfigurationExtractor {
     private ConfigurationExtractor() {
@@ -28,9 +28,9 @@ public class ConfigurationExtractor {
 
 
     /**
-     * Appiattisce una formula OR in una lista di termini.
-     * Se l'espressione è una OR, restituisce ricorsivamente tutti i suoi componenti;
-     * altrimenti, restituisce una lista contenente l'espressione stessa.
+     * Flattens an OR formula into a list of terms.
+     * If the expression is an OR, recursively returns all its components;
+     * otherwise, returns a list containing the expression itself.
      */
     private static List<SMProposition> flattenOr(SMProposition expr) {
         List<SMProposition> result = new ArrayList<>();
@@ -45,9 +45,9 @@ public class ConfigurationExtractor {
     }
 
     /**
-     * Appiattisce una formula AND in una lista di literali.
-     * Se l'espressione è una AND, restituisce ricorsivamente tutti i suoi componenti;
-     * altrimenti, restituisce una lista contenente l'espressione stessa.
+     * Flattens an AND formula into a list of literals.
+     * If the expression is an AND, recursively returns all its components;
+     * otherwise, returns a list containing the expression itself.
      */
     private static List<SMProposition> flattenAnd(SMProposition expr) {
         List<SMProposition> result = new ArrayList<>();

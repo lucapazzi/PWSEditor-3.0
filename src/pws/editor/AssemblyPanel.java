@@ -52,12 +52,12 @@ public class AssemblyPanel extends JPanel {
     }
 
     private void onAdd() {
-        // Chiedi un identificatore univoco
+        // Ask for a unique identifier
         String id = JOptionPane.showInputDialog(this, "Enter a unique identifier:");
         if (id == null || id.trim().isEmpty()) {
             return;
         }
-        // Chiedi se si desidera una nuova macchina o usare una esistente
+        // Ask whether to create a new machine or use an existing one
         int option = JOptionPane.showOptionDialog(this,
                 "Do you want to create a new machine or select an existing one?",
                 "Add StateMachine",
@@ -67,7 +67,7 @@ public class AssemblyPanel extends JPanel {
                 new Object[] {"New", "Existing"},
                 "New");
         if(option == JOptionPane.YES_OPTION) {
-            // Crea una nuova PWSStateMachine
+            // Create a new PWSStateMachine
             String name = JOptionPane.showInputDialog(this, "Enter the machine name:");
             if(name == null || name.trim().isEmpty()){
                 return;
@@ -80,7 +80,7 @@ public class AssemblyPanel extends JPanel {
                 ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
             }
         } else if(option == JOptionPane.NO_OPTION) {
-            // Seleziona una macchina esistente: mostriamo una lista degli identificatori già presenti
+            // Select an existing machine: show a list of existing identifiers
             Map<String, StateMachine> machines = assembly.getStateMachines();
             if(machines.isEmpty()){
                 JOptionPane.showMessageDialog(this, "There are no existing machines. A new machine will be created.");
@@ -112,7 +112,7 @@ public class AssemblyPanel extends JPanel {
     private void onEdit() {
         String selected = stateMachineList.getSelectedValue();
         if(selected == null) return;
-        // Estrai l'identificatore (assumendo formato "id - nome")
+        // Extract the identifier (assuming format "id - name")
         String id = selected.split(" - ")[0];
         Object[] options = new Object[] {"Change identifier", "Change machine", "Change name", "Cancel"};
         int choice = JOptionPane.showOptionDialog(this, "Edit which property?", "Edit Machine",

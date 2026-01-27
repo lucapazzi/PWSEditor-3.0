@@ -132,7 +132,7 @@ public class Annotation<T> extends JComponent implements Serializable {
         // Ottieni il font attualmente impostato
         Font f = getFont();
         if (f == null) {
-            // Se il font è null, fornisce un font di default.
+            // If the font is null, provide a default font.
             f = new Font("Dialog", Font.PLAIN, 12);
             setFont(f);
         }

@@ -124,9 +124,9 @@ public class PWSState extends State {
         return stateSemantics;
     }
 
-    // Metodo per identificare in modo univoco il pseudostato
+    // Method to uniquely identify the pseudo-state
     public boolean isPseudoState() {
-        // Assicurati che il nome del pseudostato sia esattamente "PseudoState"
+        // Ensure the pseudo-state name is exactly "PseudoState"
         return "PseudoState".equals(getName());
     }
 

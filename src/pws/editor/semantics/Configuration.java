@@ -32,12 +32,12 @@ public class Configuration implements Serializable {
     }
 
     /**
-     * Aggiunge una BasicStateProposition mantenendo l'ordine (ordinamento lessicografico in base all'id).
+     * Adds a BasicStateProposition while preserving order (lexicographic by machine id).
      *
      * @param bsp proposition to add
      */
     public void addBasicStateProposition(BasicStateProposition bsp) {
-        // Inserimento ordinato in base a bsp.getId()
+        // Ordered insertion based on bsp.getMachineId()
         int index = 0;
         while (index < propositions.size() && propositions.get(index).getMachineId().compareTo(bsp.getMachineId()) < 0) {
             index++;
@@ -55,8 +55,8 @@ public class Configuration implements Serializable {
     }
 
     /**
-     * Costruisce una Configuration a partire da una lista di BasicStateProposition.
-     * Le proposizioni vengono inserite in ordine.
+     * Builds a Configuration from a list of BasicStateProposition.
+     * Propositions are inserted in order.
      *
      * @param assemblyId assembly identifier
      * @param props propositions to include
@@ -113,7 +113,7 @@ public class Configuration implements Serializable {
         if (!this.assemblyId.equals(other.getAssemblyId())) {
             throw new IllegalArgumentException("Assemblies do not match.");
         }
-        // Per ogni vincolo presente in 'other', verifico che anche 'this' lo contenga con lo stesso valore.
+        // For each constraint in 'other', verify that 'this' contains it with the same value.
         for (BasicStateProposition bspOther : other.getBasicStatePropositions()) {
             boolean found = false;
             for (BasicStateProposition bspThis : this.getBasicStatePropositions()) {

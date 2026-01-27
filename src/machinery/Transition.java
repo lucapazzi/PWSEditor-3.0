@@ -32,7 +32,7 @@ public class Transition implements TransitionInterface {
         this.target = target;
         this.autonomous = autonomous;
         this.triggerEvent = triggerEvent;
-        // Calcola il controlPoint di default, etc.
+        // Compute the default control point.
         if (source != null && target != null) {
             int defaultRadius = 25;
             Point centerSource = new Point(((State) source).getPosition().x + defaultRadius,
@@ -58,7 +58,7 @@ public class Transition implements TransitionInterface {
         }
     }
 
-    // Costruttore a 3 argomenti
+    // 3-argument constructor
     public Transition(StateInterface source, StateInterface target, boolean autonomous) {
         this(source, target, autonomous, "");
     }
@@ -120,7 +120,7 @@ public class Transition implements TransitionInterface {
 
     @Override
     public void fire() {
-        System.out.println("Transizione attivata: " + source.getName() + " -> " + target.getName());
+        System.out.println("Transition fired: " + source.getName() + " -> " + target.getName());
     }
 
     @Override

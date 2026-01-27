@@ -228,6 +228,8 @@ When editing an autonomous transition guard:
 - Internal (gray) exit zones are **not selectable** for autonomous guards.
 - If the source state has **no exit zones**, the menu offers **TRUE** (fire immediately). Use **Remove guard** to go back to **FALSE** (never fires).
 
+**Autonomous guard styling:** For autonomous transitions, each exit-zone proposition inside the guard is drawn **bold and underlined** to make reactive conditions stand out. TRUE/FALSE remain normal weight.
+
 #### Triggered Guard Partitioning (Determinism)
 
 Triggered transitions are **partitioned by source state + trigger event**. This partitioning **must be complete** to ensure determinism:
@@ -392,7 +394,7 @@ To share reusable machines across projects:
 2. Annotations appear as floating boxes near states, showing:
    - Constraint configurations
    - Computed configurations
-   - Reactive space (enabled transitions)
+   - Exit zones (reactive semantics)
 
 ### Dashboard Minimization
 
@@ -433,6 +435,8 @@ PWSEditor provides a visual Constraints Editor that makes it easy to build const
 2. Select **Edit Constraints Semantics**
 
 > **Note**: Pseudostates always have constraint "ANY" and cannot be edited.
+
+**Quick reset to ANY:** Right-click the dashboard and choose **Set Constraints to ANY** to restore the default “allow all configurations” constraint.
 
 > **Tip**: When the constraints editor is empty (effectively `ANY`), the dashboard shows "ANY" in the constraints line. Once you add a constraint, the explicit text replaces ANY, and deleting all constraints resumes the default ANY display.
 
@@ -845,6 +849,8 @@ The dashboard uses a simple two-color scheme for exit zones:
 
 Internal exit zones (gray) represent autonomous component evolution that stays within the current state's semantics. They are **not selectable** as guards for autonomous PWS transitions.
 
+**Label format:** Exit zones are shown as `S1→T` (state names only). To include machine IDs, enable **View → Show exit-zone machine IDs**, which displays `m.S1→m.T`.
+
 **Note**: For detailed analysis including exit zone origin (CS-only, SS-only, or both) and orphan exit zones, right-click on the state dashboard and select **"Show Extended Details..."**.
 
 2. **Precise Control**: Use fully-specified configurations when you need exact control over which component states are allowed. This generates exit zones for any transition that would leave those exact configurations.
@@ -950,6 +956,7 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 | Option | Description |
 |--------|-------------|
 | **Show state dashboards** | Toggle display of semantic annotations |
+| **Show exit-zone machine IDs** | Toggle whether exit-zone labels include machine IDs |
 | **Show Grid** | Toggle grid display |
 | **Snap to Grid** | Toggle automatic grid snapping |
 | **Set grid size...** | Adjust snap-to-grid size |
@@ -1152,7 +1159,7 @@ Each transition can have visible annotations:
 - **Action annotation**: Shows actions `{action1, action2}`
 - **Semantics annotation**: Shows computed transition semantics
 
-Toggle visibility via the transition's right-click menu.
+Toggle visibility via the transition's right-click menu. **Note:** For autonomous transitions, the guard toggle is not shown (guards remain visible by default).
 
 ---
 

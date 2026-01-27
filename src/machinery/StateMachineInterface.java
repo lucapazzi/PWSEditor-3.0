@@ -72,7 +72,7 @@ public interface StateMachineInterface extends Serializable {
     void setCurrentState(StateInterface state);
 
     /**
-     * Restituisce l'insieme degli eventi (trigger) associati alle transizioni controllabili.
+     * Returns the set of events (triggers) associated with controllable transitions.
      */
     Set<String> getEvents();
 

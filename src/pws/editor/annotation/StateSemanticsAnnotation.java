@@ -154,6 +154,25 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 popup.add(editConstraintsItem);
             }
 
+            if (!content.isPseudoState()) {
+                JMenuItem setAnyItem = new JMenuItem("Set Constraints to ANY");
+                setAnyItem.addActionListener(ae -> {
+                    content.setConstraintsSemantics(pws.editor.semantics.Semantics.top(assembly));
+                    content.setRawConstraintText("ANY");
+                    PWSStateMachine sm = panel.getStateMachine();
+                    if (sm != null) {
+                        sm.updateExitZonesForState(content);
+                    }
+                    java.awt.Window w = SwingUtilities.getWindowAncestor(panel);
+                    if (w instanceof pws.editor.PWSEditor pe) {
+                        pe.markDocumentDirty();
+                        pe.scheduleSemanticsRecalculation();
+                    }
+                    panel.repaint();
+                });
+                popup.add(setAnyItem);
+            }
+
             JMenuItem adaptConstraintsItem = new JMenuItem("Adapt Constraints to Configurations");
             Semantics currentSem = content.getStateSemantics();
             boolean hasConfigs = currentSem != null && !currentSem.getConfigurations().isEmpty();
@@ -215,6 +234,72 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     // Border thickness constant for consistent styling
     private static final int BORDER_THICKNESS = 2;
     private static final int CORNER_RADIUS = 8;
+    private static final String EXIT_ZONE_ARROW = "→";
+    private static boolean showExitZoneMachineIds = false;
+
+    public static boolean isShowExitZoneMachineIds() {
+        return showExitZoneMachineIds;
+    }
+
+    public static void setShowExitZoneMachineIds(boolean show) {
+        showExitZoneMachineIds = show;
+    }
+
+    private static List<String> buildExitZoneLabels(List<ExitZone> zones) {
+        if (zones == null || zones.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> labels = new ArrayList<>(zones.size());
+        for (ExitZone ez : zones) {
+            String targetKey = getExitZoneTargetKey(ez);
+            labels.add(formatExitZoneLabel(ez, targetKey, true));
+        }
+        return labels;
+    }
+
+    private static String getExitZoneTargetKey(ExitZone ez) {
+        if (ez == null || ez.getTarget() == null) {
+            return "?";
+        }
+        return formatExitZoneState(ez.getTarget());
+    }
+
+    private static String formatExitZoneState(BasicStateProposition prop) {
+        if (prop == null) {
+            return "?";
+        }
+        return showExitZoneMachineIds ? prop.toString() : prop.getStateName();
+    }
+
+    private static String formatExitZoneLabel(ExitZone ez, String targetKey, boolean disambiguate) {
+        if (ez == null) {
+            return "?";
+        }
+        if (!disambiguate) {
+            return targetKey;
+        }
+        BasicStateProposition source = ez.getSource();
+        BasicStateProposition target = ez.getTarget();
+        if (source == null || target == null) {
+            return (source != null) ? (formatExitZoneState(source) + EXIT_ZONE_ARROW + targetKey) : targetKey;
+        }
+        return formatExitZoneState(source) + EXIT_ZONE_ARROW + formatExitZoneState(target);
+    }
+
+    private static int measureCommaSeparatedWidth(FontMetrics fm, List<String> labels) {
+        if (labels == null || labels.isEmpty()) {
+            return 0;
+        }
+        int width = 0;
+        int sepWidth = fm.stringWidth(", ");
+        for (int i = 0; i < labels.size(); i++) {
+            width += fm.stringWidth(labels.get(i));
+            if (i < labels.size() - 1) {
+                width += sepWidth;
+            }
+        }
+        return width;
+    }
     
     @Override
     protected void paintComponent(Graphics g) {
@@ -476,15 +561,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             Semantics ss = state.getStateSemantics();
             // Prepare list of exit-zones
             List<ExitZone> zones = new ArrayList<>(state.getReactiveSemantics());
+            List<String> zoneLabels = buildExitZoneLabels(zones);
             // Compute total width of comma-separated exit-zone list
-            int exitTotalWidth = 0;
-            for (int i = 0; i < zones.size(); i++) {
-                String txt = zones.get(i).toString();
-                exitTotalWidth += fm.stringWidth(txt);
-                if (i < zones.size() - 1) {
-                    exitTotalWidth += fm.stringWidth(", ");
-                }
-            }
+            int exitTotalWidth = measureCommaSeparatedWidth(fm, zoneLabels);
             int exitX = (getWidth() - exitTotalWidth) / 2;
             // Draw each exit-zone with comma separators
             // Simplified color logic: 
@@ -493,7 +572,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             Font baseFont = g2d.getFont();
             for (int i = 0; i < zones.size(); i++) {
                 ExitZone ez = zones.get(i);
-                String txt = ez.toString();
+                String txt = zoneLabels.get(i);
                 boolean isOrphan = ez.isOrphanSource(asm);
                 boolean isInternal = false;
                 if (ss != null && asm != null && ez.getTarget() != null) {
@@ -760,17 +839,20 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         String actualSem = (state.getStateSemantics() == null)
             ? ""
             : state.getStateSemantics().toString();
-        String autonomousSem = (state.getReactiveSemantics() == null)
-            ? ""
-            : state.getReactiveSemantics().toString();
+        List<ExitZone> zones = (state.getReactiveSemantics() == null)
+            ? Collections.emptyList()
+            : new ArrayList<>(state.getReactiveSemantics());
+        List<String> zoneLabels = buildExitZoneLabels(zones);
 
-        String[] lines = new String[] { constraintSem, actualSem, autonomousSem };
+        String[] lines = new String[] { constraintSem, actualSem };
         FontMetrics fm = getFontMetrics(getFont().deriveFont(Font.PLAIN, 12f));
         FontMetrics fmSmall = getFontMetrics(getFont().deriveFont(Font.ITALIC, 9f));
         int maxWidth = 0;
         for (String line : lines) {
             maxWidth = Math.max(maxWidth, fm.stringWidth(line));
         }
+        int exitTotalWidth = measureCommaSeparatedWidth(fm, zoneLabels);
+        maxWidth = Math.max(maxWidth, exitTotalWidth);
         // Account for section labels width
         maxWidth = Math.max(maxWidth, fmSmall.stringWidth("exit zones") + 20);
         // Account for exit zones legend width

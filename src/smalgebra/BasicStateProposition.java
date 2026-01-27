@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Rappresenta una proposizione di stato elementare del tipo "machineId.stateName".
+ * Represents an elementary state proposition of the form "machineId.stateName".
  */
 public class BasicStateProposition implements SMProposition {
     private final String machineId;

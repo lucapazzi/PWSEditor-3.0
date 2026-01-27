@@ -8,6 +8,7 @@ import editor.StateMachinePanel;
 import machinery.StateMachine;
 import pws.PWSState;
 import pws.PWSStateMachine;
+import pws.editor.annotation.StateSemanticsAnnotation;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -55,6 +56,7 @@ public class PWSEditor extends JFrame {
     private JMenuItem exportPDFItem;
     private JCheckBoxMenuItem editModeItem;
     private JCheckBoxMenuItem showStateAnn;
+    private JCheckBoxMenuItem showExitZoneMachineIdsItem;
     private JCheckBoxMenuItem showGridItem;
     private JCheckBoxMenuItem snapToGridItem;
     private JMenuItem gridSizeItem;
@@ -713,7 +715,7 @@ public class PWSEditor extends JFrame {
 //                    pwsStateMachine.addTransition(newTransition);
 //                    baseEditor.getStateMachinePanel().repaint();
 //                } else {
-//                    JOptionPane.showMessageDialog(PWSEditor.this, "Stato sorgente o target non trovato.");
+//                    JOptionPane.showMessageDialog(PWSEditor.this, "Source or target state not found.");
 //                }
 //            }
 //        });
@@ -742,6 +744,21 @@ public class PWSEditor extends JFrame {
             markDocumentDirty();
         });
         viewMenu.add(showStateAnn);
+
+        showExitZoneMachineIdsItem = new JCheckBoxMenuItem(
+            "Show exit-zone machine IDs",
+            StateSemanticsAnnotation.isShowExitZoneMachineIds()
+        );
+        showExitZoneMachineIdsItem.addActionListener(e -> {
+            StateSemanticsAnnotation.setShowExitZoneMachineIds(showExitZoneMachineIdsItem.isSelected());
+            if (baseEditor == null) return;
+            PWSStateMachinePanel panel =
+                (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+            panel.refreshStateAnnotationSizes();
+            panel.repaint();
+            markDocumentDirty();
+        });
+        viewMenu.add(showExitZoneMachineIdsItem);
 
         // Ensure dashboards are visible at startup (preserve per-state visibility)
         try {
@@ -852,6 +869,7 @@ public class PWSEditor extends JFrame {
 
         if (editModeItem != null) editModeItem.setEnabled(ctrl);
         if (showStateAnn != null) showStateAnn.setEnabled(ctrl);
+        if (showExitZoneMachineIdsItem != null) showExitZoneMachineIdsItem.setEnabled(ctrl);
         if (showGridItem != null) showGridItem.setEnabled(ctrl);
         if (snapToGridItem != null) snapToGridItem.setEnabled(ctrl);
         if (gridSizeItem != null) gridSizeItem.setEnabled(ctrl);

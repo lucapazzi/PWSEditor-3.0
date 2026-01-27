@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.ArrayList;
 import java.util.function.Consumer;
 import pws.PWSTransition;
 import pws.PWSState;
@@ -37,6 +38,16 @@ public class GuardAnnotation extends Annotation<SMProposition> {
     private static final Color COLOR_RED = new Color(180, 0, 0);
     private static final Color COLOR_ORANGE = new Color(204, 102, 0);
     private static final String INIT_TRIGGER = "_init";
+
+    private static final class GuardSegment {
+        private final String text;
+        private final boolean highlight;
+
+        private GuardSegment(String text, boolean highlight) {
+            this.text = text;
+            this.highlight = highlight;
+        }
+    }
 
     /**
      * Creates a guard annotation.
@@ -103,6 +114,48 @@ public class GuardAnnotation extends Annotation<SMProposition> {
     protected String buildDisplayText() {
         // Return the text with square brackets.
         return "[" + (content == null ? "" : content.toString()) + "]";
+    }
+
+    private boolean shouldHighlightAutonomousGuard() {
+        if (associatedTransition == null || !associatedTransition.isAutonomous()) {
+            return false;
+        }
+        return !(content instanceof TrueProposition) && !(content instanceof FalseProposition);
+    }
+
+    private List<GuardSegment> buildGuardSegments(SMProposition prop, boolean highlightAutonomous) {
+        List<GuardSegment> segments = new ArrayList<>();
+        if (!highlightAutonomous) {
+            segments.add(new GuardSegment(buildDisplayText(), false));
+            return segments;
+        }
+        segments.add(new GuardSegment("[", false));
+        appendPropositionSegments(prop, segments);
+        segments.add(new GuardSegment("]", false));
+        return segments;
+    }
+
+    private void appendPropositionSegments(SMProposition prop, List<GuardSegment> segments) {
+        if (prop == null) {
+            return;
+        }
+        if (prop instanceof BasicStateProposition) {
+            segments.add(new GuardSegment(prop.toString(), true));
+            return;
+        }
+        if (prop instanceof TrueProposition || prop instanceof FalseProposition) {
+            segments.add(new GuardSegment(prop.toString(), false));
+            return;
+        }
+        if (prop instanceof AndProposition and) {
+            segments.add(new GuardSegment("(", false));
+            appendPropositionSegments(and.getLeft(), segments);
+            segments.add(new GuardSegment(" AND ", false));
+            appendPropositionSegments(and.getRight(), segments);
+            segments.add(new GuardSegment(")", false));
+            return;
+        }
+        segments.add(new GuardSegment(prop.toString(), false));
     }
     
     /**
@@ -194,7 +247,13 @@ public class GuardAnnotation extends Annotation<SMProposition> {
         
         Graphics2D g2d = (Graphics2D) g;
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
+        Font baseFont = getFont();
+        if (baseFont == null) {
+            baseFont = new Font("Dialog", Font.PLAIN, 12);
+            setFont(baseFont);
+        }
+        Font plainFont = baseFont.deriveFont(Font.PLAIN, 12f);
+        Font boldFont = plainFont.deriveFont(Font.BOLD, 12f);
         
         // Set color based on problematic status
         if (issueLevel == GuardIssueLevel.RED) {
@@ -205,13 +264,52 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             g2d.setColor(Color.BLACK);
         }
         
-        String text = buildDisplayText();
-        FontMetrics fm = g2d.getFontMetrics();
-        int textWidth = fm.stringWidth(text);
-        int textHeight = fm.getAscent();
-        int x = (getWidth() - textWidth) / 2;
+        boolean highlightAutonomous = shouldHighlightAutonomousGuard();
+        List<GuardSegment> segments = buildGuardSegments(content, highlightAutonomous);
+        FontMetrics fmPlain = g2d.getFontMetrics(plainFont);
+        FontMetrics fmBold = g2d.getFontMetrics(boldFont);
+        int textHeight = fmPlain.getAscent();
+        int totalWidth = 0;
+        for (GuardSegment seg : segments) {
+            FontMetrics fm = seg.highlight ? fmBold : fmPlain;
+            totalWidth += fm.stringWidth(seg.text);
+        }
+        int x = (getWidth() - totalWidth) / 2;
         int y = (getHeight() + textHeight) / 2 - 2;
-        g2d.drawString(text, x, y);
+        for (GuardSegment seg : segments) {
+            FontMetrics fm = seg.highlight ? fmBold : fmPlain;
+            g2d.setFont(seg.highlight ? boldFont : plainFont);
+            g2d.drawString(seg.text, x, y);
+            int segWidth = fm.stringWidth(seg.text);
+            if (seg.highlight && segWidth > 0) {
+                int underlineY = y + 1;
+                g2d.drawLine(x, underlineY, x + segWidth, underlineY);
+            }
+            x += segWidth;
+        }
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+        Font f = getFont();
+        if (f == null) {
+            f = new Font("Dialog", Font.PLAIN, 12);
+            setFont(f);
+        }
+        Font plainFont = f.deriveFont(Font.PLAIN, 12f);
+        Font boldFont = plainFont.deriveFont(Font.BOLD, 12f);
+        FontMetrics fmPlain = getFontMetrics(plainFont);
+        FontMetrics fmBold = getFontMetrics(boldFont);
+
+        boolean highlightAutonomous = shouldHighlightAutonomousGuard();
+        List<GuardSegment> segments = buildGuardSegments(content, highlightAutonomous);
+        int width = 0;
+        for (GuardSegment seg : segments) {
+            FontMetrics fm = seg.highlight ? fmBold : fmPlain;
+            width += fm.stringWidth(seg.text);
+        }
+        int height = Math.max(fmPlain.getHeight(), fmBold.getHeight());
+        return new Dimension(width + 10, height + 10);
     }
     
     @Override

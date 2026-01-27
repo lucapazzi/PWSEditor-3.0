@@ -40,14 +40,14 @@ public class PWSStateMachine extends StateMachine {
     }
 
     /**
-     * Metodo privato per sostituire il pseudostato creato nel costruttore base con un PWSState.
-     * Viene rimosso l'oggetto creato di default e sostituito con un'istanza di PWSState.
+     * Private helper to replace the pseudo-state created by the base constructor with a PWSState.
+     * The default object is removed and replaced with a PWSState instance.
      */
     private void fixPseudoState() {
         if (!states.isEmpty() && states.get(0).getName().equals("PseudoState")) {
             states.remove(0);
         }
-        // Crea il nuovo pseudostato come PWSState
+        // Create the new pseudo-state as a PWSState
         PWSState pseudo = new PWSState("PseudoState", new Point(20, 20), this.assembly);
         this.pseudoState = pseudo;
         states.add(0, pseudo);
@@ -393,8 +393,8 @@ public class PWSStateMachine extends StateMachine {
     public PWSStateMachine clone() {
         PWSStateMachine cloned = new PWSStateMachine(this.getName());
         cloned.setAssembly(this.getAssembly());
-        // Nota: Per clonare gli stati e le transizioni, occorre implementare la logica di copia,
-        // che può essere definita in base alle esigenze.
+        // Note: to clone states and transitions, a custom copy strategy is required
+        // and can be implemented as needed.
         return cloned;
     }
 }

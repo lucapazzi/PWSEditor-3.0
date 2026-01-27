@@ -27,8 +27,8 @@ public interface SMProposition extends Cloneable, Serializable {
     boolean evaluate(AssemblyInterface assembly);
 
     /**
-     * Trasforma l'espressione sostituendo, per la macchina data, lo stato fromState con toState.
-     * (Non viene più controllata l'ontologica validità dell'espressione.)
+     * Transforms the expression by replacing, for the given machine, state fromState with toState.
+     * (Ontological validity of the expression is no longer checked.)
      *
      * @param machineId machine identifier
      * @param fromState state to replace
@@ -64,7 +64,7 @@ public interface SMProposition extends Cloneable, Serializable {
     }
 
     /**
-     * A livello ontologico, A ontoImplies B se per ogni configurazione in cui A è vera, B è vera.
+     * Ontologically, A ontoImplies B if for every configuration where A is true, B is true.
      *
      * @param other other proposition
      * @param assembly assembly context
@@ -80,7 +80,7 @@ public interface SMProposition extends Cloneable, Serializable {
     }
 
     /**
-     * A livello ontologico, A ontoEquiv B se A ontoImplies B e B ontoImplies A.
+     * Ontologically, A ontoEquiv B if A ontoImplies B and B ontoImplies A.
      *
      * @param other other proposition
      * @param assembly assembly context
@@ -99,7 +99,7 @@ public interface SMProposition extends Cloneable, Serializable {
     }
 
     /**
-     * A livello ontologico, A ontoEquiv B se A ontoImplies B e B ontoImplies A.
+     * Ontologically, A ontoEquiv B if A ontoImplies B and B ontoImplies A.
      *
      * @param other other proposition
      * @param assembly assembly context
@@ -110,8 +110,8 @@ public interface SMProposition extends Cloneable, Serializable {
     }
 
     /**
-     * Converte l'espressione nella forma normale negativa (NNF)
-     * in cui le negazioni appaiono solo direttamente davanti agli atomi.
+     * Converts the expression to negative normal form (NNF),
+     * where negations appear only directly in front of atoms.
      *
      * @return proposition in NNF
      */
@@ -121,7 +121,7 @@ public interface SMProposition extends Cloneable, Serializable {
         } else if (this instanceof NotProposition) {
             SMProposition inner = ((NotProposition) this).getProposition();
             if (inner instanceof NotProposition) {
-                // doppia negazione: ¬(¬A) = A
+                // double negation: ¬(¬A) = A
                 return ((NotProposition) inner).getProposition().toNNF();
             } else if (inner instanceof AndProposition) {
                 // ¬(A ∧ B) = ¬A ∨ ¬B
@@ -149,9 +149,9 @@ public interface SMProposition extends Cloneable, Serializable {
     }
 
     /**
-     * Converte l'espressione in forma normale congiuntiva (CNF).
+     * Converts the expression to conjunctive normal form (CNF).
      *
-     * @return proposizione in CNF
+     * @return proposition in CNF
      */
     default SMProposition toCNF() {
         SMProposition nnf = this.toNNF();
@@ -159,9 +159,9 @@ public interface SMProposition extends Cloneable, Serializable {
     }
 
     /**
-     * Converte l'espressione in forma normale disgiuntiva (DNF).
+     * Converts the expression to disjunctive normal form (DNF).
      *
-     * @return proposizione in DNF
+     * @return proposition in DNF
      */
     default SMProposition toDNF() {
         SMProposition nnf = this.toNNF();
@@ -169,17 +169,17 @@ public interface SMProposition extends Cloneable, Serializable {
     }
 
     /**
-     * Distribuisce l'OR sull'AND per ottenere la CNF.
-     * Implementa la regola: A ∨ (B ∧ C) = (A ∨ B) ∧ (A ∨ C)
+     * Distributes OR over AND to obtain CNF.
+     * Implements the rule: A ∨ (B ∧ C) = (A ∨ B) ∧ (A ∨ C)
      *
-     * @param expr espressione da trasformare
-     * @return espressione trasformata
+     * @param expr expression to transform
+     * @return transformed expression
      */
     static SMProposition distributeOrOverAnd(SMProposition expr) {
         if (expr instanceof OrProposition) {
             SMProposition left = distributeOrOverAnd(((OrProposition) expr).getLeft());
             SMProposition right = distributeOrOverAnd(((OrProposition) expr).getRight());
-            // Se uno dei due lati è una congiunzione, applica la distribuzione.
+            // If either side is a conjunction, apply distribution.
             if (left instanceof AndProposition) {
                 SMProposition a = ((AndProposition) left).getLeft();
                 SMProposition b = ((AndProposition) left).getRight();
@@ -202,22 +202,22 @@ public interface SMProposition extends Cloneable, Serializable {
             SMProposition right = distributeOrOverAnd(((AndProposition) expr).getRight());
             return new AndProposition(left, right);
         }
-        // Per NotProposition e BasicStateProposition, la distribuzione non cambia nulla.
+        // For NotProposition and BasicStateProposition, distribution does not change anything.
         return expr;
     }
 
     /**
-     * Distribuisce l'AND sull'OR per ottenere la DNF.
-     * Implementa la regola: A ∧ (B ∨ C) = (A ∧ B) ∨ (A ∧ C)
+     * Distributes AND over OR to obtain DNF.
+     * Implements the rule: A ∧ (B ∨ C) = (A ∧ B) ∨ (A ∧ C)
      *
-     * @param expr espressione da trasformare
-     * @return espressione trasformata
+     * @param expr expression to transform
+     * @return transformed expression
      */
     static SMProposition distributeAndOverOr(SMProposition expr) {
         if (expr instanceof AndProposition) {
             SMProposition left = distributeAndOverOr(((AndProposition) expr).getLeft());
             SMProposition right = distributeAndOverOr(((AndProposition) expr).getRight());
-            // Se uno dei due lati è una disgiunzione, applica la distribuzione.
+            // If either side is a disjunction, apply distribution.
             if (left instanceof OrProposition) {
                 SMProposition a = ((OrProposition) left).getLeft();
                 SMProposition b = ((OrProposition) left).getRight();
@@ -240,7 +240,7 @@ public interface SMProposition extends Cloneable, Serializable {
             SMProposition right = distributeAndOverOr(((OrProposition) expr).getRight());
             return new OrProposition(left, right);
         }
-        // Per NotProposition e BasicStateProposition, la distribuzione non cambia nulla.
+        // For NotProposition and BasicStateProposition, distribution does not change anything.
         return expr;
     }
 

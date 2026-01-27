@@ -33,15 +33,15 @@ public class PWSPanel extends JPanel {
         JScrollPane scrollPane = new JScrollPane(machineList);
         add(scrollPane, BorderLayout.CENTER);
 
-        // Listener per il doppio click: notifica il listener di selezione (se presente),
-        // altrimenti apre un nuovo editor in finestra (comportamento legacy).
+        // Double-click listener: notify the selection listener (if present),
+        // otherwise open a new editor in a separate window (legacy behavior).
         machineList.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) { // doppio click
+                if (e.getClickCount() == 2) { // double-click
                     String selected = machineList.getSelectedValue();
                     if (selected != null) {
-                        // Assumiamo il formato "id - Nome"
+                        // Assume the format "id - Name"
                         String[] parts = selected.split(" - ");
                         if (parts.length >= 2) {
                             String id = parts[0];
@@ -52,7 +52,7 @@ public class PWSPanel extends JPanel {
                                     selectionListener.machineSelected(id);
                                 } else {
                                     SwingUtilities.invokeLater(() -> {
-                                        // Fallback: apri editor in finestra separata
+                                        // Fallback: open editor in a separate window
                                         StateMachineEditor editor = new StateMachineEditor(machine, assembly, id + " : " + machineName);
                                         editor.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
                                         editor.setSize(800, 600);
@@ -67,7 +67,7 @@ public class PWSPanel extends JPanel {
             }
         });
 
-        // Pannello di pulsanti per aggiungere, modificare o rimuovere macchine
+        // Button panel to add, edit, or remove machines
         JPanel buttonPanel = new JPanel();
         JButton addButton = new JButton("Add");
         JButton editButton = new JButton("Edit");
@@ -258,7 +258,7 @@ public class PWSPanel extends JPanel {
                 "Are you sure you want to remove the machine with identifier " + id + "?",
                 "Confirm", JOptionPane.YES_NO_OPTION);
         if (confirm == JOptionPane.YES_OPTION) {
-            // Rimuove solo il mapping corrispondente all'id selezionato
+            // Remove only the mapping corresponding to the selected id
             assembly.getStateMachines().remove(id);
             if (selectionListener != null) {
                 selectionListener.machineRemoved(id);

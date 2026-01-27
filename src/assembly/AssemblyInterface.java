@@ -26,10 +26,10 @@ public interface AssemblyInterface extends Serializable {
     void addStateMachine(String identifier, StateMachine machine);
 
     /**
-     * Restituisce tutte le assembly concrete generate (cioè, tutte le configurazioni possibili,
-     * ottenute variando il current state di ciascuna macchina).
+     * Returns all generated concrete assemblies (i.e., all possible configurations,
+     * obtained by varying the current state of each machine).
      *
-     * @return elenco delle assembly concrete generate
+     * @return list of generated concrete assemblies
      */
     List<AssemblyInterface> getAllConcreteAssemblies();
 

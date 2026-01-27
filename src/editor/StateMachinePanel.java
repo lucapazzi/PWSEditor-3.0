@@ -623,22 +623,22 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             repaint();
         } else if (selectedState != null && dragOffset != null) {
             Point newPoint = e.getPoint();
-            // posizione grezza (angolo in alto a sinistra)
+            // raw position (top-left corner)
             int rawX = newPoint.x - dragOffset.x;
             int rawY = newPoint.y - dragOffset.y;
 
             machinery.State st = (machinery.State) selectedState;
 
-            // scegli il diametro corretto (stato normale vs pseudostato)
+            // choose the correct diameter (normal state vs pseudo-state)
             int d = st.getName().equals("PseudoState") ? PSEUDO_DIAMETER : DIAMETER;
             int r = d / 2;
 
             if (snapToGrid) {
-                // centro corrente rispetto alla nuova posizione
+                // current center relative to the new position
                 Point center = new Point(rawX + r, rawY + r);
-                // snap del centro alla griglia
+                // snap the center to the grid
                 Point snappedCenter = snap(center);
-                // ricalcola l’angolo in alto a sinistra a partire dal centro snap-pato
+                // recompute the top-left corner from the snapped center
                 rawX = snappedCenter.x - r;
                 rawY = snappedCenter.y - r;
             }
@@ -879,10 +879,10 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         
         popup.addSeparator();
 
-        // Voce di menu per eliminare la transizione
+        // Menu item to delete the transition
         JMenuItem deleteItem = new JMenuItem("Delete Transition");
         deleteItem.addActionListener(ae -> {
-            // Utilizza il metodo helper per rimuovere la transizione e tutti i riferimenti associati
+            // Use the helper method to remove the transition and all associated references
             deleteTransition(t);
             // Schedule semantics recalculation if inside PWSEditor
             java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
@@ -894,9 +894,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         });
         popup.add(deleteItem);
 
-        // Se necessario, qui puoi aggiungere ulteriori voci per gestire annotazioni (guard, action, semantics),
-        // per esempio "Toggle Guard Annotation", "Toggle Action Annotation", ecc.
-        // (Queste voci potrebbero essere identiche per transizioni iniziali e normali se il comportamento deve essere uniforme.)
+        // If needed, add more entries here to manage annotations (guard, action, semantics),
+        // for example "Toggle Guard Annotation", "Toggle Action Annotation", etc.
+        // (These entries could be the same for initial and normal transitions if behavior should be uniform.)
 
         popup.show(this, e.getX(), e.getY());
     }
@@ -964,27 +964,27 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     }
 
     /**
-     * Rimuove la transizione t dalla state machine e cancella i riferimenti ad essa:
-     * - Rimuove le annotazioni associate (se la transizione è una PWSTransition)
-     * - Rimuove t dalla lista globale delle transizioni
-     * - Rimuove t dalle liste delle transizioni in uscita dello stato sorgente
-     *   e dalle transizioni in ingresso dello stato target.
+     * Removes transition t from the state machine and clears references to it:
+     * - Removes associated annotations (if the transition is a PWSTransition)
+     * - Removes t from the global transitions list
+     * - Removes t from the source state's outgoing transitions list
+     *   and from the target state's incoming transitions list.
      */
     private void deleteTransition(TransitionInterface t) {
-//        // Se t è di tipo PWSTransition, pulisci le annotazioni associate.
+//        // If t is a PWSTransition, clear its associated annotations.
 //        if (t instanceof PWSTransition) {
 //            clearAnnotationsForTransition((PWSTransition) t);
 //        }
-        // Rimuove la transizione dalla lista globale.
+        // Remove the transition from the global list.
         stateMachine.getTransitions().remove(t);
 
-        // Rimuove la transizione dalla lista delle transizioni in uscita dello stato sorgente.
+        // Remove the transition from the source state's outgoing transitions list.
         StateInterface source = t.getSource();
         if (source != null && source.getOutgoingTransitions() != null) {
             source.getOutgoingTransitions().remove(t);
         }
 
-        // Rimuove la transizione dalla lista delle transizioni in ingresso dello stato target.
+        // Remove the transition from the target state's incoming transitions list.
         StateInterface target = t.getTarget();
         if (target != null && target.getIncomingTransitions() != null) {
             target.getIncomingTransitions().remove(t);

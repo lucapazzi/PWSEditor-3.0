@@ -18,31 +18,31 @@ public class PWSDialogs {
     }
 
     /**
-     * Mostra un dialogo per la scelta della guardia e delle azioni.
-     * La guardia è una coppia "machineId.stateName" e per le azioni, per ciascun machineId,
-     * l'utente può scegliere una sola azione nel formato "machineId.event".
+     * Shows a dialog to choose a guard and actions.
+     * The guard is a "machineId.stateName" pair and for actions, for each machineId,
+     * the user can choose a single action in the "machineId.event" format.
      *
-     * @param assembly L'assembly contenente le state machine di base.
-     * @return Un array di due stringhe: [guard, azioni]. Se l'utente annulla, restituisce {"", ""}.
+     * @param assembly The assembly containing the base state machines.
+     * @return An array of two strings: [guard, actions]. If the user cancels, returns {"", ""}.
      */
     public static String[] askForGuardAndAction(AssemblyInterface assembly) {
-        // Costruiamo la lista delle guardie.
+        // Build the list of guards.
         List<String> guardOptions = new ArrayList<>();
-        // Per le azioni, vogliamo avere una mappa da machineId a lista di azioni.
+        // For actions, we want a map from machineId to a list of actions.
         Map<String, List<String>> actionOptionsMap = new LinkedHashMap<>();
 
-        // Supponiamo che assembly.getStateMachines() restituisca una Map<String, StateMachine>
+        // Assume assembly.getStateMachines() returns a Map<String, StateMachine>
         Map<String, StateMachine> machines = assembly.getStateMachines();
         for (Map.Entry<String, StateMachine> entry : machines.entrySet()) {
             String machineId = entry.getKey();
             StateMachine machine = entry.getValue();
 
-            // Per le guardie: per ogni stato della macchina, aggiungiamo "machineId.stateName".
+            // For guards: for each machine state, add "machineId.stateName".
             for (StateInterface s : machine.getStates()) {
                 guardOptions.add(machineId + "." + s.getName());
             }
 
-            // Per le azioni: per ogni evento della macchina, aggiungiamo "machineId.event".
+            // For actions: for each machine event, add "machineId.event".
             List<String> actionList = new ArrayList<>();
             if (machine.getEvents() != null) {
                 for (String event : machine.getEvents()) {
@@ -52,12 +52,12 @@ public class PWSDialogs {
             actionOptionsMap.put(machineId, actionList);
         }
 
-        // Creiamo il pannello per il dialogo.
+        // Create the dialog panel.
         JPanel panel = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(5, 5, 5, 5);
 
-        // Riga 0: Label e JComboBox per la guardia.
+        // Row 0: label and JComboBox for the guard.
         gbc.gridx = 0;
         gbc.gridy = 0;
         panel.add(new JLabel("Select a guard (m.S):"), gbc);
@@ -66,7 +66,7 @@ public class PWSDialogs {
         guardCombo.setPreferredSize(new Dimension(200, 25));
         panel.add(guardCombo, gbc);
 
-        // Riga successive: per ciascun machineId, aggiungiamo una riga per la scelta dell'azione.
+        // Next rows: for each machineId, add a row for action selection.
         Map<String, JComboBox<String>> actionCombos = new LinkedHashMap<>();
         int row = 1;
         for (Map.Entry<String, List<String>> entry : actionOptionsMap.entrySet()) {
@@ -78,7 +78,7 @@ public class PWSDialogs {
             panel.add(new JLabel("Action for " + machineId + ":"), gbc);
 
             gbc.gridx = 1;
-            // Creiamo un JComboBox per le azioni con una opzione predefinita "None".
+            // Create a JComboBox for actions with a default "None" option.
             String[] actionArray = new String[actions.size() + 1];
             actionArray[0] = "None";
             for (int i = 0; i < actions.size(); i++) {
@@ -95,7 +95,7 @@ public class PWSDialogs {
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
         if (result == JOptionPane.OK_OPTION) {
             String selectedGuard = (String) guardCombo.getSelectedItem();
-            // Per le azioni, raccogliamo una sola azione per ciascun machineId (saltando "None")
+            // For actions, collect one action per machineId (skipping "None")
             List<String> chosenActions = new ArrayList<>();
             for (Map.Entry<String, JComboBox<String>> entry : actionCombos.entrySet()) {
                 String selected = (String) entry.getValue().getSelectedItem();
@@ -103,7 +103,7 @@ public class PWSDialogs {
                     chosenActions.add(selected);
                 }
             }
-            // Costruiamo la stringa delle azioni, separata da virgole.
+            // Build the action string, comma-separated.
             String actionsStr = String.join(", ", chosenActions);
             return new String[] { selectedGuard != null ? selectedGuard : "", actionsStr };
         } else {

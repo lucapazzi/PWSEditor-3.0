@@ -12,14 +12,14 @@ public class StateMachine implements StateMachineInterface, Cloneable {
     protected List<TransitionInterface> transitions;
     private StateInterface currentState;
     private Set<String> events;
-    protected StateInterface pseudoState; // Pseudostato iniziale
+    protected StateInterface pseudoState; // Initial pseudo-state
 
     public StateMachine(String name) {
         this.name = name;
         this.states = new ArrayList<>();
         this.transitions = new ArrayList<>();
         this.events = new HashSet<>();
-        // Posizione modificata in modo che il pseudostato sia visibile (es. (20,20))
+        // Position adjusted so the pseudo-state is visible (e.g., (20,20)).
         this.pseudoState = new State("PseudoState", new Point(20, 20));
         this.states.add(pseudoState);
     }
@@ -48,7 +48,7 @@ public class StateMachine implements StateMachineInterface, Cloneable {
         }
     }
 
-    // Metodi getter e setter e gli altri metodi restano invariati...
+    // Getters/setters and other methods remain unchanged.
     @Override
     public String getName() {
         return name;
@@ -73,7 +73,7 @@ public class StateMachine implements StateMachineInterface, Cloneable {
     @Override
     public void addTransition(TransitionInterface transition) {
         transitions.add(transition);
-        // Se la transizione è triggerable, aggiungi il trigger agli eventi della macchina.
+        // If the transition is triggerable, add its trigger to the machine events.
         if (transition.isTriggerable()) {
             String trigger = transition.getTriggerEvent();
             if (trigger != null && !trigger.trim().isEmpty()) {

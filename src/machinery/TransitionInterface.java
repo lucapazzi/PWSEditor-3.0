@@ -27,8 +27,8 @@ public interface TransitionInterface extends Serializable {
     boolean isAutonomous();
 
     /**
-     * Se la transizione è triggerable, restituisce il trigger event associato;
-     * altrimenti, può restituire null o una stringa vuota.
+     * If the transition is triggerable, returns the associated trigger event;
+     * otherwise, it may return null or an empty string.
      */
     String getTriggerEvent();
 
@@ -45,8 +45,8 @@ public interface TransitionInterface extends Serializable {
     void fire();
 
     /**
-     * Metodo di utilità: restituisce true se la transizione è triggerable,
-     * ossia non è autonoma e il trigger event non è null né vuoto.
+     * Utility method: returns true if the transition is triggerable,
+     * i.e., it is not autonomous and the trigger event is neither null nor empty.
      */
     default boolean isTriggerable() {
         return !isAutonomous() && getTriggerEvent() != null && !getTriggerEvent().isEmpty();

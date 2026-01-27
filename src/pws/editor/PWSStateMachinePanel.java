@@ -143,6 +143,26 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         }
     }
 
+    /**
+     * Recompute dashboard sizes after display settings change (e.g., exit-zone labels).
+     */
+    public void refreshStateAnnotationSizes() {
+        for (StateInterface si : stateMachine.getStates()) {
+            if (si instanceof PWSState pwsState) {
+                StateSemanticsAnnotation annot = pwsState.getAnnotation();
+                if (annot == null) continue;
+                Dimension pref = annot.getPreferredSize();
+                Rectangle bounds = annot.getBounds();
+                if (pref.width != bounds.width || pref.height != bounds.height) {
+                    annot.setBounds(bounds.x, bounds.y, pref.width, pref.height);
+                }
+                annot.revalidate();
+                annot.repaint();
+            }
+        }
+        resizeCanvasToContent();
+    }
+
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
@@ -203,7 +223,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
      * Draw a single transition, including its curve, arrowhead and annotations.
      */
     protected void drawSingleTransition(Graphics2D g2d, TransitionInterface t) {
-        // Calcola i centri dei nodi sorgente e target.
+        // Compute centers of source and target nodes.
         machinery.State sourceState = (machinery.State) t.getSource();
         machinery.State targetState = (machinery.State) t.getTarget();
         Point sourcePos = sourceState.getPosition();
@@ -216,7 +236,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         // Check for self-loop (source == target)
         boolean isSelfLoop = (sourceState == targetState);
         
-        // Recupera o calcola il control point.
+        // Retrieve or compute the control point.
         Point cp = ((Transition) t).getControlPoint();
         if (cp == null) {
             if (isSelfLoop) {
@@ -255,7 +275,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             }
         }
 
-        // Disegna la curva della transizione.
+        // Draw the transition curve.
         QuadCurve2D.Double curve = new QuadCurve2D.Double();
         curve.setCurve(p0.x, p0.y, cp.x, cp.y, p2.x, p2.y);
         // Render disabled transitions in gray and slightly thicker
@@ -270,7 +290,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         // Restore original stroke
         g2d.setStroke(oldStroke);
 
-        // Disegna l'annotazione del trigger o, se vuota (transizione autonoma), un pallino bianco.
+        // Draw the trigger annotation or, if empty (autonomous transition), a white dot.
         String trigger = t.getTriggerEvent();
         if (trigger != null && !trigger.trim().isEmpty() && t.isTriggerable()) {
             // Fixed trigger labels are no longer drawn here because triggers are shown as draggable labels.
@@ -293,7 +313,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             g2d.drawOval(p0.x - circleRadius, p0.y - circleRadius, circleRadius * 2, circleRadius * 2);
         }
 
-        // Se la transizione è una PWSTransition, aggiorna/disegna le annotazioni.
+        // If the transition is a PWSTransition, update/draw annotations.
         PWSTransition pt = null;
         if (t instanceof PWSTransition) {
             pt = (PWSTransition) t;
@@ -311,30 +331,30 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             drawSelfLoopEndpointHandle(g2d, p2);  // end point
         }
 
-        // Disegna le linee di collegamento tra le annotazioni e l'arco,
-        // se la transizione è PWSTransition (pt non è null).
+        // Draw connector lines between annotations and the arc
+        // when the transition is a PWSTransition (pt is not null).
         if (pt != null) {
             Stroke savedStroke = g2d.getStroke();
             float[] dashPattern = {2f, 4f};
             Stroke dashed = new BasicStroke(1, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1.0f, dashPattern, 0.0f);
             g2d.setStroke(dashed);
-            g2d.setColor(new Color(180, 180, 180)); // Colore chiaro per le linee
+            g2d.setColor(new Color(180, 180, 180)); // light color for the lines
 
-            // GuardAnnotation: linea dal punto a t = 0.8 (verso il target) al centro dell'annotazione.
+            // GuardAnnotation: line from the t = 0.2 point (toward the target) to the annotation center.
             if (pt.getGuardAnnotation() != null && pt.getGuardAnnotation().isVisible()) {
                 Point guardPoint = computePointOnCurve(p0, cp, p2, 0.2);
                 Rectangle guardBounds = pt.getGuardAnnotation().getBounds();
                 Point guardCenter = new Point(guardBounds.x + guardBounds.width / 2, guardBounds.y + guardBounds.height / 2);
                 g2d.drawLine(guardPoint.x, guardPoint.y, guardCenter.x, guardCenter.y);
             }
-            // ActionAnnotation: linea dal punto a t = 0.5 (punto medio) al centro dell'annotazione.
+            // ActionAnnotation: line from the t = 0.5 point (midpoint) to the annotation center.
             if (pt.getActionAnnotation() != null && pt.getActionAnnotation().isVisible()) {
                 Point actionPoint = computePointOnCurve(p0, cp, p2, 0.5);
                 Rectangle actionBounds = pt.getActionAnnotation().getBounds();
                 Point actionCenter = new Point(actionBounds.x + actionBounds.width / 2, actionBounds.y + actionBounds.height / 2);
                 g2d.drawLine(actionPoint.x, actionPoint.y, actionCenter.x, actionCenter.y);
             }
-            // TransitionSemanticsAnnotation: linea dal punto a t = 0.2 (verso il sorgente) al centro dell'annotazione.
+            // TransitionSemanticsAnnotation: line from the t = 0.8 point (toward the source) to the annotation center.
             if (pt.getSemanticsAnnotation() != null && pt.getSemanticsAnnotation().isVisible()) {
                 Point semPoint = computePointOnCurve(p0, cp, p2, 0.8);
                 Rectangle semBounds = pt.getSemanticsAnnotation().getBounds();
@@ -345,7 +365,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         }
     }
 
-    // Metodo helper per calcolare un punto sulla curva Bézier quadratica dato un parametro t.
+    // Helper method to compute a point on the quadratic Bézier curve for a given t.
     private Point computePointOnCurve(Point p0, Point cp, Point p2, double t) {
         double oneMinusT = 1.0 - t;
         int x = (int) (oneMinusT * oneMinusT * p0.x + 2 * oneMinusT * t * cp.x + t * t * p2.x);
@@ -695,22 +715,22 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             repaint();
         } else if (selectedState != null && dragOffset != null) {
             Point newPoint = e.getPoint();
-            // posizione grezza (angolo in alto a sinistra)
+            // raw position (top-left corner)
             int rawX = newPoint.x - dragOffset.x;
             int rawY = newPoint.y - dragOffset.y;
 
             machinery.State st = (machinery.State) selectedState;
 
-            // scegli il diametro corretto (stato normale vs pseudostato)
+            // choose the correct diameter (normal state vs pseudo-state)
             int d = st.getName().equals("PseudoState") ? PSEUDO_DIAMETER : DIAMETER;
             int r = d / 2;
 
             if (snapToGrid) {
-                // centro corrente rispetto alla nuova posizione
+                // current center relative to the new position
                 Point center = new Point(rawX + r, rawY + r);
-                // snap del centro alla griglia
+                // snap the center to the grid
                 Point snappedCenter = snap(center);
-                // ricalcola l’angolo in alto a sinistra a partire dal centro snap-pato
+                // recompute the top-left corner from the snapped center
                 rawX = snappedCenter.x - r;
                 rawY = snappedCenter.y - r;
             }
@@ -775,11 +795,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 int d = st.getName().equals("PseudoState") ? PSEUDO_DIAMETER : DIAMETER;
                 int r = d / 2;
 
-                // centro attuale
+                // current center
                 Point center = new Point(pos.x + r, pos.y + r);
-                // snap del centro
+                // snap the center
                 Point snappedCenter = snap(center);
-                // nuova posizione top-left
+                // new top-left position
                 Point newPos = new Point(snappedCenter.x - r, snappedCenter.y - r);
                 st.setPosition(newPos);
                 java.awt.Window w = SwingUtilities.getWindowAncestor(this);
@@ -914,15 +934,15 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     .filter(s -> s.getName().equals("PseudoState"))
                     .findFirst().orElse(null);
             if (pseudo != null) {
-                // Verifica se esiste già una transizione autonoma dal Pseudostato al target
+                // Check if an autonomous transition from the PseudoState to the target already exists
                 boolean exists = stateMachine.getTransitions().stream()
                         .anyMatch(t -> t.getSource() == pseudo
                                 && t.getTarget() == clickedState
                                 && t.isAutonomous());
                 if (!exists) {
-                    // Crea la transizione iniziale come PWSTransition (trigger vuoto, modalità autonoma)
+                    // Create the initial transition as a PWSTransition (empty trigger, autonomous mode)
                     PWSTransition newTransition = new PWSTransition(pseudo, clickedState, true, "",((PWSStateMachine)stateMachine).getAssembly());
-                    // I campi della transizione (guardProposition, actionList, transitionSemantics) sono
+                    // Transition fields (guardProposition, actionList, transitionSemantics) are
                     // inizializzati ai valori di default (TrueProposition, lista vuota, TrueProposition).
                     boolean hasOtherInitial = stateMachine.getTransitions().stream()
                             .anyMatch(t -> t.getSource() == pseudo && t.isAutonomous());
@@ -1216,61 +1236,63 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             popup.add(toggleEnableItem);
             popup.addSeparator();
 
-            // Aggiungi qui eventuali altre voci di menu per le annotazioni, ecc.
-            // Show/Hide Guard Annotation
-            String guardText = (pt.getGuardAnnotation() != null && pt.getGuardAnnotation().isVisible()) ? "Hide Guard Annotation" : "Show Guard Annotation";
-            JMenuItem guardItem = new JMenuItem(guardText);
-            guardItem.addActionListener(ae -> {
-                if (pt.getGuardAnnotation() == null) {
-                    // create guard annotation and attach
-                    GuardAnnotation guardAnnot = new GuardAnnotation(pt.getGuardProposition(), ((PWSStateMachine)stateMachine).getAssembly(), newGuard -> {
-                        pt.setGuardProposition(newGuard);
-                        java.awt.Window w = SwingUtilities.getWindowAncestor(PWSStateMachinePanel.this);
-                        if (w instanceof PWSEditor pe) {
-                            pe.markDocumentDirty();
-                            pe.scheduleSemanticsRecalculation();
+            // Add other menu entries here for annotations, etc., if needed.
+            if (!pt.isAutonomous()) {
+                // Show/Hide Guard (only for non-autonomous transitions)
+                String guardText = (pt.getGuardAnnotation() != null && pt.getGuardAnnotation().isVisible()) ? "Hide Guard" : "Show Guard";
+                JMenuItem guardItem = new JMenuItem(guardText);
+                guardItem.addActionListener(ae -> {
+                    if (pt.getGuardAnnotation() == null) {
+                        // create guard annotation and attach
+                        GuardAnnotation guardAnnot = new GuardAnnotation(pt.getGuardProposition(), ((PWSStateMachine)stateMachine).getAssembly(), newGuard -> {
+                            pt.setGuardProposition(newGuard);
+                            java.awt.Window w = SwingUtilities.getWindowAncestor(PWSStateMachinePanel.this);
+                            if (w instanceof PWSEditor pe) {
+                                pe.markDocumentDirty();
+                                pe.scheduleSemanticsRecalculation();
+                            }
+                        }, pt);
+                        // default placement along the curve (0.2)
+                        try {
+                            machinery.State sourceState = (machinery.State) pt.getSource();
+                            machinery.State targetState = (machinery.State) pt.getTarget();
+                            Point sourcePos = sourceState.getPosition();
+                            Point targetPos = targetState.getPosition();
+                            int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                            int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                            Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                            Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                            Point cp = ((Transition) pt).getControlPoint();
+                            if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                            Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                            Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                            Point guardPoint = computePointOnCurve(p0, cp, p2, 0.2);
+                            guardAnnot.setBounds(guardPoint.x - 60, guardPoint.y - 10, 120, 20);
+                        } catch (Exception ignored) {
+                            guardAnnot.setBounds(10, 10, 120, 20);
                         }
-                    }, pt);
-                    // default placement along the curve (0.2)
-                    try {
-                        machinery.State sourceState = (machinery.State) pt.getSource();
-                        machinery.State targetState = (machinery.State) pt.getTarget();
-                        Point sourcePos = sourceState.getPosition();
-                        Point targetPos = targetState.getPosition();
-                        int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
-                        int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
-                        Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
-                        Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
-                        Point cp = ((Transition) pt).getControlPoint();
-                        if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
-                        Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
-                        Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
-                        Point guardPoint = computePointOnCurve(p0, cp, p2, 0.2);
-                        guardAnnot.setBounds(guardPoint.x - 60, guardPoint.y - 10, 120, 20);
-                    } catch (Exception ignored) {
-                        guardAnnot.setBounds(10, 10, 120, 20);
+                        pt.setGuardAnnotation(guardAnnot);
+                        add(guardAnnot);
+                        guardAnnot.setVisible(true);
+                        revalidate();
+                        repaint();
+                        java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                        if (w instanceof PWSEditor pe) pe.markDocumentDirty();
+                    } else {
+                        // toggle visibility explicitly
+                        boolean newVis = !pt.getGuardAnnotation().isVisible();
+                        pt.getGuardAnnotation().setVisible(newVis);
+                        revalidate();
+                        repaint();
+                        java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                        if (w instanceof PWSEditor pe) pe.markDocumentDirty();
                     }
-                    pt.setGuardAnnotation(guardAnnot);
-                    add(guardAnnot);
-                    guardAnnot.setVisible(true);
-                    revalidate();
-                    repaint();
-                    java.awt.Window w = SwingUtilities.getWindowAncestor(this);
-                    if (w instanceof PWSEditor pe) pe.markDocumentDirty();
-                } else {
-                    // toggle visibility explicitly
-                    boolean newVis = !pt.getGuardAnnotation().isVisible();
-                    pt.getGuardAnnotation().setVisible(newVis);
-                    revalidate();
-                    repaint();
-                    java.awt.Window w = SwingUtilities.getWindowAncestor(this);
-                    if (w instanceof PWSEditor pe) pe.markDocumentDirty();
-                }
-            });
-            popup.add(guardItem);
+                });
+                popup.add(guardItem);
+            }
 
-            // Show/Hide Action Annotation
-            String actionText = (pt.getActionAnnotation() != null && pt.getActionAnnotation().isVisible()) ? "Hide Action Annotation" : "Show Action Annotation";
+            // Show/Hide Action
+            String actionText = (pt.getActionAnnotation() != null && pt.getActionAnnotation().isVisible()) ? "Hide Action" : "Show Action";
             JMenuItem actionItem = new JMenuItem(actionText);
             actionItem.addActionListener(ae -> {
                 if (pt.getActionAnnotation() == null) {
@@ -1307,8 +1329,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             });
             popup.add(actionItem);
 
-            // Show/Hide Transition Semantics Annotation
-            String semText = (pt.getSemanticsAnnotation() != null && pt.getSemanticsAnnotation().isVisible()) ? "Hide Semantics Annotation" : "Show Semantics Annotation";
+            // Show/Hide Transition Semantics
+            String semText = (pt.getSemanticsAnnotation() != null && pt.getSemanticsAnnotation().isVisible()) ? "Hide Semantics" : "Show Semantics";
             JMenuItem semItem = new JMenuItem(semText);
             semItem.addActionListener(ae -> {
                 if (pt.getSemanticsAnnotation() == null) {
@@ -1346,7 +1368,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             popup.add(semItem);
         }
 
-        // Voce per mostrare/nascondere i control handles
+        // Menu item to show/hide control handles
         JMenuItem toggleHandlesItem = new JMenuItem(showControlHandles ? "Hide Self-Loop Handles" : "Show Self-Loop Handles");
         toggleHandlesItem.addActionListener(ae -> {
             showControlHandles = !showControlHandles;
@@ -1356,16 +1378,21 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
         popup.addSeparator();
 
-        // Elemento per eliminare la transizione
+        // Menu item to delete the transition
         JMenuItem deleteItem = new JMenuItem("Delete Transition");
         deleteItem.addActionListener(ae -> {
-            int confirm = JOptionPane.showConfirmDialog(
+            Object[] options = new Object[] {"Yes", "No"};
+            int confirm = JOptionPane.showOptionDialog(
                     this,
                     "Are you sure you want to delete the transition?",
                     "Confirm deletion",
-                    JOptionPane.YES_NO_OPTION);
-            if(confirm == JOptionPane.YES_OPTION) {
-                deleteTransition(t); // Metodo helper che rimuove la transizione e i suoi riferimenti.
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE,
+                    null,
+                    options,
+                    options[1]);
+            if (confirm == JOptionPane.YES_OPTION) {
+                deleteTransition(t); // Helper method that removes the transition and its references.
                 revalidate();
                 repaint();
             }
@@ -1383,13 +1410,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
         if (state instanceof PWSState && ((PWSState) state).isPseudoState()) {
             PWSState pwsState = (PWSState) state;
-            // Usa un menu item di toggle per il pseudostato
+            // Use a toggle menu item for the pseudo-state
             String toggleText = pwsState.isAnnotationVisible() ? "Hide dashboard" : "Show dashboard";
             JMenuItem toggleAnnotItem = new JMenuItem(toggleText);
             toggleAnnotItem.addActionListener(ae -> {
                 if (!pwsState.isAnnotationVisible()) {
                     System.out.println("Show pseudo-state annotation invoked");
-                    // Crea l'annotazione se non esiste e la rende visibile
+                    // Create the annotation if it doesn't exist and make it visible
                     StateSemanticsAnnotation annot = pwsState.getAnnotation();
                     if (annot == null) {
                         annot = new StateSemanticsAnnotation(pwsState, ((PWSStateMachine) stateMachine).getAssembly(), this);
@@ -1415,7 +1442,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                         ((pws.editor.PWSEditor) win2).scheduleSemanticsRecalculation();
                     }
                 } else {
-                    // Se l'annotazione è visibile, la nasconde
+                    // If the annotation is visible, hide it
                     if (pwsState.getAnnotation() != null) {
                         pwsState.getAnnotation().setVisible(false);
                         System.out.println("Pseudo-state annotation hidden");
@@ -1438,7 +1465,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             infoItem.setEnabled(false);
             popup.add(infoItem);
         } else {
-            // Caso stato normale
+            // Normal state case
             // Create transition item - only if state is not the pseudostate
             if (!(state instanceof PWSState p && p.isPseudoState())) {
                 JMenuItem createTransItem = new JMenuItem("Create transition: choose arrival state");
@@ -1494,11 +1521,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 popup.add(toggleAnnot);
             }
 
-            JMenuItem deleteItem = new JMenuItem("Delete");
+            JMenuItem deleteItem = new JMenuItem("Delete State");
             deleteItem.addActionListener(ae -> {
-                int confirm = JOptionPane.showConfirmDialog(this,
+                Object[] options = new Object[] {"Yes", "No"};
+                int confirm = JOptionPane.showOptionDialog(this,
                         "Are you sure you want to delete state \"" + state.getName() + "\"?",
-                        "Confirm deletion", JOptionPane.YES_NO_OPTION);
+                        "Confirm deletion", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE,
+                        null, options, options[1]);
                 if (confirm == JOptionPane.YES_OPTION) {
                     // In the PWS case, remove the state's annotation if it exists.
                     if (state instanceof PWSState) {
@@ -1564,7 +1593,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         popup.show(this, e.getX(), e.getY());
     }
 
-    // Metodo privato in PWSStateMachine per pulire le annotations di una transizione
+    // Private helper in PWSStateMachine to clear a transition's annotations
     private void clearAnnotationsForTransition(PWSTransition pt) {
         if (pt.getGuardAnnotation() != null) {
             remove(pt.getGuardAnnotation());
@@ -2317,27 +2346,27 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     }
 
     /**
-            * Rimuove la transizione t dalla state machine e cancella i riferimenti ad essa:
-            * - Rimuove le annotazioni associate (se la transizione è una PWSTransition)
-            * - Rimuove t dalla lista globale delle transizioni
-            * - Rimuove t dalle liste delle transizioni in uscita dello stato sorgente
-            *   e dalle transizioni in ingresso dello stato target.
+            * Removes transition t from the state machine and clears references to it:
+            * - Removes associated annotations (if the transition is a PWSTransition)
+            * - Removes t from the global transitions list
+            * - Removes t from the source state's outgoing transitions list
+            *   and from the target state's incoming transitions list.
             */
     public void deleteTransition(TransitionInterface t) {
-        // Se t è di tipo PWSTransition, pulisci le annotazioni associate.
+        // If t is a PWSTransition, clear its associated annotations.
         if (t instanceof PWSTransition) {
             clearAnnotationsForTransition((PWSTransition) t);
         }
-        // Rimuove la transizione dalla lista globale.
+        // Remove the transition from the global list.
         stateMachine.getTransitions().remove(t);
 
-        // Rimuove la transizione dalla lista delle transizioni in uscita dello stato sorgente.
+        // Remove the transition from the source state's outgoing transitions list.
         StateInterface source = t.getSource();
         if (source != null && source.getOutgoingTransitions() != null) {
             source.getOutgoingTransitions().remove(t);
         }
 
-        // Rimuove la transizione dalla lista delle transizioni in ingresso dello stato target.
+        // Remove the transition from the target state's incoming transitions list.
         StateInterface target = t.getTarget();
         if (target != null && target.getIncomingTransitions() != null) {
             target.getIncomingTransitions().remove(t);

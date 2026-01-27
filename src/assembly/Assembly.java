@@ -58,26 +58,26 @@ public class Assembly implements AssemblyInterface {
 
     @Override
     public List<AssemblyInterface> getAllConcreteAssemblies() {
-        // Implementazione a piacere
+        // Implementation-specific.
         return new ArrayList<>();
     }
 
     /**
-     * Restituisce un elenco completo di azioni generabili.
-     * Per ogni state machine m nell'assembly e per ogni evento e in m.getEvents(),
-     * crea un'azione con identificatore m ed evento e.
+     * Returns a complete list of possible actions.
+     * For each state machine m in the assembly and for each event e in m.getEvents(),
+     * creates an action with identifier m and event e.
      *
-     * Esempio: se l'assembly contiene macchine "t1" e "t2" con trigger {e, f},
-     * verrà restituita la lista: [ t1.e, t1.f, t2.e, t2.f ].
+     * Example: if the assembly contains machines "t1" and "t2" with triggers {e, f},
+     * the returned list is: [ t1.e, t1.f, t2.e, t2.f ].
      *
-     * @return elenco delle azioni possibili
+     * @return list of possible actions
      */
     public List<Action> getAllPossibleActions() {
         List<Action> actions = new ArrayList<>();
         for (Map.Entry<String, StateMachine> entry : stateMachines.entrySet()) {
             String machineId = entry.getKey();
             StateMachine machine = entry.getValue();
-            // Si assume che machine.getEvents() restituisca un Set o List di String.
+            // Assume machine.getEvents() returns a Set or List of Strings.
             for (String event : machine.getEvents()) {
                 actions.add(new Action(machineId, event));
             }
@@ -87,12 +87,12 @@ public class Assembly implements AssemblyInterface {
 
     @Override
     public Semantics calculateInitialStateSemantics() {
-        // Generiamo un assemblyId: se l'Assembly ha un identificatore proprio, usalo; altrimenti,
-        // qui viene usato un valore costante.
+        // Generate an assemblyId: if the Assembly has its own identifier, use it; otherwise,
+        // a constant value is used here.
         String assemblyId = this.getAssemblyId();
         Semantics semantics = new Semantics(assemblyId);
 
-        // Per ciascuna state machine, raccogliamo le proposizioni che rappresentano gli stati iniziali.
+        // For each state machine, collect propositions that represent initial states.
         List<List<BasicStateProposition>> machineInitialProps = new ArrayList<>();
         for (Map.Entry<String, StateMachine> entry : getStateMachines().entrySet()) {
             String machineId = entry.getKey();
@@ -100,29 +100,29 @@ public class Assembly implements AssemblyInterface {
             List<BasicStateProposition> initialProps = new ArrayList<>();
             for (StateInterface s : machine.getStates()) {
                 if (machine.getInitialStates().contains(s)) {
-                    // Creiamo la proposizione iniziale per questa macchina
+                    // Create the initial proposition for this machine
                     initialProps.add(new BasicStateProposition(machineId, s.getName()));
                 }
             }
-            // Se per la macchina sono stati trovati stati iniziali, li aggiungiamo al nostro elenco
+            // If initial states were found for the machine, add them to the list
             if (!initialProps.isEmpty()) {
                 machineInitialProps.add(initialProps);
             }
         }
 
-        // Se non sono state trovate proposizioni iniziali in nessuna macchina,
-        // restituiamo una Semantics contenente una Configuration "vuota" (che può essere interpretata come true).
+        // If no initial propositions are found in any machine,
+        // return a Semantics containing an "empty" Configuration (interpretable as true).
         if (machineInitialProps.isEmpty()) {
             semantics.addConfiguration(new Configuration(assemblyId));
             return semantics;
         }
 
-        // Calcoliamo il prodotto cartesiano delle liste di proposizioni iniziali,
-        // ottenendo così tutte le possibili configurazioni iniziali.
+        // Compute the cartesian product of initial proposition lists,
+        // yielding all possible initial configurations.
         List<List<BasicStateProposition>> cartesian = cartesianProduct(machineInitialProps);
         for (List<BasicStateProposition> combination : cartesian) {
-            // Costruiamo una Configuration a partire dalla combinazione ordinata delle BasicStateProp.
-            // Si sfrutta il metodo fromBasicStatePropositions per garantire l'ordinamento.
+            // Build a Configuration from the ordered combination of BasicStateProp.
+            // Use fromBasicStatePropositions to guarantee ordering.
             List<BasicStateProposition> props = new ArrayList<>(combination);
             Configuration config = Configuration.fromBasicStatePropositions(assemblyId, props);
             semantics.addConfiguration(config);
@@ -145,9 +145,9 @@ public class Assembly implements AssemblyInterface {
 
 
     /**
-     * Restituisce la lista delle guardie disponibili come BasicStateProposition.
-     * Per ogni state machine (machineId) dell'assembly, per ogni stato,
-     * viene creato un BasicStateProposition nella forma "machineId.stateName".
+     * Returns the list of available guards as BasicStateProposition.
+     * For each state machine (machineId) in the assembly and for each state,
+     * creates a BasicStateProposition in the form "machineId.stateName".
      */
     @Override
     public List<BasicStateProposition> getAssemblyGuards() {
@@ -168,9 +168,9 @@ public class Assembly implements AssemblyInterface {
     }
 
     /**
-     * Restituisce la lista delle azioni disponibili come oggetti Action.
-     * Per ogni state machine (machineId) dell'assembly, per ogni evento in machine.getEvents(),
-     * viene creato un oggetto Action nella forma "machineId.event".
+     * Returns the list of available actions as Action objects.
+     * For each state machine (machineId) in the assembly and for each event in machine.getEvents(),
+     * creates an Action object in the form "machineId.event".
      */
     @Override
     public List<Action> getAssemblyActions() {

@@ -38,7 +38,7 @@ public class TransitionSemanticsAnnotation extends Annotation<Semantics> {
 //        Graphics2D g2d = (Graphics2D) g;
 //        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
 //        g2d.setColor(Color.BLACK);
-//        // Usa toConfig() per la visualizzazione della semantica
+//        // Use toConfig() to display the semantics
 //        String text = (content == null ? "" : content.toSem().toString());
 //        FontMetrics fm = g2d.getFontMetrics();
 //        int textWidth = fm.stringWidth(text);
