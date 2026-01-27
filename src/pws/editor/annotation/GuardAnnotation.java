@@ -31,8 +31,12 @@ public class GuardAnnotation extends Annotation<SMProposition> {
     private TransitionInterface associatedTransition;
     
     // Problem status for coloring
-    private boolean isProblematic = false;
+    private enum GuardIssueLevel { NONE, ORANGE, RED }
+    private GuardIssueLevel issueLevel = GuardIssueLevel.NONE;
     private String problemReason = null;
+    private static final Color COLOR_RED = new Color(180, 0, 0);
+    private static final Color COLOR_ORANGE = new Color(204, 102, 0);
+    private static final String INIT_TRIGGER = "_init";
 
     /**
      * Creates a guard annotation.
@@ -108,14 +112,14 @@ public class GuardAnnotation extends Annotation<SMProposition> {
      * - Orphan guard (references exit zone that no longer exists)
      */
     private void checkProblematicStatus() {
-        isProblematic = false;
+        issueLevel = GuardIssueLevel.NONE;
         problemReason = null;
         
         if (content == null) return;
         
         // Check for FALSE guard - placeholder
         if (content instanceof FalseProposition) {
-            isProblematic = true;
+            issueLevel = GuardIssueLevel.RED;
             problemReason = "FALSE guard - transition will never fire";
             return;
         }
@@ -137,8 +141,46 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                         }
                     }
                     if (!found) {
-                        isProblematic = true;
+                        issueLevel = GuardIssueLevel.RED;
                         problemReason = "Orphan guard - exit zone no longer exists";
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Triggered transition guard partitioning checks (source + trigger event, including _init)
+        if (associatedTransition instanceof PWSTransition pt) {
+            machinery.StateInterface src = pt.getSource();
+            if (src instanceof PWSState ps && assembly != null) {
+                String triggerKey = getTriggeredPartitionKey(pt, ps);
+                if (triggerKey != null) {
+                    Semantics stateSem = ps.getStateSemantics();
+                    Semantics guardSem = content.toSemantics(assembly);
+                    if (stateSem != null) {
+                        guardSem = guardSem.AND(stateSem);
+                    }
+                    if (guardSem.ISEMPTY()) {
+                        issueLevel = GuardIssueLevel.ORANGE;
+                        problemReason = "Orphan guard - no matching source semantics";
+                        return;
+                    }
+                    for (TransitionInterface ti : ps.getOutgoingTransitions()) {
+                        if (ti == pt) continue;
+                        if (!(ti instanceof PWSTransition other)) continue;
+                        String otherKey = getTriggeredPartitionKey(other, ps);
+                        if (otherKey == null || !triggerKey.equals(otherKey)) continue;
+                        SMProposition otherGuard = other.getGuardProposition();
+                        if (otherGuard == null) continue;
+                        Semantics otherSem = otherGuard.toSemantics(assembly);
+                        if (stateSem != null) {
+                            otherSem = otherSem.AND(stateSem);
+                        }
+                        if (!guardSem.AND(otherSem).ISEMPTY()) {
+                            issueLevel = GuardIssueLevel.RED;
+                            problemReason = "Overlapping guard - same trigger from source state";
+                            return;
+                        }
                     }
                 }
             }
@@ -155,8 +197,10 @@ public class GuardAnnotation extends Annotation<SMProposition> {
         g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
         
         // Set color based on problematic status
-        if (isProblematic) {
-            g2d.setColor(new Color(180, 0, 0)); // Red for problematic
+        if (issueLevel == GuardIssueLevel.RED) {
+            g2d.setColor(COLOR_RED);
+        } else if (issueLevel == GuardIssueLevel.ORANGE) {
+            g2d.setColor(COLOR_ORANGE);
         } else {
             g2d.setColor(Color.BLACK);
         }
@@ -172,7 +216,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
     
     @Override
     public String getToolTipText() {
-        if (isProblematic && problemReason != null) {
+        if (issueLevel != GuardIssueLevel.NONE && problemReason != null) {
             return problemReason;
         }
         return super.getToolTipText();
@@ -185,6 +229,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
         boolean isFalse = content instanceof FalseProposition;
         boolean isTrueAutonomous = false;
         pws.PWSState srcState = null;
+        Semantics otherTriggeredCoverage = null;
         if (associatedTransition != null) {
             machinery.StateInterface src = associatedTransition.getSource();
             if (src instanceof pws.PWSState ps) {
@@ -230,6 +275,10 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             if (associatedTransition != null) {
                 machinery.StateInterface src = associatedTransition.getSource();
                 if (src instanceof PWSState p) {
+                    String triggerKey = getTriggeredPartitionKey(associatedTransition, p);
+                    if (triggerKey != null) {
+                        otherTriggeredCoverage = collectTriggeredCoverage(p, associatedTransition, triggerKey);
+                    }
                     // Check if this is a TRUE autonomous transition (not from pseudo-state)
                     // Initial transitions from pseudo-state are event-triggered with hidden startup event
                     if (isTrueAutonomous) {
@@ -262,6 +311,9 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 for (SMProposition guardOption : guards) {
                     if (!(guardOption instanceof BasicStateProposition)) continue;
                     if (candidateStrings.contains(guardOption.toString())) {
+                        if (shouldFilterTriggeredGuardOption(guardOption, srcState, associatedTransition, otherTriggeredCoverage)) {
+                            continue;
+                        }
                         JMenuItem item = new JMenuItem(guardOption.toString());
                         item.addActionListener(ev -> {
                             applyGuard(guardOption);
@@ -282,6 +334,10 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                     popup.add(none);
                 } else {
                     for (SMProposition guardOption : guards) {
+                        if (guardOption instanceof BasicStateProposition
+                                && shouldFilterTriggeredGuardOption(guardOption, srcState, associatedTransition, otherTriggeredCoverage)) {
+                            continue;
+                        }
                         JMenuItem item = new JMenuItem(guardOption.toString());
                         item.addActionListener(ev -> {
                             applyGuard(guardOption);
@@ -369,6 +425,10 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 // Non-autonomous transitions: allow AND conjunction to extend the guard
                 // Extract already used machine IDs from current guard
                 Set<String> usedMachineIds = extractMachineIds(content);
+                String triggerKey = getTriggeredPartitionKey(associatedTransition, srcState);
+                if (triggerKey != null) {
+                    otherTriggeredCoverage = collectTriggeredCoverage(srcState, associatedTransition, triggerKey);
+                }
                 
                 // Filter guards to show only those not already in the conjunction
                 // and that refer to different machines
@@ -379,10 +439,12 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                     // Skip if this machine is already used in the guard
                     if (usedMachineIds.contains(bsp.getMachineId())) continue;
                     
+                    SMProposition newGuard = new AndProposition(content, guardOption);
+                    if (shouldFilterTriggeredGuardOption(newGuard, srcState, associatedTransition, otherTriggeredCoverage)) {
+                        continue;
+                    }
                     JMenuItem item = new JMenuItem("Add: " + guardOption.toString());
                     item.addActionListener(ev -> {
-                        // Create AND proposition with existing guard and new proposition
-                        SMProposition newGuard = new AndProposition(content, guardOption);
                         applyGuard(newGuard);
                     });
                     popup.add(item);
@@ -413,6 +475,67 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             getParent().revalidate();
             getParent().repaint();
         }
+    }
+
+    private boolean isTriggeredPartitionContext(TransitionInterface transition, PWSState srcState) {
+        return getTriggeredPartitionKey(transition, srcState) != null;
+    }
+
+    private String getTriggeredPartitionKey(TransitionInterface transition, PWSState srcState) {
+        if (transition == null || srcState == null) return null;
+        if (!(transition instanceof PWSTransition pt)) return null;
+        if (!pt.isEnabled()) return null;
+        if (pt.isTriggerable() && pt.getTriggerEvent() != null && !pt.getTriggerEvent().isEmpty()) {
+            return pt.getTriggerEvent();
+        }
+        if (srcState.isPseudoState()) {
+            return INIT_TRIGGER;
+        }
+        return null;
+    }
+
+    private Semantics collectTriggeredCoverage(PWSState srcState, TransitionInterface self, String triggerKey) {
+        if (assembly == null || srcState == null || triggerKey == null || triggerKey.isEmpty()) {
+            return null;
+        }
+        Semantics union = new Semantics(assembly.getAssemblyId());
+        for (TransitionInterface ti : srcState.getOutgoingTransitions()) {
+            if (ti == self) continue;
+            if (!(ti instanceof PWSTransition pt)) continue;
+            String otherKey = getTriggeredPartitionKey(pt, srcState);
+            if (otherKey == null || !triggerKey.equals(otherKey)) continue;
+            SMProposition guard = pt.getGuardProposition();
+            if (guard == null) continue;
+            Semantics guardSem = guard.toSemantics(assembly);
+            Semantics stateSem = srcState.getStateSemantics();
+            if (stateSem != null) {
+                guardSem = guardSem.AND(stateSem);
+            }
+            if (!guardSem.ISEMPTY()) {
+                union = union.OR(guardSem);
+            }
+        }
+        return union;
+    }
+
+    private boolean shouldFilterTriggeredGuardOption(SMProposition guardOption,
+                                                     PWSState srcState,
+                                                     TransitionInterface self,
+                                                     Semantics otherCoverage) {
+        if (guardOption == null || assembly == null || srcState == null) return false;
+        if (!isTriggeredPartitionContext(self, srcState)) return false;
+        Semantics candidateSem = guardOption.toSemantics(assembly);
+        Semantics stateSem = srcState.getStateSemantics();
+        if (stateSem != null) {
+            candidateSem = candidateSem.AND(stateSem);
+        }
+        if (candidateSem.ISEMPTY()) {
+            return true;
+        }
+        if (otherCoverage == null || otherCoverage.ISEMPTY()) {
+            return false;
+        }
+        return !candidateSem.AND(otherCoverage).ISEMPTY();
     }
 
     /**

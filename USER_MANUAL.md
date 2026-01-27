@@ -220,13 +220,26 @@ The guard expression determines when a transition can fire. PWSEditor provides v
 #### Default Guard for New Transitions
 
 - **Triggered transitions** (with an event): Default to **TRUE** guard — the transition fires whenever the event occurs
-- **Initial transitions** (from pseudo-state): Default to **TRUE** guard — fire at system startup
+- **Initial transitions** (from pseudo-state): Default to **TRUE** guard — fire at system startup (hidden **_init** trigger)
 - **Autonomous transitions** (no event, not from pseudo-state): Default to **FALSE** guard — this is a **placeholder** indicating you need to specify a meaningful guard
 
 When editing an autonomous transition guard:
 - If the source state has **exit zones**, the guard menu lists those exit-zone propositions.
 - Internal (gray) exit zones are **not selectable** for autonomous guards.
 - If the source state has **no exit zones**, the menu offers **TRUE** (fire immediately). Use **Remove guard** to go back to **FALSE** (never fires).
+
+#### Triggered Guard Partitioning (Determinism)
+
+Triggered transitions are **partitioned by source state + trigger event**. This partitioning **must be complete** to ensure determinism:
+- **Disjointness**: guards for the same (source, trigger) must not overlap
+- **Completeness**: together they should cover all configurations of the source state
+
+Behavior in the editor:
+- Overlapping guards in the same (source, trigger) group are shown in **red**
+- Empty guards (no matching source semantics) are shown in **orange**
+- Guard menus filter out options that would **overlap** existing guards in the same group
+
+**Initial transitions** are a special case of triggered transitions with a hidden **_init** event, and they participate in the same partitioning rules from the pseudo-state.
 
 #### Problematic Guards (Red Highlighting)
 
@@ -236,8 +249,11 @@ Guards that appear in **red** indicate potential issues:
 |-----------------|---------|-------------|
 | **FALSE** on any transition | Placeholder | The transition can never fire. Edit the guard to specify a real condition. |
 | **Orphan guard** | Exit zone no longer exists | The guard references an exit zone that is no longer present in the state’s reactive semantics. |
+| **Overlapping triggered guard** | Non-deterministic | Overlaps another guard with the same source and trigger. |
 
 **Tooltips**: Hover over a red guard to see an explanation of the specific problem.
+
+Guards that appear in **orange** indicate an empty triggered guard (no matching source semantics).
 
 **Note:** A **TRUE** guard on an autonomous transition is **allowed** and shown in black. It means the transition fires immediately upon entering the source state, and the destination inherits the source state's full semantics.
 

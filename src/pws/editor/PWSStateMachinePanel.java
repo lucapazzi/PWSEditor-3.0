@@ -733,7 +733,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         // Left-button double-click to rename a state
         if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) {
             StateInterface state = getStateAt(e.getPoint());
-            if (state == null) return;
+            if (state == null) {
+                resizeCanvasToContent();
+                return;
+            }
             // Do not rename the pseudostate
             if (state instanceof PWSState p && p.isPseudoState()) {
                 return;
@@ -762,6 +765,64 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     public void mouseMoved(MouseEvent e) {
     }
 
+    private void resizeCanvasToContent() {
+        Rectangle bounds = computeContentBounds();
+        if (bounds == null) return;
+
+        int margin = Math.max(40, getGridSize());
+        int targetWidth = Math.max(200, bounds.width + margin * 2);
+        int targetHeight = Math.max(200, bounds.height + margin * 2);
+
+        java.awt.Container parent = getParent();
+        if (parent instanceof JViewport viewport) {
+            Dimension viewSize = viewport.getExtentSize();
+            targetWidth = Math.max(targetWidth, viewSize.width);
+            targetHeight = Math.max(targetHeight, viewSize.height);
+        }
+
+        Dimension target = new Dimension(targetWidth, targetHeight);
+        setPreferredSize(target);
+        revalidate();
+        repaint();
+    }
+
+    private Rectangle computeContentBounds() {
+        int minX = Integer.MAX_VALUE;
+        int minY = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxY = Integer.MIN_VALUE;
+
+        for (StateInterface si : stateMachine.getStates()) {
+            if (!(si instanceof machinery.State st)) continue;
+            Point pos = st.getPosition();
+            if (pos == null) continue;
+            int radius = "PseudoState".equals(st.getName()) ? PSEUDO_RADIUS : RADIUS;
+            int x1 = pos.x;
+            int y1 = pos.y;
+            int x2 = pos.x + radius * 2;
+            int y2 = pos.y + radius * 2;
+            minX = Math.min(minX, x1);
+            minY = Math.min(minY, y1);
+            maxX = Math.max(maxX, x2);
+            maxY = Math.max(maxY, y2);
+        }
+
+        for (Component comp : getComponents()) {
+            if (comp instanceof StateSemanticsAnnotation && comp.isVisible()) {
+                Rectangle r = comp.getBounds();
+                minX = Math.min(minX, r.x);
+                minY = Math.min(minY, r.y);
+                maxX = Math.max(maxX, r.x + r.width);
+                maxY = Math.max(maxY, r.y + r.height);
+            }
+        }
+
+        if (minX == Integer.MAX_VALUE) {
+            return null;
+        }
+        return new Rectangle(minX, minY, Math.max(0, maxX - minX), Math.max(0, maxY - minY));
+    }
+
     // -------------------- HELPER METHODS FOR MOUSE --------------------
 
     /**
@@ -785,6 +846,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     PWSTransition newTransition = new PWSTransition(pseudo, clickedState, true, "",((PWSStateMachine)stateMachine).getAssembly());
                     // I campi della transizione (guardProposition, actionList, transitionSemantics) sono
                     // inizializzati ai valori di default (TrueProposition, lista vuota, TrueProposition).
+                    boolean hasOtherInitial = stateMachine.getTransitions().stream()
+                            .anyMatch(t -> t.getSource() == pseudo && t.isAutonomous());
+                    if (hasOtherInitial) {
+                        newTransition.setGuardProposition(new smalgebra.FalseProposition());
+                    }
                     stateMachine.addTransition(newTransition);
                     // Create a (transient) ActionAnnotation but keep it hidden for autonomous transitions
                     try {
@@ -855,6 +921,27 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 // This makes it clear that the guard needs to be set by the designer
                 if (autonomous && !transitionSourceState.getName().equals("PseudoState")) {
                     newTransition.setGuardProposition(new smalgebra.FalseProposition());
+                }
+                if (transitionSourceState instanceof PWSState ps && ps.isPseudoState()) {
+                    boolean hasOtherInitial = stateMachine.getTransitions().stream()
+                            .anyMatch(t -> t.getSource() == transitionSourceState && t.isAutonomous());
+                    if (hasOtherInitial) {
+                        newTransition.setGuardProposition(new smalgebra.FalseProposition());
+                    }
+                }
+                // For triggered transitions sharing the same source+trigger, use FALSE to force partitioning
+                if (!autonomous && transitionSourceState instanceof PWSState ps && !ps.isPseudoState()) {
+                    String trig = (trigger != null) ? trigger.trim() : "";
+                    if (!trig.isEmpty()) {
+                        for (TransitionInterface ti : stateMachine.getTransitions()) {
+                            if (ti instanceof PWSTransition pt && pt.isEnabled() && pt.isTriggerable()
+                                    && pt.getSource() == transitionSourceState
+                                    && trig.equals(pt.getTriggerEvent())) {
+                                newTransition.setGuardProposition(new smalgebra.FalseProposition());
+                                break;
+                            }
+                        }
+                    }
                 }
 
                 // Here, we no longer use a single dialog; the guard remains default (TRUE for triggered, FALSE for autonomous)

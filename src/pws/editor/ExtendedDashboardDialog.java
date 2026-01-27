@@ -461,7 +461,7 @@ public class ExtendedDashboardDialog extends JDialog {
             return;
         }
 
-        List<ExitZone> orphans = new ArrayList<>();
+        java.util.List<ExitZone> orphans = new ArrayList<>();
         for (ExitZone ez : reactiveZones) {
             if (ez.isOrphanSource(assembly)) {
                 orphans.add(ez);
