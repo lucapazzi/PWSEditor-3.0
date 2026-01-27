@@ -1043,6 +1043,56 @@ public class PWSEditor extends JFrame {
         ltlChecksDialog.setOnRecheck(() -> runLTLChecks(true));
     }
 
+    private static JWindow createSplashWindow() {
+        JWindow splash = new JWindow();
+
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(120, 120, 120)),
+                BorderFactory.createEmptyBorder(18, 22, 18, 22)));
+        content.setBackground(new Color(250, 250, 250));
+        content.setOpaque(true);
+        content.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        JLabel title = new JLabel("PWSEditor", SwingConstants.CENTER);
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 26f));
+
+        JLabel license = new JLabel(
+                "<html><div style='text-align:center; width:320px;'>"
+                        + "MIT License<br/>"
+                        + "Copyright (c) 2025 Luca Pazzi (UNIMORE)<br/>"
+                        + "See LICENSE for full terms."
+                        + "</div></html>",
+                SwingConstants.CENTER);
+        license.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel hint = new JLabel("Click anywhere to continue", SwingConstants.CENTER);
+        hint.setAlignmentX(Component.CENTER_ALIGNMENT);
+        hint.setFont(hint.getFont().deriveFont(Font.PLAIN, 11f));
+        hint.setForeground(new Color(90, 90, 90));
+
+        content.add(title);
+        content.add(Box.createVerticalStrut(8));
+        content.add(license);
+        content.add(Box.createVerticalStrut(12));
+        content.add(hint);
+
+        splash.setContentPane(content);
+        splash.pack();
+        return splash;
+    }
+
+    private static void addMouseListenerRecursive(Component component, java.awt.event.MouseListener listener) {
+        component.addMouseListener(listener);
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) {
+                addMouseListenerRecursive(child, listener);
+            }
+        }
+    }
+
 
     /**
      * Launches the editor application.
@@ -1069,7 +1119,27 @@ public class PWSEditor extends JFrame {
             editor.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             editor.setSize(1000, 600);
             editor.setLocationRelativeTo(null);
-            editor.setVisible(true);
+
+            JWindow splash = createSplashWindow();
+            splash.setLocationRelativeTo(null);
+            splash.setAlwaysOnTop(true);
+
+            final boolean[] dismissed = {false};
+            java.awt.event.MouseAdapter dismissListener = new java.awt.event.MouseAdapter() {
+                @Override
+                public void mousePressed(java.awt.event.MouseEvent e) {
+                    if (dismissed[0]) return;
+                    dismissed[0] = true;
+                    splash.setVisible(false);
+                    splash.dispose();
+                    editor.setVisible(true);
+                    editor.toFront();
+                    editor.requestFocus();
+                }
+            };
+            addMouseListenerRecursive(splash.getContentPane(), dismissListener);
+            splash.addMouseListener(dismissListener);
+            splash.setVisible(true);
         });
     }
 }

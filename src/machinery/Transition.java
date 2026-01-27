@@ -78,9 +78,29 @@ public class Transition implements TransitionInterface {
         return source;
     }
 
+    public void setSource(StateInterface source) {
+        if (this.source != null && this.source.getOutgoingTransitions() != null) {
+            this.source.getOutgoingTransitions().remove(this);
+        }
+        this.source = source;
+        if (this.source != null) {
+            this.source.addOutgoingTransition(this);
+        }
+    }
+
     @Override
     public StateInterface getTarget() {
         return target;
+    }
+
+    public void setTarget(StateInterface target) {
+        if (this.target != null && this.target.getIncomingTransitions() != null) {
+            this.target.getIncomingTransitions().remove(this);
+        }
+        this.target = target;
+        if (this.target != null) {
+            this.target.addIncomingTransition(this);
+        }
     }
 
     @Override

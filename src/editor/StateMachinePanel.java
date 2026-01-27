@@ -76,7 +76,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected boolean initialTransitionMode = false;
 
     // Graphic constants
-    protected final int DIAMETER = 70;
+    protected final int DIAMETER = 50;
     protected final int RADIUS = DIAMETER / 2;
     // Reduce pseudostate diameter to one third of the normal diameter.
     protected final int PSEUDO_DIAMETER = DIAMETER / 3;
@@ -253,7 +253,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected void drawStates(Graphics g) {
         Graphics2D g2d = (Graphics2D) g;
         Stroke oldStroke = g2d.getStroke();
-        g2d.setStroke(new BasicStroke(2.0f));
+        g2d.setStroke(new BasicStroke(1.0f));
         List<StateInterface> states = stateMachine.getStates();
         for (StateInterface state : states) {
             Point pos = ((State) state).getPosition();
@@ -265,7 +265,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 g2d.setColor(Color.BLACK);
                 g2d.drawOval(x, y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
             } else {
-                g2d.setColor(new Color(245, 245, 245));
+                g2d.setColor(Color.WHITE);
                 g2d.fillOval(x, y, DIAMETER, DIAMETER);
                 if (state == selectedState || state == transitionSourceState) {
                     g2d.setColor(Color.RED);

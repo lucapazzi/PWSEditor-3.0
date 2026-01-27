@@ -47,6 +47,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     private TransitionInterface selectedSelfLoopTransition = null;
     private boolean draggingSelfLoopStart = false;
     private boolean draggingSelfLoopEnd = false;
+    // Fields for non-self transition endpoint dragging (no visible handles)
+    private TransitionInterface draggingEndpointTransition = null;
+    private boolean draggingEndpointStart = false;
+    private boolean draggingEndpointEnd = false;
+    private Point draggingEndpointPoint = null;
 
     public PWSStateMachinePanel(PWSStateMachine stateMachine) {
         super(stateMachine);
@@ -241,6 +246,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         } else {
             p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
             p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+        }
+        if (draggingEndpointTransition == t && draggingEndpointPoint != null) {
+            if (draggingEndpointStart) {
+                p0 = new Point(draggingEndpointPoint);
+            } else if (draggingEndpointEnd) {
+                p2 = new Point(draggingEndpointPoint);
+            }
         }
 
         // Disegna la curva della transizione.
@@ -571,6 +583,28 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     }
                 }
             }
+            // Check for endpoint dragging on non-self transitions (no visible handles)
+            for (TransitionInterface t : stateMachine.getTransitions()) {
+                if (t.getSource() == t.getTarget()) continue;
+                Point[] endpoints = computeTransitionEndpoints(t);
+                if (endpoints == null) continue;
+                Point p0 = endpoints[0];
+                Point p2 = endpoints[1];
+                if (p0 != null && p.distance(p0) <= 8) {
+                    draggingEndpointTransition = t;
+                    draggingEndpointStart = true;
+                    draggingEndpointEnd = false;
+                    draggingEndpointPoint = p;
+                    return;
+                }
+                if (p2 != null && p.distance(p2) <= 8) {
+                    draggingEndpointTransition = t;
+                    draggingEndpointStart = false;
+                    draggingEndpointEnd = true;
+                    draggingEndpointPoint = p;
+                    return;
+                }
+            }
             // Check for control point dragging
             for (TransitionInterface t : stateMachine.getTransitions()) {
                 Point cp = ((Transition) t).getControlPoint();
@@ -622,6 +656,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
     @Override
     public void mouseDragged(MouseEvent e) {
+        if (draggingEndpointTransition != null) {
+            draggingEndpointPoint = e.getPoint();
+            repaint();
+            return;
+        }
         if (canvasDragActive && canvasDragLast != null) {
             panCanvasTo(e.getPoint());
             return;
@@ -680,39 +719,78 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             repaint();
         }
     }
-@Override
+
+    @Override
     public void mouseReleased(MouseEvent e) {
         if (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger()) {
             handleRightClick(e);
             return;
         }
 
-        // Final snap on release, in case of small offsets
-    if (snapToGrid) {
-        if (selectedState != null) {
-            machinery.State st = (machinery.State) selectedState;
-            java.awt.Point pos = st.getPosition();
-
-            int d = st.getName().equals("PseudoState") ? PSEUDO_DIAMETER : DIAMETER;
-            int r = d / 2;
-
-            // centro attuale
-            Point center = new Point(pos.x + r, pos.y + r);
-            // snap del centro
-            Point snappedCenter = snap(center);
-            // nuova posizione top-left
-            Point newPos = new Point(snappedCenter.x - r, snappedCenter.y - r);
-            st.setPosition(newPos);
-            java.awt.Window w = SwingUtilities.getWindowAncestor(this);
-            if (w instanceof PWSEditor pe) pe.markDocumentDirty();
+        if (draggingEndpointTransition != null) {
+            StateInterface hit = getStateAt(e.getPoint());
+            boolean changed = false;
+            if (hit != null) {
+                if (draggingEndpointEnd && hit instanceof PWSState ps && ps.isPseudoState()) {
+                    // Do not allow transitions to pseudo-state
+                } else {
+                    Transition tr = (Transition) draggingEndpointTransition;
+                    if (draggingEndpointStart && tr.getSource() != hit) {
+                        tr.setSource(hit);
+                        changed = true;
+                    } else if (draggingEndpointEnd && tr.getTarget() != hit) {
+                        tr.setTarget(hit);
+                        changed = true;
+                    }
+                    if (changed) {
+                        tr.setControlPoint(null);
+                        if (tr instanceof PWSTransition pt) {
+                            pt.setSelfLoopStartAngle(null);
+                            pt.setSelfLoopEndAngle(null);
+                        }
+                    }
+                }
+            }
+            draggingEndpointTransition = null;
+            draggingEndpointStart = false;
+            draggingEndpointEnd = false;
+            draggingEndpointPoint = null;
+            repaint();
+            if (changed) {
+                java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                if (w instanceof PWSEditor pe) {
+                    pe.markDocumentDirty();
+                    pe.scheduleSemanticsRecalculation();
+                }
+            }
+            return;
         }
 
-        // qui lasci invariato lo snap del control point:
-        // if (selectedTransitionForControl != null) { ... }
-    }
+        // Final snap on release, in case of small offsets
+        if (snapToGrid) {
+            if (selectedState != null) {
+                machinery.State st = (machinery.State) selectedState;
+                java.awt.Point pos = st.getPosition();
 
+                int d = st.getName().equals("PseudoState") ? PSEUDO_DIAMETER : DIAMETER;
+                int r = d / 2;
 
-    selectedTransitionForControl = null;
+                // centro attuale
+                Point center = new Point(pos.x + r, pos.y + r);
+                // snap del centro
+                Point snappedCenter = snap(center);
+                // nuova posizione top-left
+                Point newPos = new Point(snappedCenter.x - r, snappedCenter.y - r);
+                st.setPosition(newPos);
+                java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                if (w instanceof PWSEditor pe) pe.markDocumentDirty();
+            }
+
+            // qui lasci invariato lo snap del control point:
+            // if (selectedTransitionForControl != null) { ... }
+        }
+
+        selectedTransitionForControl = null;
         controlDragOffset = null;
         selectedState = null;
         dragOffset = null;
@@ -2285,5 +2363,40 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         g2d.fillOval(p.x - handleRadius, p.y - handleRadius, handleRadius * 2, handleRadius * 2);
         g2d.setColor(Color.BLACK);
         g2d.drawOval(p.x - handleRadius, p.y - handleRadius, handleRadius * 2, handleRadius * 2);
+    }
+
+    private Point[] computeTransitionEndpoints(TransitionInterface t) {
+        if (t == null || t.getSource() == null || t.getTarget() == null) return null;
+        machinery.State sourceState = (machinery.State) t.getSource();
+        machinery.State targetState = (machinery.State) t.getTarget();
+        Point sourcePos = sourceState.getPosition();
+        Point targetPos = targetState.getPosition();
+        int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+        int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+        Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+        Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+        boolean isSelfLoop = (sourceState == targetState);
+        Point cp = ((Transition) t).getControlPoint();
+        if (cp == null) {
+            cp = isSelfLoop ? computeSelfLoopControlPoint(centerSource, sourceCenterOffset)
+                    : computeControlPoint(centerSource, centerTarget);
+        }
+        Point p0;
+        Point p2;
+        if (isSelfLoop) {
+            PWSTransition trans = (PWSTransition) t;
+            Double startAngle = trans.getSelfLoopStartAngle();
+            Double endAngle = trans.getSelfLoopEndAngle();
+            p0 = startAngle != null
+                    ? computeSelfLoopStartPoint(centerSource, sourceCenterOffset, startAngle)
+                    : computeSelfLoopStartPoint(centerSource, sourceCenterOffset);
+            p2 = endAngle != null
+                    ? computeSelfLoopEndPoint(centerSource, sourceCenterOffset, endAngle)
+                    : computeSelfLoopEndPoint(centerSource, sourceCenterOffset);
+        } else {
+            p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+            p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+        }
+        return new Point[] { p0, p2 };
     }
 }
