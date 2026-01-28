@@ -658,13 +658,15 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             if (state.getName().equals("PseudoState")) {
                 return;
             }
-            String newName = JOptionPane.showInputDialog(this, "Rename state:", state.getName());
+            String oldName = state.getName();
+            String newName = JOptionPane.showInputDialog(this, "Rename state:", oldName);
             if (newName != null && !newName.trim().isEmpty()) {
-                ((State) state).setName(newName.trim());
+                String trimmed = newName.trim();
+                ((State) state).setName(trimmed);
                 repaint();
                 java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
-                if (win instanceof pws.editor.PWSEditor) {
-                    ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+                if (win instanceof pws.editor.PWSEditor pe) {
+                    pe.renameAssemblyStateName(stateMachine, oldName, trimmed);
                 }
             }
         }

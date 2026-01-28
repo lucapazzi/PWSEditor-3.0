@@ -2,17 +2,27 @@ package pws;
 
 import pws.editor.semantics.ExitZone;
 import smalgebra.TrueProposition;
+import smalgebra.FalseProposition;
+import smalgebra.AndProposition;
+import smalgebra.OrProposition;
+import smalgebra.NotProposition;
 import assembly.Action;
+import assembly.ActionList;
 import assembly.Assembly;
+import assembly.LTLFormula;
 import machinery.*;
 import pws.editor.semantics.Semantics;
 import pws.editor.semantics.SemanticsVisitor;
+import pws.editor.semantics.Configuration;
 import smalgebra.BasicStateProposition;
 import smalgebra.SMProposition;
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /** PWS state machine with assembly-level semantics helpers. */
 public class PWSStateMachine extends StateMachine {
@@ -198,6 +208,329 @@ public class PWSStateMachine extends StateMachine {
 
         // Reactive semantics used for autonomous reasoning: SS-only
         ps.setReactiveSemantics(ssZones);
+    }
+
+    /**
+     * Renames an assembly machine identifier and updates all related references
+     * in constraints, computed semantics, guards, actions, and exit zones.
+     */
+    public void renameAssemblyMachineId(String oldId, String newId) {
+        if (oldId == null || newId == null || oldId.equals(newId)) return;
+        if (assembly == null) return;
+
+        StateMachine machine = assembly.getStateMachines().remove(oldId);
+        if (machine != null) {
+            assembly.addStateMachine(newId, machine);
+        }
+
+        List<LTLFormula> formulas = assembly.getLTLFormulas();
+        if (formulas != null) {
+            for (LTLFormula f : formulas) {
+                String text = f.getFormulaText();
+                String updated = renameMachineIdInText(text, oldId, newId);
+                if (updated != null && !updated.equals(text)) {
+                    f.setFormulaText(updated);
+                }
+            }
+        }
+
+        for (StateInterface si : getStates()) {
+            if (si instanceof PWSState ps) {
+                if (!ps.isPseudoState()) {
+                    ps.setRawConstraintText(renameMachineIdInText(ps.getRawConstraintText(), oldId, newId));
+                }
+                ps.setConstraintsSemantics(renameMachineIdInSemantics(ps.getConstraintsSemantics(), oldId, newId));
+                ps.setStateSemantics(renameMachineIdInSemantics(ps.getStateSemantics(), oldId, newId));
+                ps.setDeadlockConfigurations(renameMachineIdInConfigs(ps.getDeadlockConfigurations(), oldId, newId));
+                renameExitZones(ps.getReactiveSemantics(), oldId, newId);
+                renameExitZones(ps.getCsOnlyExitZones(), oldId, newId);
+                renameExitZones(ps.getSsOnlyExitZones(), oldId, newId);
+            }
+        }
+
+        for (TransitionInterface t : transitions) {
+            if (t instanceof PWSTransition pt) {
+                SMProposition oldGuard = pt.getGuardProposition();
+                SMProposition newGuard = renameMachineIdInProposition(oldGuard, oldId, newId);
+                if (newGuard != oldGuard) {
+                    pt.setGuardProposition(newGuard);
+                    if (pt.getGuardAnnotation() != null) {
+                        pt.getGuardAnnotation().setContent(newGuard);
+                    }
+                }
+
+                ActionList actions = pt.getActionList();
+                ActionList renamedActions = renameMachineIdInActions(actions, oldId, newId);
+                if (renamedActions != actions) {
+                    pt.setActionList(renamedActions);
+                    if (pt.getActionAnnotation() != null) {
+                        pt.getActionAnnotation().setContent(renamedActions);
+                    }
+                }
+
+                Semantics ts = pt.getTransitionSemantics();
+                Semantics tsRenamed = renameMachineIdInSemantics(ts, oldId, newId);
+                if (tsRenamed != ts) {
+                    pt.setTransitionSemantics(tsRenamed);
+                }
+            }
+        }
+    }
+
+    /**
+     * Renames a state inside an assembly machine and updates all related references.
+     */
+    public void renameAssemblyStateName(StateMachine machine, String oldName, String newName) {
+        if (machine == null || oldName == null || newName == null || oldName.equals(newName)) return;
+        if (assembly == null) return;
+
+        Set<String> ids = new HashSet<>();
+        for (Map.Entry<String, StateMachine> entry : assembly.getStateMachines().entrySet()) {
+            if (entry.getValue() == machine) {
+                ids.add(entry.getKey());
+            }
+        }
+        if (ids.isEmpty()) return;
+
+        for (String machineId : ids) {
+            List<LTLFormula> formulas = assembly.getLTLFormulas();
+            if (formulas != null) {
+                for (LTLFormula f : formulas) {
+                    String text = f.getFormulaText();
+                    String updated = renameStateNameInText(text, machineId, oldName, newName);
+                    if (updated != null && !updated.equals(text)) {
+                        f.setFormulaText(updated);
+                    }
+                }
+            }
+
+            for (StateInterface si : getStates()) {
+                if (si instanceof PWSState ps) {
+                    if (!ps.isPseudoState()) {
+                        ps.setRawConstraintText(renameStateNameInText(ps.getRawConstraintText(), machineId, oldName, newName));
+                    }
+                    ps.setConstraintsSemantics(renameStateNameInSemantics(ps.getConstraintsSemantics(), machineId, oldName, newName));
+                    ps.setStateSemantics(renameStateNameInSemantics(ps.getStateSemantics(), machineId, oldName, newName));
+                    ps.setDeadlockConfigurations(renameStateNameInConfigs(ps.getDeadlockConfigurations(), machineId, oldName, newName));
+                    renameExitZonesStateName(ps.getReactiveSemantics(), machineId, oldName, newName);
+                    renameExitZonesStateName(ps.getCsOnlyExitZones(), machineId, oldName, newName);
+                    renameExitZonesStateName(ps.getSsOnlyExitZones(), machineId, oldName, newName);
+                }
+            }
+
+            for (TransitionInterface t : transitions) {
+                if (t instanceof PWSTransition pt) {
+                    SMProposition oldGuard = pt.getGuardProposition();
+                    SMProposition newGuard = renameStateNameInProposition(oldGuard, machineId, oldName, newName);
+                    if (newGuard != oldGuard) {
+                        pt.setGuardProposition(newGuard);
+                        if (pt.getGuardAnnotation() != null) {
+                            pt.getGuardAnnotation().setContent(newGuard);
+                        }
+                    }
+
+                    Semantics ts = pt.getTransitionSemantics();
+                    Semantics tsRenamed = renameStateNameInSemantics(ts, machineId, oldName, newName);
+                    if (tsRenamed != ts) {
+                        pt.setTransitionSemantics(tsRenamed);
+                    }
+                }
+            }
+        }
+    }
+
+    private static String renameMachineIdInText(String text, String oldId, String newId) {
+        if (text == null || text.isBlank()) return text;
+        String pattern = "(?<![A-Za-z0-9_])" + Pattern.quote(oldId) + "(?=[.:])";
+        return text.replaceAll(pattern, newId);
+    }
+
+    private static String renameStateNameInText(String text, String machineId, String oldName, String newName) {
+        if (text == null || text.isBlank()) return text;
+        String pattern = "(?<![A-Za-z0-9_])" + Pattern.quote(machineId) + "([.:])" + Pattern.quote(oldName) + "(?![A-Za-z0-9_])";
+        return text.replaceAll(pattern, machineId + "$1" + newName);
+    }
+
+    private static SMProposition renameMachineIdInProposition(SMProposition prop, String oldId, String newId) {
+        if (prop == null) return null;
+        if (prop instanceof BasicStateProposition bsp) {
+            if (oldId.equals(bsp.getMachineId())) {
+                return new BasicStateProposition(newId, bsp.getStateName());
+            }
+            return prop;
+        }
+        if (prop instanceof AndProposition and) {
+            SMProposition left = renameMachineIdInProposition(and.getLeft(), oldId, newId);
+            SMProposition right = renameMachineIdInProposition(and.getRight(), oldId, newId);
+            return (left == and.getLeft() && right == and.getRight()) ? prop : new AndProposition(left, right);
+        }
+        if (prop instanceof OrProposition or) {
+            SMProposition left = renameMachineIdInProposition(or.getLeft(), oldId, newId);
+            SMProposition right = renameMachineIdInProposition(or.getRight(), oldId, newId);
+            return (left == or.getLeft() && right == or.getRight()) ? prop : new OrProposition(left, right);
+        }
+        if (prop instanceof NotProposition not) {
+            SMProposition inner = renameMachineIdInProposition(not.getProposition(), oldId, newId);
+            return (inner == not.getProposition()) ? prop : new NotProposition(inner);
+        }
+        if (prop instanceof TrueProposition || prop instanceof FalseProposition) {
+            return prop;
+        }
+        return prop;
+    }
+
+    private static SMProposition renameStateNameInProposition(SMProposition prop, String machineId, String oldName, String newName) {
+        if (prop == null) return null;
+        if (prop instanceof BasicStateProposition bsp) {
+            if (machineId.equals(bsp.getMachineId()) && oldName.equals(bsp.getStateName())) {
+                return new BasicStateProposition(machineId, newName);
+            }
+            return prop;
+        }
+        if (prop instanceof AndProposition and) {
+            SMProposition left = renameStateNameInProposition(and.getLeft(), machineId, oldName, newName);
+            SMProposition right = renameStateNameInProposition(and.getRight(), machineId, oldName, newName);
+            return (left == and.getLeft() && right == and.getRight()) ? prop : new AndProposition(left, right);
+        }
+        if (prop instanceof OrProposition or) {
+            SMProposition left = renameStateNameInProposition(or.getLeft(), machineId, oldName, newName);
+            SMProposition right = renameStateNameInProposition(or.getRight(), machineId, oldName, newName);
+            return (left == or.getLeft() && right == or.getRight()) ? prop : new OrProposition(left, right);
+        }
+        if (prop instanceof NotProposition not) {
+            SMProposition inner = renameStateNameInProposition(not.getProposition(), machineId, oldName, newName);
+            return (inner == not.getProposition()) ? prop : new NotProposition(inner);
+        }
+        if (prop instanceof TrueProposition || prop instanceof FalseProposition) {
+            return prop;
+        }
+        return prop;
+    }
+
+    private static Semantics renameMachineIdInSemantics(Semantics sem, String oldId, String newId) {
+        if (sem == null) return null;
+        boolean changed = false;
+        Semantics out = new Semantics(sem.getAssemblyId());
+        for (Configuration cfg : sem.getConfigurations()) {
+            Configuration renamed = renameMachineIdInConfig(cfg, oldId, newId);
+            if (renamed != cfg) changed = true;
+            out.addConfiguration(renamed);
+        }
+        return changed ? out : sem;
+    }
+
+    private static Semantics renameStateNameInSemantics(Semantics sem, String machineId, String oldName, String newName) {
+        if (sem == null) return null;
+        boolean changed = false;
+        Semantics out = new Semantics(sem.getAssemblyId());
+        for (Configuration cfg : sem.getConfigurations()) {
+            Configuration renamed = renameStateNameInConfig(cfg, machineId, oldName, newName);
+            if (renamed != cfg) changed = true;
+            out.addConfiguration(renamed);
+        }
+        return changed ? out : sem;
+    }
+
+    private static Configuration renameMachineIdInConfig(Configuration cfg, String oldId, String newId) {
+        if (cfg == null) return null;
+        boolean changed = false;
+        List<BasicStateProposition> props = new ArrayList<>();
+        for (BasicStateProposition bsp : cfg.getBasicStatePropositions()) {
+            if (oldId.equals(bsp.getMachineId())) {
+                props.add(new BasicStateProposition(newId, bsp.getStateName()));
+                changed = true;
+            } else {
+                props.add(bsp);
+            }
+        }
+        return changed ? Configuration.fromBasicStatePropositions(cfg.getAssemblyId(), props) : cfg;
+    }
+
+    private static Configuration renameStateNameInConfig(Configuration cfg, String machineId, String oldName, String newName) {
+        if (cfg == null) return null;
+        boolean changed = false;
+        List<BasicStateProposition> props = new ArrayList<>();
+        for (BasicStateProposition bsp : cfg.getBasicStatePropositions()) {
+            if (machineId.equals(bsp.getMachineId()) && oldName.equals(bsp.getStateName())) {
+                props.add(new BasicStateProposition(machineId, newName));
+                changed = true;
+            } else {
+                props.add(bsp);
+            }
+        }
+        return changed ? Configuration.fromBasicStatePropositions(cfg.getAssemblyId(), props) : cfg;
+    }
+
+    private static Set<Configuration> renameMachineIdInConfigs(Set<Configuration> configs, String oldId, String newId) {
+        if (configs == null) return null;
+        boolean changed = false;
+        Set<Configuration> out = new HashSet<>();
+        for (Configuration cfg : configs) {
+            Configuration renamed = renameMachineIdInConfig(cfg, oldId, newId);
+            if (renamed != cfg) changed = true;
+            out.add(renamed);
+        }
+        return changed ? out : configs;
+    }
+
+    private static Set<Configuration> renameStateNameInConfigs(Set<Configuration> configs, String machineId, String oldName, String newName) {
+        if (configs == null) return null;
+        boolean changed = false;
+        Set<Configuration> out = new HashSet<>();
+        for (Configuration cfg : configs) {
+            Configuration renamed = renameStateNameInConfig(cfg, machineId, oldName, newName);
+            if (renamed != cfg) changed = true;
+            out.add(renamed);
+        }
+        return changed ? out : configs;
+    }
+
+    private static ActionList renameMachineIdInActions(ActionList actions, String oldId, String newId) {
+        if (actions == null) return null;
+        boolean changed = false;
+        ActionList out = new ActionList();
+        for (Action a : actions) {
+            if (a != null && oldId.equals(a.getMachineId())) {
+                out.add(new Action(newId, a.getEvent()));
+                changed = true;
+            } else {
+                out.add(a);
+            }
+        }
+        return changed ? out : actions;
+    }
+
+    private static void renameExitZones(Set<ExitZone> zones, String oldId, String newId) {
+        if (zones == null || zones.isEmpty()) return;
+        for (ExitZone ez : zones) {
+            if (ez == null) continue;
+            if (oldId.equals(ez.getStateMachineId())) {
+                ez.setStateMachineId(newId);
+            }
+            BasicStateProposition src = ez.getSource();
+            if (src != null && oldId.equals(src.getMachineId())) {
+                ez.setSource(new BasicStateProposition(newId, src.getStateName()));
+            }
+            BasicStateProposition tgt = ez.getTarget();
+            if (tgt != null && oldId.equals(tgt.getMachineId())) {
+                ez.setTarget(new BasicStateProposition(newId, tgt.getStateName()));
+            }
+        }
+    }
+
+    private static void renameExitZonesStateName(Set<ExitZone> zones, String machineId, String oldName, String newName) {
+        if (zones == null || zones.isEmpty()) return;
+        for (ExitZone ez : zones) {
+            if (ez == null) continue;
+            BasicStateProposition src = ez.getSource();
+            if (src != null && machineId.equals(src.getMachineId()) && oldName.equals(src.getStateName())) {
+                ez.setSource(new BasicStateProposition(machineId, newName));
+            }
+            BasicStateProposition tgt = ez.getTarget();
+            if (tgt != null && machineId.equals(tgt.getMachineId()) && oldName.equals(tgt.getStateName())) {
+                ez.setTarget(new BasicStateProposition(machineId, newName));
+            }
+        }
     }
 
     /**

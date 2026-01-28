@@ -70,9 +70,13 @@ public class AssemblyMachineEditDialog extends JDialog {
                 assembly.getMachineLibrary().syncMachineName(machine);
             }
             if (!newId.equals(machineId)) {
-                // Remove old mapping and insert new one pointing to the same machine object
-                assembly.getStateMachines().remove(machineId);
-                assembly.addStateMachine(newId, machine);
+                if (owner instanceof pws.editor.PWSEditor pe) {
+                    pe.renameAssemblyMachineId(machineId, newId);
+                } else {
+                    // Remove old mapping and insert new one pointing to the same machine object
+                    assembly.getStateMachines().remove(machineId);
+                    assembly.addStateMachine(newId, machine);
+                }
             }
             confirmed = true;
             setVisible(false);

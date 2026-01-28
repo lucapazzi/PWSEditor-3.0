@@ -935,6 +935,28 @@ public class PWSEditor extends JFrame {
         worker.execute();
     }
 
+    /**
+     * Renames a machine identifier in the assembly and updates all related model references.
+     */
+    public void renameAssemblyMachineId(String oldId, String newId) {
+        if (pwsStateMachine == null) return;
+        if (oldId == null || newId == null || oldId.equals(newId)) return;
+        pwsStateMachine.renameAssemblyMachineId(oldId, newId);
+        markDocumentDirty();
+        scheduleSemanticsRecalculation();
+    }
+
+    /**
+     * Renames a state inside an assembly machine and updates all related references.
+     */
+    public void renameAssemblyStateName(machinery.StateMachine machine, String oldName, String newName) {
+        if (pwsStateMachine == null) return;
+        if (machine == null || oldName == null || newName == null || oldName.equals(newName)) return;
+        pwsStateMachine.renameAssemblyStateName(machine, oldName, newName);
+        markDocumentDirty();
+        scheduleSemanticsRecalculation();
+    }
+
     public PWSDocument getDocument() { return this.currentDocument; }
 
     // Helper for PWSFileManager to access the base editor

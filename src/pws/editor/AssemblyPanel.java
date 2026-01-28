@@ -120,11 +120,12 @@ public class AssemblyPanel extends JPanel {
         if (choice == 0) { // Change identifier
             String newId = JOptionPane.showInputDialog(this, "New identifier:", id);
             if (newId != null && !newId.trim().isEmpty() && !assembly.getStateMachines().containsKey(newId)) {
-                StateMachine m = assembly.getStateMachines().remove(id);
-                assembly.addStateMachine(newId, m);
                 java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
-                if (win instanceof pws.editor.PWSEditor) {
-                    ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+                if (win instanceof pws.editor.PWSEditor pe) {
+                    pe.renameAssemblyMachineId(id, newId);
+                } else {
+                    StateMachine m = assembly.getStateMachines().remove(id);
+                    assembly.addStateMachine(newId, m);
                 }
             }
         } else if (choice == 1) { // Change machine association
