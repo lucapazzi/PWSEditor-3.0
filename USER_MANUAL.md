@@ -30,8 +30,8 @@ PWSEditor is a Java application. Ensure you have **Java 11 or later** installed 
 From the command line, navigate to the PWSEditor directory and run:
 
 ```bash
-javac -d out -cp "lib/pdfbox-2.0.29.jar:lib/fontbox-2.0.29.jar:lib/commons-logging-1.2.jar" -sourcepath src src/pws/editor/PWSEditor.java
-java -cp "out:lib/pdfbox-2.0.29.jar:lib/fontbox-2.0.29.jar:lib/commons-logging-1.2.jar" pws.editor.PWSEditor
+javac -d out -cp "lib/pdfbox-2.0.29.jar:lib/fontbox-2.0.29.jar:lib/pdfbox-graphics2d-0.6.0.jar:lib/commons-logging-1.2.jar" -sourcepath src src/pws/editor/PWSEditor.java
+java -cp "out:lib/pdfbox-2.0.29.jar:lib/fontbox-2.0.29.jar:lib/pdfbox-graphics2d-0.6.0.jar:lib/commons-logging-1.2.jar" pws.editor.PWSEditor
 ```
 
 PWSEditor will launch with an empty controller editor ready for use.
@@ -931,7 +931,7 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 **Export as PDF:**
 1. Go to **File → Export as PDF**
 2. Choose location and filename
-3. A PDF rendering of the current diagram is created
+3. A **vector PDF** of the current diagram is created
 
 ---
 
@@ -946,8 +946,7 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 | **Save** | Save current document (prompts for location if new) |
 | **Save As...** | Save current document to a new location |
 | **Close** | Close current document (prompts to save if dirty) |
-| **Prefer vector PDF export** | Toggle vector-based PDF rendering (when supported) |
-| **Export as PDF** | Export current diagram as PDF document |
+| **Export as PDF** | Export current diagram as a vector PDF |
 | **Exit** | Close the editor |
 
 ### Edit Menu
@@ -1247,7 +1246,7 @@ All model changes now automatically trigger semantics recalculation:
 - Disabled transitions are excluded from semantics calculations
 
 #### PDF Export
-- Export diagrams as PDF documents for documentation and sharing
+- Export diagrams as **vector PDF** documents for documentation and sharing
 
 #### UI Improvements
 - Window title shows document name and dirty status

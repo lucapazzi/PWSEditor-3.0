@@ -619,13 +619,6 @@ public class PWSEditor extends JFrame {
         // SVG export removed — prefer PDF export
 
         // New: Export as PDF menu item.
-        // PDF export preference (vector vs raster)
-        JCheckBoxMenuItem preferVectorItem = new JCheckBoxMenuItem("Prefer vector PDF export", false);
-        preferVectorItem.addActionListener(e -> {
-            utility.PDFExporter.setPreferVector(preferVectorItem.isSelected());
-        });
-        fileMenu.add(preferVectorItem);
-
         exportPDFItem = new JMenuItem("Export as PDF");
         exportPDFItem.addActionListener(e -> {
             JFileChooser fileChooser = new JFileChooser();

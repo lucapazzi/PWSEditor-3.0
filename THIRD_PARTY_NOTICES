@@ -3,7 +3,7 @@ Third-Party Notices
 This project includes the following third-party components.
 
 ---
-Apache PDFBox (pdfbox-app-3.0.6.jar)
+Apache PDFBox (pdfbox-2.0.29.jar, fontbox-2.0.29.jar)
 License: Apache License 2.0
 Full license text: LICENSES/Apache-2.0.txt
 
@@ -28,6 +28,16 @@ Copyright 1991-2015 Unicode, Inc.
 
 Includes parts of TwelveMonkeys ImageIO
 Copyright 2008-2016 Harald Kuhr
+
+---
+pdfbox-graphics2d (pdfbox-graphics2d-0.6.0.jar)
+License: Apache License 2.0
+Full license text: LICENSES/Apache-2.0.txt
+
+---
+Apache Commons Logging (commons-logging-1.2.jar)
+License: Apache License 2.0
+Full license text: LICENSES/Apache-2.0.txt
 
 ---
 JSON serialization
