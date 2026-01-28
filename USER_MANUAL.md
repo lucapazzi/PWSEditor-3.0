@@ -224,8 +224,8 @@ The guard expression determines when a transition can fire. PWSEditor provides v
 - **Autonomous transitions** (no event, not from pseudo-state): Default to **FALSE** guard — this is a **placeholder** indicating you need to specify a meaningful guard
 
 When editing an autonomous transition guard:
-- If the source state has **exit zones**, the guard menu lists those exit-zone propositions.
-- Internal (gray) exit zones are **not selectable** for autonomous guards.
+- If the source state has **exit zones** (including provisional CS-only ones), the guard menu lists those exit-zone propositions.
+- Internal (gray) exit zones are **not selectable** for autonomous guards; **provisional (blue)** exit zones are selectable.
 - If the source state has **no exit zones**, the menu offers **TRUE** (fire immediately). Use **Remove guard** to go back to **FALSE** (never fires).
 
 **Autonomous guard styling:** For autonomous transitions, each exit-zone proposition inside the guard is drawn **bold and underlined** to make reactive conditions stand out. TRUE/FALSE remain normal weight.
@@ -437,6 +437,8 @@ PWSEditor provides a visual Constraints Editor that makes it easy to build const
 > **Note**: Pseudostates always have constraint "ANY" and cannot be edited.
 
 **Quick reset to ANY:** Right-click the dashboard and choose **Set Constraints to ANY** to restore the default “allow all configurations” constraint.
+
+**Exit-zone labels:** The same dashboard menu includes **Show machine IDs in exit zones** to toggle whether labels include machine IDs (default: on).
 
 > **Tip**: When the constraints editor is empty (effectively `ANY`), the dashboard shows "ANY" in the constraints line. Once you add a constraint, the explicit text replaces ANY, and deleting all constraints resumes the default ANY display.
 
@@ -839,17 +841,20 @@ Exit zones serve two purposes:
 
 ### Exit Zone Colors in the Dashboard
 
-The dashboard uses a simple two-color scheme for exit zones:
+The dashboard uses a four-color scheme for exit zones:
 
 | Color | Meaning |
 |-------|---------|  
 | **Green** | Exit zone is covered by an autonomous PWS transition ✓ |
+| **Blue** | **Provisional** exit zone (CS-only; derived from constraints only) |
 | **Red** | Exit zone is uncovered or orphan (no matching source state) ✗ |
 | **Gray** | Internal exit zone (target already in semantics) — not selectable for autonomous guards |
 
-Internal exit zones (gray) represent autonomous component evolution that stays within the current state's semantics. They are **not selectable** as guards for autonomous PWS transitions.
+Internal exit zones (gray) represent autonomous component evolution that stays within the current state's semantics. They are **not selectable** as guards for autonomous PWS transitions. Provisional (blue) exit zones **are selectable** and indicate constraints-only boundaries.
 
-**Label format:** Exit zones are shown as `S1→T` (state names only). To include machine IDs, enable **View → Show exit-zone machine IDs**, which displays `m.S1→m.T`.
+**Provisional indicator:** A small **blue triangle** next to the “exit zones” label indicates that provisional (CS-only) exit zones are present.
+
+**Label format:** Exit zones are shown as `m:S→T` by default (machine ID + source state → target state). To hide machine IDs, right-click the state dashboard and toggle **Show machine IDs in exit zones**.
 
 **Note**: For detailed analysis including exit zone origin (CS-only, SS-only, or both) and orphan exit zones, right-click on the state dashboard and select **"Show Extended Details..."**.
 
@@ -867,7 +872,7 @@ PWSEditor uses a document-based model with the following features:
 
 - **Single document at a time**: One PWS workspace per editor window
 - **Dirty tracking**: Unsaved changes are tracked and indicated in the window title
-- **Annotation persistence**: Guard, action, and semantics annotation positions are saved with the document
+- **Annotation persistence**: Guard, action, and semantics annotation positions (plus the exit-zone label toggle) are saved with the document
 
 ### Window Title
 
@@ -915,7 +920,7 @@ PWSEditor saves documents in `.pws` format, which includes:
 - The PWS controller state machine
 - All component machines in the assembly
 - The machine library
-- Annotation positions (guards, actions, semantics dashboards)
+- Annotation positions (guards, actions, semantics dashboards) and exit-zone label toggle
 
 ### Legacy Format Support
 
@@ -956,7 +961,6 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 | Option | Description |
 |--------|-------------|
 | **Show state dashboards** | Toggle display of semantic annotations |
-| **Show exit-zone machine IDs** | Toggle whether exit-zone labels include machine IDs |
 | **Show Grid** | Toggle grid display |
 | **Snap to Grid** | Toggle automatic grid snapping |
 | **Set grid size...** | Adjust snap-to-grid size |
@@ -1078,6 +1082,7 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 | No underline | Internally stuck but covered by an outgoing transition |
 | Red (in exit zone list) | Exit zone is uncovered or orphan (no matching source state) |
 | Green (in exit zone list) | Exit zone is covered by a PWS autonomous transition |
+| Blue (in exit zone list) | Provisional exit zone (CS-only; derived from constraints only) |
 | Gray (in exit zone list) | Internal exit zone (target already in semantics) — not selectable for autonomous guards |
 
 **Tip**: Right-click on the dashboard and select **"Show Extended Details..."** for detailed exit zone origin analysis.
@@ -1219,7 +1224,7 @@ For more information about Part-Whole Statecharts theory, see the project README
 #### New File Management System
 - **Document-based workflow**: New/Open/Save/Save As/Close operations
 - **Dirty tracking**: Unsaved changes indicated by asterisk (*) in window title
-- **Annotation persistence**: Guard, action, and semantics annotation positions are saved and restored
+- **Annotation persistence**: Guard, action, and semantics annotation positions (plus the exit-zone label toggle) are saved and restored
 - **New file format**: `.pws` extension for workspace files (backward compatible with `.bin`)
 
 #### Enhanced Deadlock Detection

@@ -1181,6 +1181,34 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
         PWSState newState = new PWSState(name, topLeft, pwsMachine.getAssembly());
         pwsMachine.addState(newState);
+
+        while (isAnyConstraints(newState)) {
+            ConstraintsEditorDialog dialog = new ConstraintsEditorDialog(newState, pwsMachine.getAssembly());
+            dialog.setVisible(true);
+            if (!isAnyConstraints(newState)) {
+                break;
+            }
+            Object[] options = { "Keep ANY", "Edit Constraints", "Remove State" };
+            int choice = JOptionPane.showOptionDialog(
+                    this,
+                    "Constraints are ANY (no exit zones will be derived).",
+                    "Constraints = ANY",
+                    JOptionPane.DEFAULT_OPTION,
+                    JOptionPane.WARNING_MESSAGE,
+                    null,
+                    options,
+                    options[0]
+            );
+            if (choice == 0) {
+                break; // Keep ANY
+            }
+            if (choice == 2 || choice == JOptionPane.CLOSED_OPTION) {
+                pwsMachine.getStates().remove(newState);
+                repaint();
+                return;
+            }
+            // choice == 1 -> edit again
+        }
         repaint();
         // mark document dirty and trigger semantics recalculation
         java.awt.Window w = SwingUtilities.getWindowAncestor(this);
@@ -1204,6 +1232,18 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             idx++;
         }
         return base + idx;
+    }
+
+    private boolean isAnyConstraints(PWSState state) {
+        if (state == null || state.isPseudoState()) {
+            return false;
+        }
+        String raw = state.getRawConstraintText();
+        if (raw != null && !raw.isBlank()) {
+            return "ANY".equalsIgnoreCase(raw.trim());
+        }
+        Semantics cs = state.getConstraintsSemantics();
+        return cs == null || cs.getConfigurations().isEmpty();
     }
 
     /**
@@ -1614,6 +1654,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     public static class AnnotationData {
         public final java.util.List<StateAnnotationData> stateAnnotations = new java.util.ArrayList<>();
         public final java.util.List<TransitionAnnotationData> transitionAnnotations = new java.util.ArrayList<>();
+        public Boolean showExitZoneMachineIds;
     }
 
     public static class StateAnnotationData {
@@ -1642,6 +1683,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
     public AnnotationData exportAnnotations() {
         AnnotationData data = new AnnotationData();
+        data.showExitZoneMachineIds = StateSemanticsAnnotation.isShowExitZoneMachineIds();
 
         // State annotations.
         for (StateInterface s : stateMachine.getStates()) {
@@ -1716,6 +1758,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
     public void importAnnotations(AnnotationData data) {
         if (data == null) return;
+        if (data.showExitZoneMachineIds != null) {
+            StateSemanticsAnnotation.setShowExitZoneMachineIds(data.showExitZoneMachineIds);
+        }
 
         // Restore state annotations.
         for (StateAnnotationData rec : data.stateAnnotations) {

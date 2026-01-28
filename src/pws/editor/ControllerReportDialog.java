@@ -437,15 +437,7 @@ public class ControllerReportDialog extends JDialog {
             // Get valid actions from source state semantics
             Set<String> validActions = new HashSet<>();
             if (src instanceof PWSState ps) {
-                Semantics stateSemantics = ps.getStateSemantics();
-                Semantics constraintSemantics = ps.getConstraintsSemantics();
-                
-                if (stateSemantics != null) {
-                    collectValidActionsFromSemantics(stateSemantics, validActions);
-                }
-                if (constraintSemantics != null) {
-                    collectValidActionsFromSemantics(constraintSemantics, validActions);
-                }
+                collectValidActionsForTransition(ps, pt, validActions);
             }
             
             // If no semantics available, don't flag as orphan
@@ -463,6 +455,46 @@ public class ControllerReportDialog extends JDialog {
         }
         
         return problems;
+    }
+
+    private void collectValidActionsForTransition(PWSState ps, PWSTransition pt, Set<String> validActions) {
+        Semantics stateSemantics = ps.getStateSemantics();
+        Semantics constraintSemantics = ps.getConstraintsSemantics();
+        SMProposition guard = pt.getGuardProposition();
+        if (pt.isAutonomous() && guard instanceof BasicStateProposition) {
+            HashSet<ExitZone> reactiveZones = ps.getReactiveSemantics();
+            boolean matchedZone = false;
+            if (reactiveZones != null) {
+                for (ExitZone ez : reactiveZones) {
+                    if (ez == null || ez.getTarget() == null || ez.getTransition() == null) {
+                        continue;
+                    }
+                    if (!guard.equals(ez.getTarget())) {
+                        continue;
+                    }
+                    matchedZone = true;
+                    if (stateSemantics != null) {
+                        Semantics transformed = stateSemantics.transformByMachineTransition(
+                                ez.getStateMachineId(), ez.getTransition(), assembly);
+                        collectValidActionsFromSemantics(transformed, validActions);
+                    }
+                    if (constraintSemantics != null) {
+                        Semantics transformed = constraintSemantics.transformByMachineTransition(
+                                ez.getStateMachineId(), ez.getTransition(), assembly);
+                        collectValidActionsFromSemantics(transformed, validActions);
+                    }
+                }
+            }
+            if (matchedZone) {
+                return;
+            }
+        }
+        if (stateSemantics != null) {
+            collectValidActionsFromSemantics(stateSemantics, validActions);
+        }
+        if (constraintSemantics != null) {
+            collectValidActionsFromSemantics(constraintSemantics, validActions);
+        }
     }
     
     private void collectValidActionsFromSemantics(Semantics sem, Set<String> validActions) {

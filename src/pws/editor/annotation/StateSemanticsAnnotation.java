@@ -195,6 +195,14 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 panel.repaint();
             });
             popup.add(adaptConstraintsItem);
+
+            JCheckBoxMenuItem showMachineIdsItem = new JCheckBoxMenuItem(
+                    "Show machine IDs in exit zones", isShowExitZoneMachineIds());
+            showMachineIdsItem.addActionListener(ae -> {
+                setShowExitZoneMachineIds(showMachineIdsItem.isSelected());
+                refreshExitZoneLabelLayout();
+            });
+            popup.add(showMachineIdsItem);
             
             // Add "Show Extended Details" menu item
             JMenuItem showExtendedItem = new JMenuItem("Show Extended Details...");
@@ -235,7 +243,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     private static final int BORDER_THICKNESS = 2;
     private static final int CORNER_RADIUS = 8;
     private static final String EXIT_ZONE_ARROW = "→";
-    private static boolean showExitZoneMachineIds = false;
+    private static boolean showExitZoneMachineIds = true;
 
     public static boolean isShowExitZoneMachineIds() {
         return showExitZoneMachineIds;
@@ -268,7 +276,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         if (prop == null) {
             return "?";
         }
-        return showExitZoneMachineIds ? prop.toString() : prop.getStateName();
+        return showExitZoneMachineIds ? (prop.getMachineId() + ":" + prop.getStateName()) : prop.getStateName();
     }
 
     private static String formatExitZoneLabel(ExitZone ez, String targetKey, boolean disambiguate) {
@@ -280,6 +288,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
         BasicStateProposition source = ez.getSource();
         BasicStateProposition target = ez.getTarget();
+        if (showExitZoneMachineIds && source != null && target != null) {
+            return source.getMachineId() + ":" + source.getStateName() + EXIT_ZONE_ARROW + target.getStateName();
+        }
         if (source == null || target == null) {
             return (source != null) ? (formatExitZoneState(source) + EXIT_ZONE_ARROW + targetKey) : targetKey;
         }
@@ -300,6 +311,42 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
         return width;
     }
+
+    private boolean hasCsOnlyWarning(PWSState state) {
+        return state != null && state.getCsOnlyExitZones() != null && !state.getCsOnlyExitZones().isEmpty();
+    }
+
+    private void updateCsOnlyTooltip(boolean hasWarning) {
+        if (hasWarning) {
+            setToolTipText("CS-only exit zones are provisional (from constraints only). Shown in blue.");
+        } else {
+            setToolTipText(null);
+        }
+    }
+
+    private void refreshExitZoneLabelLayout() {
+        if (panel == null) {
+            setSize(getPreferredSize());
+            revalidate();
+            repaint();
+            return;
+        }
+        PWSStateMachine sm = panel.getStateMachine();
+        if (sm != null) {
+            for (machinery.StateInterface si : sm.getStates()) {
+                if (si instanceof PWSState ps) {
+                    StateSemanticsAnnotation ann = ps.getAnnotation();
+                    if (ann != null) {
+                        ann.setSize(ann.getPreferredSize());
+                        ann.revalidate();
+                        ann.repaint();
+                    }
+                }
+            }
+        }
+        panel.revalidate();
+        panel.repaint();
+    }
     
     @Override
     protected void paintComponent(Graphics g) {
@@ -309,6 +356,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
         
+        if (content == null) {
+            setToolTipText(null);
+            g2d.dispose();
+            return;
+        }
+
+        boolean hasCsOnlyWarning = hasCsOnlyWarning(content);
+        updateCsOnlyTooltip(hasCsOnlyWarning);
+
         // If minimized, draw a small colored indicator and return
         if (minimized) {
             paintMinimized(g2d);
@@ -325,14 +381,10 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
         g2d.setColor(Color.BLACK);
 
-        if (content == null) {
-            g2d.dispose();
-            return;
-        }
-
         PWSState state = content;
         FontMetrics fm = g2d.getFontMetrics();
-        FontMetrics fmSmall = g2d.getFontMetrics(getFont().deriveFont(Font.ITALIC, 9f));
+        Font smallFont = getFont().deriveFont(Font.ITALIC, 9f);
+        FontMetrics fmSmall = g2d.getFontMetrics(smallFont);
         int lineHeight = fm.getHeight();
         int smallLineHeight = fmSmall.getHeight();
 
@@ -515,29 +567,48 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         
         // Draw subtle section label for exit zones
         y += smallLineHeight + 1;
-        g2d.setFont(getFont().deriveFont(Font.ITALIC, 9f));
+        g2d.setFont(smallFont);
         g2d.setColor(new Color(150, 150, 150));
         g2d.drawString("exit zones", padding, y);
+        if (hasCsOnlyWarning) {
+            int labelWidth = fmSmall.stringWidth("exit zones");
+            int iconW = 12;
+            int iconH = 10;
+            int iconX = padding + labelWidth + 5;
+            int iconY = y - fmSmall.getAscent() + (fmSmall.getHeight() - iconH) / 2;
+            Color warn = new Color(0, 70, 180);
+            g2d.setColor(warn);
+            int[] xs = { iconX, iconX + iconW, iconX + iconW / 2 };
+            int[] ys = { iconY + iconH, iconY + iconH, iconY };
+            g2d.fillPolygon(xs, ys, 3);
+        }
         // Legend line for exit zone colors (inline with dashboard)
         y += smallLineHeight;
         int legendX = padding;
         g2d.setColor(new Color(150, 150, 150));
         g2d.drawString("legend: ", legendX, y);
         legendX += fmSmall.stringWidth("legend: ");
-        g2d.setColor(new Color(120, 120, 120));
-        g2d.drawString("internal", legendX, y);
-        legendX += fmSmall.stringWidth("internal");
-        g2d.setColor(new Color(150, 150, 150));
-        g2d.drawString(" / ", legendX, y);
-        legendX += fmSmall.stringWidth(" / ");
         g2d.setColor(Color.GREEN.darker());
         g2d.drawString("covered", legendX, y);
         legendX += fmSmall.stringWidth("covered");
         g2d.setColor(new Color(150, 150, 150));
         g2d.drawString(" / ", legendX, y);
         legendX += fmSmall.stringWidth(" / ");
+        Color provisionalBlue = new Color(0, 70, 180);
+        g2d.setColor(provisionalBlue);
+        g2d.drawString("provisional", legendX, y);
+        legendX += fmSmall.stringWidth("provisional");
+        g2d.setColor(new Color(150, 150, 150));
+        g2d.drawString(" / ", legendX, y);
+        legendX += fmSmall.stringWidth(" / ");
         g2d.setColor(new Color(180, 0, 0));
-        g2d.drawString("uncovered/orphan", legendX, y);
+        g2d.drawString("uncovered", legendX, y);
+        legendX += fmSmall.stringWidth("uncovered");
+        g2d.setColor(new Color(150, 150, 150));
+        g2d.drawString(" / ", legendX, y);
+        legendX += fmSmall.stringWidth(" / ");
+        g2d.setColor(new Color(120, 120, 120));
+        g2d.drawString("internal", legendX, y);
         g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
 
         // 3) Reactive exit zones: centered, comma-separated, colored by origin and coverage
@@ -559,8 +630,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             Set<ExitZone> csOnly = state.getCsOnlyExitZones();
             Set<ExitZone> ssOnly = state.getSsOnlyExitZones();
             Semantics ss = state.getStateSemantics();
-            // Prepare list of exit-zones
+            // Prepare list of exit-zones (SS first, then CS-only warnings)
             List<ExitZone> zones = new ArrayList<>(state.getReactiveSemantics());
+            if (csOnly != null && !csOnly.isEmpty()) {
+                for (ExitZone ez : csOnly) {
+                    if (!zones.contains(ez)) {
+                        zones.add(ez);
+                    }
+                }
+            }
             List<String> zoneLabels = buildExitZoneLabels(zones);
             // Compute total width of comma-separated exit-zone list
             int exitTotalWidth = measureCommaSeparatedWidth(fm, zoneLabels);
@@ -580,10 +658,16 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                     isInternal = !targetAndSem.ISEMPTY();
                 }
                 boolean isCovered = !isOrphan && !isInternal && covered.contains(ez.getTarget());
-                Color ezColor = isOrphan
-                        ? new Color(180, 0, 0)
-                        : (isInternal ? new Color(120, 120, 120)
-                                      : (isCovered ? Color.GREEN.darker() : new Color(180, 0, 0)));
+                boolean isCsOnly = csOnly != null && csOnly.contains(ez);
+                Color ezColor;
+                if (isCsOnly) {
+                    ezColor = new Color(0, 70, 180);
+                } else {
+                    ezColor = isOrphan
+                            ? new Color(180, 0, 0)
+                            : (isInternal ? new Color(120, 120, 120)
+                                          : (isCovered ? Color.GREEN.darker() : new Color(180, 0, 0)));
+                }
                 g2d.setColor(ezColor);
                 g2d.setFont(baseFont);
                 g2d.drawString(txt, exitX, y);
@@ -842,6 +926,14 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         List<ExitZone> zones = (state.getReactiveSemantics() == null)
             ? Collections.emptyList()
             : new ArrayList<>(state.getReactiveSemantics());
+        Set<ExitZone> csOnly = state.getCsOnlyExitZones();
+        if (csOnly != null && !csOnly.isEmpty()) {
+            for (ExitZone ez : csOnly) {
+                if (!zones.contains(ez)) {
+                    zones.add(ez);
+                }
+            }
+        }
         List<String> zoneLabels = buildExitZoneLabels(zones);
 
         String[] lines = new String[] { constraintSem, actualSem };
@@ -856,7 +948,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         // Account for section labels width
         maxWidth = Math.max(maxWidth, fmSmall.stringWidth("exit zones") + 20);
         // Account for exit zones legend width
-        maxWidth = Math.max(maxWidth, fmSmall.stringWidth("legend: internal / covered / uncovered/orphan") + 20);
+        maxWidth = Math.max(maxWidth, fmSmall.stringWidth("legend: covered / provisional / uncovered / internal") + 20);
         
         // Match the exact y-positions used in paintComponent:
         // padding=6, then for each section: smallLineHeight + lineHeight + separator(~4)

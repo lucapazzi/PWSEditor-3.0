@@ -335,9 +335,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 isTrueAutonomous = associatedTransition.isAutonomous() && !ps.isPseudoState();
             }
         }
-        boolean hasExitZones = srcState != null
-                && srcState.getReactiveSemantics() != null
-                && !srcState.getReactiveSemantics().isEmpty();
+        boolean hasExitZones = hasAnyExitZones(srcState);
 
         // Treat both TRUE and FALSE as "no guard set" - need to select a guard
         // FALSE is a placeholder indicating the guard was removed and needs to be set
@@ -385,7 +383,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                         if (!eligibleTargets.isEmpty()) {
                             filteredBySemantics = true;
                             candidateStrings.addAll(eligibleTargets);
-                        } else if (p.getReactiveSemantics() != null && !p.getReactiveSemantics().isEmpty()) {
+                        } else if (hasAnyExitZones(p)) {
                             // Reactive semantics exist but none are eligible (internal/covered)
                             filteredBySemantics = true;
                         }
@@ -638,8 +636,9 @@ public class GuardAnnotation extends Annotation<SMProposition> {
 
     /**
      * Collects eligible exit-zone targets for autonomous transitions.
-     * Excludes internal (gray) exit zones and those already covered by other
+     * Includes CS-only exit zones (provisional) and excludes those already covered by other
      * enabled autonomous PWS transitions from the same source state.
+     * Internal (gray) exit zones are excluded for SS-based zones; CS-only zones are kept.
      */
     private Set<String> collectEligibleAutonomousExitTargets(PWSState srcState, TransitionInterface self) {
         Set<String> eligible = new LinkedHashSet<>();
@@ -657,15 +656,28 @@ public class GuardAnnotation extends Annotation<SMProposition> {
         }
         Semantics stateSem = srcState.getStateSemantics();
         Set<ExitZone> reactive = srcState.getReactiveSemantics();
-        if (reactive == null || reactive.isEmpty()) {
+        Set<ExitZone> csOnly = srcState.getCsOnlyExitZones();
+        List<ExitZone> zones = new ArrayList<>();
+        if (reactive != null) {
+            zones.addAll(reactive);
+        }
+        if (csOnly != null && !csOnly.isEmpty()) {
+            for (ExitZone ez : csOnly) {
+                if (!zones.contains(ez)) {
+                    zones.add(ez);
+                }
+            }
+        }
+        if (zones.isEmpty()) {
             return eligible;
         }
-        for (ExitZone zone : reactive) {
+        for (ExitZone zone : zones) {
             if (zone == null || zone.getTarget() == null) continue;
             BasicStateProposition target = zone.getTarget();
             String targetStr = target.toString();
             if (coveredByOthers.contains(targetStr)) continue;
-            if (assembly != null && stateSem != null) {
+            boolean isCsOnly = csOnly != null && csOnly.contains(zone);
+            if (!isCsOnly && assembly != null && stateSem != null) {
                 try {
                     Semantics targetAndSem = target.toSemantics(assembly).AND(stateSem);
                     if (!targetAndSem.ISEMPTY()) {
@@ -678,6 +690,16 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             eligible.add(targetStr);
         }
         return eligible;
+    }
+
+    private boolean hasAnyExitZones(PWSState state) {
+        if (state == null) return false;
+        Set<ExitZone> reactive = state.getReactiveSemantics();
+        if (reactive != null && !reactive.isEmpty()) {
+            return true;
+        }
+        Set<ExitZone> csOnly = state.getCsOnlyExitZones();
+        return csOnly != null && !csOnly.isEmpty();
     }
     
     /**

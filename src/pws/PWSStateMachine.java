@@ -88,15 +88,21 @@ public class PWSStateMachine extends StateMachine {
         }
 
         // ----------------------------------------------------------------------
-        // REACTIVE SEMANTICS: Compute exit zones from both CS and SS, classify by origin
-        // - CS-only (blue): exit zones present in CS but not in SS
+        // REACTIVE SEMANTICS: Compute exit zones from SS only, keep CS-only as warnings
+        // - CS-only (blue): exit zones present in CS but not in SS (informational)
         // - SS-only (red): exit zones present in SS but not in CS
-        // - Combined: union of both for the full reactive semantics
+        // - Reactive semantics used for autonomy is SS-only
         // ----------------------------------------------------------------------
         for (StateInterface si : getStates()) {
             if (si instanceof PWSState ps && si != pseudoState) {
                 HashSet<ExitZone> ssZones = new HashSet<>(this.findExitZones(ps.getStateSemantics()));
-                HashSet<ExitZone> csZones = new HashSet<>(this.findExitZones(ps.getConstraintsSemantics()));
+                HashSet<ExitZone> csZones = new HashSet<>();
+                if (hasExplicitConstraints(ps)) {
+                    Semantics cs = ps.getConstraintsSemantics();
+                    if (cs != null) {
+                        csZones.addAll(this.findExitZones(cs));
+                    }
+                }
 
                 // CS-only: in CS but not in SS
                 HashSet<ExitZone> csOnly = new HashSet<>(csZones);
@@ -108,10 +114,8 @@ public class PWSStateMachine extends StateMachine {
                 ssOnly.removeAll(csZones);
                 ps.setSsOnlyExitZones(ssOnly);
 
-                // Combined reactive semantics (union)
-                HashSet<ExitZone> combined = new HashSet<>(csZones);
-                combined.addAll(ssZones);
-                ps.setReactiveSemantics(combined);
+                // Reactive semantics used for autonomous reasoning: SS-only
+                ps.setReactiveSemantics(ssZones);
             }
         }
 
@@ -174,7 +178,13 @@ public class PWSStateMachine extends StateMachine {
         if (ps == null || ps == pseudoState) return;
         
         HashSet<ExitZone> ssZones = new HashSet<>(this.findExitZones(ps.getStateSemantics()));
-        HashSet<ExitZone> csZones = new HashSet<>(this.findExitZones(ps.getConstraintsSemantics()));
+        HashSet<ExitZone> csZones = new HashSet<>();
+        if (hasExplicitConstraints(ps)) {
+            Semantics cs = ps.getConstraintsSemantics();
+            if (cs != null) {
+                csZones.addAll(this.findExitZones(cs));
+            }
+        }
 
         // CS-only: in CS but not in SS
         HashSet<ExitZone> csOnly = new HashSet<>(csZones);
@@ -186,10 +196,8 @@ public class PWSStateMachine extends StateMachine {
         ssOnly.removeAll(csZones);
         ps.setSsOnlyExitZones(ssOnly);
 
-        // Combined reactive semantics (union)
-        HashSet<ExitZone> combined = new HashSet<>(csZones);
-        combined.addAll(ssZones);
-        ps.setReactiveSemantics(combined);
+        // Reactive semantics used for autonomous reasoning: SS-only
+        ps.setReactiveSemantics(ssZones);
     }
 
     /**
@@ -301,15 +309,11 @@ public class PWSStateMachine extends StateMachine {
         }
         Semantics result = Semantics.bottom(assembly.getAssemblyId());
         PWSState src = (PWSState) t.getSource();
-        // Compute exit zones on the fly from the current base semantics and constraints.
+        // Compute exit zones on the fly from the current base semantics (SS only).
         // This avoids relying on cached reactiveSemantics that may be stale after load.
         HashSet<ExitZone> reactiveZones = new HashSet<>();
         if (base != null) {
             reactiveZones.addAll(findExitZones(base));
-        }
-        Semantics cs = src.getConstraintsSemantics();
-        if (cs != null) {
-            reactiveZones.addAll(findExitZones(cs));
         }
         for (ExitZone ez : reactiveZones) {
             if (t.getGuardProposition() instanceof TrueProposition
@@ -323,6 +327,19 @@ public class PWSStateMachine extends StateMachine {
             result = result.transformByMachineEvent(a.getMachineId(), a.getEvent(), assembly);
         }
         return result;
+    }
+
+    /**
+     * Returns true when a state has explicit (non-ANY) constraints.
+     */
+    private boolean hasExplicitConstraints(PWSState ps) {
+        if (ps == null || ps.isPseudoState()) return false;
+        String raw = ps.getRawConstraintText();
+        if (raw != null && !raw.isBlank()) {
+            return !"ANY".equalsIgnoreCase(raw.trim());
+        }
+        Semantics cs = ps.getConstraintsSemantics();
+        return cs != null && !cs.getConfigurations().isEmpty();
     }
 
     /**

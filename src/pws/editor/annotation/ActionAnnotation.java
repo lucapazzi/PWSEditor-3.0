@@ -13,10 +13,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
+import assembly.Assembly;
 import pws.PWSState;
+import pws.PWSTransition;
+import pws.editor.semantics.ExitZone;
 import pws.editor.semantics.Configuration;
 import pws.editor.semantics.Semantics;
 import smalgebra.BasicStateProposition;
+import smalgebra.SMProposition;
 import machinery.StateMachine;
 
 /** Annotation widget for editing a list of actions. */
@@ -63,6 +67,8 @@ public class ActionAnnotation extends Annotation<ActionList> {
     
     /**
      * Checks if any action is orphan (references machines/events not reachable from source state semantics).
+     * For autonomous transitions, actions are checked against the source semantics after
+     * applying the matching exit-zone internal transition.
      * An action is orphan when:
      * - The machine it references is not in the source state's semantics or constraints
      * - The event it references is not triggerable from any state in the source semantics
@@ -81,15 +87,15 @@ public class ActionAnnotation extends Annotation<ActionList> {
         Set<String> validActions = new HashSet<>();
         Semantics stateSemantics = ps.getStateSemantics();
         Semantics constraintSemantics = ps.getConstraintsSemantics();
-        
-        // Collect valid actions from state semantics
-        if (stateSemantics != null) {
-            collectValidActionsFromSemantics(stateSemantics, validActions);
-        }
-        
-        // Also consider constraint semantics (union of both)
-        if (constraintSemantics != null) {
-            collectValidActionsFromSemantics(constraintSemantics, validActions);
+        if (associatedTransition instanceof PWSTransition pt) {
+            collectValidActionsForTransition(ps, pt, validActions);
+        } else {
+            if (stateSemantics != null) {
+                collectValidActionsFromSemantics(stateSemantics, validActions);
+            }
+            if (constraintSemantics != null) {
+                collectValidActionsFromSemantics(constraintSemantics, validActions);
+            }
         }
         
         // If no semantics available, don't flag as orphan
@@ -105,6 +111,47 @@ public class ActionAnnotation extends Annotation<ActionList> {
                 hasOrphanActions = true;
                 orphanActionReasons.add("'" + actionStr + "' is not reachable from source state semantics");
             }
+        }
+    }
+
+    private void collectValidActionsForTransition(PWSState ps, PWSTransition pt, Set<String> validActions) {
+        Semantics stateSemantics = ps.getStateSemantics();
+        Semantics constraintSemantics = ps.getConstraintsSemantics();
+        SMProposition guard = pt.getGuardProposition();
+        if (pt.isAutonomous() && guard instanceof BasicStateProposition) {
+            Assembly asm = (assembly instanceof Assembly) ? (Assembly) assembly : null;
+            HashSet<ExitZone> reactiveZones = ps.getReactiveSemantics();
+            boolean matchedZone = false;
+            if (asm != null && reactiveZones != null) {
+                for (ExitZone ez : reactiveZones) {
+                    if (ez == null || ez.getTarget() == null || ez.getTransition() == null) {
+                        continue;
+                    }
+                    if (!guard.equals(ez.getTarget())) {
+                        continue;
+                    }
+                    matchedZone = true;
+                    if (stateSemantics != null) {
+                        Semantics transformed = stateSemantics.transformByMachineTransition(
+                                ez.getStateMachineId(), ez.getTransition(), asm);
+                        collectValidActionsFromSemantics(transformed, validActions);
+                    }
+                    if (constraintSemantics != null) {
+                        Semantics transformed = constraintSemantics.transformByMachineTransition(
+                                ez.getStateMachineId(), ez.getTransition(), asm);
+                        collectValidActionsFromSemantics(transformed, validActions);
+                    }
+                }
+            }
+            if (matchedZone) {
+                return;
+            }
+        }
+        if (stateSemantics != null) {
+            collectValidActionsFromSemantics(stateSemantics, validActions);
+        }
+        if (constraintSemantics != null) {
+            collectValidActionsFromSemantics(constraintSemantics, validActions);
         }
     }
     
@@ -194,26 +241,26 @@ public class ActionAnnotation extends Annotation<ActionList> {
         List<Action> actionsToInsert = new ArrayList<>();
 
         // If this annotation is attached to a transition with a PWS source state,
-        // restrict insertable actions to events reachable from states in the source state's semantics.
+        // restrict insertable actions to events reachable from states in the source semantics.
         boolean filteredBySemantics = false;
         if (associatedTransition != null) {
             machinery.StateInterface src = associatedTransition.getSource();
             if (src instanceof PWSState) {
-                Semantics sem = ((PWSState) src).getStateSemantics();
-                if (sem != null && !sem.getConfigurations().isEmpty()) {
+                PWSState ps = (PWSState) src;
+                Semantics sem = ps.getStateSemantics();
+                Semantics cs = ps.getConstraintsSemantics();
+                if ((sem != null && !sem.getConfigurations().isEmpty())
+                        || (cs != null && !cs.getConfigurations().isEmpty())) {
                     filteredBySemantics = true;
                     Set<String> candidateStrings = new LinkedHashSet<>();
-                    for (Configuration conf : sem.getConfigurations()) {
-                        for (BasicStateProposition bsp : conf.getBasicStatePropositions()) {
-                            String machineId = bsp.getMachineId();
-                            String stateName = bsp.getStateName();
-                            StateMachine machine = assembly.getStateMachines().get(machineId);
-                            if (machine == null) continue;
-                            for (machinery.TransitionInterface t : machine.getTransitions()) {
-                                if (t.isTriggerable() && t.getSource() != null && stateName.equals(t.getSource().getName())) {
-                                    candidateStrings.add(machineId + "." + t.getTriggerEvent());
-                                }
-                            }
+                    if (associatedTransition instanceof PWSTransition pt) {
+                        collectValidActionsForTransition(ps, pt, candidateStrings);
+                    } else {
+                        if (sem != null) {
+                            collectValidActionsFromSemantics(sem, candidateStrings);
+                        }
+                        if (cs != null) {
+                            collectValidActionsFromSemantics(cs, candidateStrings);
                         }
                     }
                     // Map assembly actions to the candidate strings, avoiding actions from machines already present in the list.

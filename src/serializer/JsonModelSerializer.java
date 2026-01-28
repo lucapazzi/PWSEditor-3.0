@@ -623,6 +623,9 @@ public final class JsonModelSerializer {
             map.put("transitions", new ArrayList<>());
             return map;
         }
+        if (data.showExitZoneMachineIds != null) {
+            map.put("showExitZoneMachineIds", data.showExitZoneMachineIds);
+        }
         List<Object> states = new ArrayList<>();
         for (PWSStateMachinePanel.StateAnnotationData s : data.stateAnnotations) {
             Map<String, Object> sMap = new LinkedHashMap<>();
@@ -663,6 +666,9 @@ public final class JsonModelSerializer {
 
     private static PWSStateMachinePanel.AnnotationData annotationDataFromMap(Map<String, Object> map) {
         PWSStateMachinePanel.AnnotationData data = new PWSStateMachinePanel.AnnotationData();
+        if (map != null && map.containsKey("showExitZoneMachineIds")) {
+            data.showExitZoneMachineIds = getBoolean(map, "showExitZoneMachineIds", true);
+        }
         List<Object> states = asList(map.get("states"), "states");
         for (Object o : states) {
             Map<String, Object> sMap = asMap(o, "state annotation");
