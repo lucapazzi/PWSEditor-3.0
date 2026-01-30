@@ -203,6 +203,7 @@ Example: A transition with guard `[m1.Failed ∨ m2.Error]` (no trigger) fires a
 - When the controller starts, the system "emits" this hidden event, triggering the initial transition(s)
 - Multiple initial transitions can have different guards to select the appropriate starting state
 - Initial transitions **accept TRUE as a valid guard** — this simply means "fire at startup without additional conditions"
+- In dashboards and extended details, transitions from the pseudo-state are labeled **[initial]** to distinguish them from autonomous transitions
 
 **Key insight**: Initial transitions behave like triggered transitions, not autonomous transitions:
 - Autonomous transitions monitor exit zones and fire when component machines reach certain states
@@ -679,6 +680,8 @@ A state is **unreachable** when its computed semantics is empty — meaning no c
 
 **Deadlock detection** is a critical feature that identifies configurations where the system could get stuck with no way to evolve. PWSEditor automatically detects and highlights potential deadlock situations in the state semantics annotation.
 
+PWSEditor also flags **component-level deadlocks** inside the assembly machines themselves. These are local deadlocks that exist regardless of controller logic and should be resolved at the component level.
+
 ### What is a Deadlock Configuration?
 
 A configuration is considered a **true deadlock** if it meets BOTH of these conditions:
@@ -720,6 +723,16 @@ Even if a configuration cannot evolve internally, it may still have a way out vi
 
 Only configurations that fail BOTH the internal evolution AND the transition coverage checks are marked as true deadlocks.
 
+### Component Deadlocks (Local to Assembly Machines)
+
+A **component deadlock state** is a state in a component machine that has **no enabled outgoing transitions** (triggered or autonomous). If the component reaches such a state, it cannot leave it without changing the component itself.
+
+In practice, a controller can only move a component out of a state if:
+- The component has at least one **enabled triggerable transition** leaving that state, **and**
+- A controller action emits the corresponding event.
+
+If no outgoing transitions exist, the component is **deadlocked at the component level** and the controller cannot fix it.
+
 ### Visual Indicators
 
 In the state semantics annotation dashboard:
@@ -729,6 +742,17 @@ In the state semantics annotation dashboard:
 | **Red underline** | True deadlock: configuration cannot evolve AND is not covered by any transition |
 | **No underline** | Internally stuck but covered by an outgoing transition |
 | **Green underline** | Configuration can evolve internally (not a deadlock risk) |
+| **Yellow underline** | Configuration contains a component deadlock state |
+
+In component machine editors (assembly/library):
+
+| Visual | Meaning |
+|--------|---------|
+| **Red ring around a state** | Component deadlock state (no enabled outgoing transitions) |
+| **Red border around the machine panel** | At least one deadlock state exists in the component |
+| **Red * in Assembly/Library list** | The component contains at least one deadlock state |
+| **Tooltip on deadlock state** | "Deadlock state (no enabled outgoing transitions)" |
+| **Tooltip on yellow‑underlined config** | Lists the deadlocked component state(s) in that configuration |
 
 **Examples**:
 1. If `(m1.A, m2.X)` can evolve to `(m1.B, m2.X)` via an autonomous transition in m1 → **OK** (green underline)

@@ -60,6 +60,24 @@ public class MachineLibraryPanel extends JPanel {
         this.assembly = assembly;
         setLayout(new BorderLayout());
         list = new JList<>(listModel);
+        list.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list,
+                                                          Object value,
+                                                          int index,
+                                                          boolean isSelected,
+                                                          boolean cellHasFocus) {
+                JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                String name = value != null ? value.toString() : "";
+                StateMachine machine = assembly.getMachineLibrary().getByName(name);
+                if (machine != null && hasComponentDeadlocks(machine)) {
+                    label.setText("<html><font color='red'>*</font> " + escapeHtml(name) + "</html>");
+                } else {
+                    label.setText(name);
+                }
+                return label;
+            }
+        });
         refreshList();
 
         JScrollPane scroll = new JScrollPane(list);
@@ -146,6 +164,38 @@ public class MachineLibraryPanel extends JPanel {
         for (String name : lib.getNames()) {
             listModel.addElement(name != null ? name : "(null)");
         }
+    }
+
+    private boolean hasComponentDeadlocks(StateMachine machine) {
+        if (machine == null) return false;
+        for (machinery.StateInterface state : machine.getStates()) {
+            if (state == null || "PseudoState".equals(state.getName())) continue;
+            boolean hasEnabledOutgoing = false;
+            for (machinery.TransitionInterface t : machine.getTransitions()) {
+                if (t != null && t.getSource() == state && isTransitionEnabled(t)) {
+                    hasEnabledOutgoing = true;
+                    break;
+                }
+            }
+            if (!hasEnabledOutgoing) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isTransitionEnabled(machinery.TransitionInterface t) {
+        if (t instanceof machinery.Transition trans) {
+            return trans.isEnabled();
+        }
+        return true;
+    }
+
+    private String escapeHtml(String text) {
+        if (text == null) return "";
+        return text.replace("&", "&amp;")
+                   .replace("<", "&lt;")
+                   .replace(">", "&gt;");
     }
 
     private void onNew() {

@@ -1430,7 +1430,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     JOptionPane.WARNING_MESSAGE,
                     null,
                     options,
-                    options[1]);
+                    options[0]);
             if (confirm == JOptionPane.YES_OPTION) {
                 deleteTransition(t); // Helper method that removes the transition and its references.
                 revalidate();
@@ -1564,10 +1564,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             JMenuItem deleteItem = new JMenuItem("Delete State");
             deleteItem.addActionListener(ae -> {
                 Object[] options = new Object[] {"Yes", "No"};
-                int confirm = JOptionPane.showOptionDialog(this,
-                        "Are you sure you want to delete state \"" + state.getName() + "\"?",
-                        "Confirm deletion", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE,
-                        null, options, options[1]);
+            int confirm = JOptionPane.showOptionDialog(this,
+                    "Are you sure you want to delete state \"" + state.getName() + "\"?",
+                    "Confirm deletion", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE,
+                    null, options, options[0]);
                 if (confirm == JOptionPane.YES_OPTION) {
                     // In the PWS case, remove the state's annotation if it exists.
                     if (state instanceof PWSState) {

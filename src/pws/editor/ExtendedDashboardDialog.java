@@ -7,6 +7,8 @@ import pws.editor.semantics.Configuration;
 import pws.editor.semantics.ExitZone;
 import pws.editor.semantics.Semantics;
 import assembly.Assembly;
+import machinery.StateMachine;
+import machinery.Transition;
 import machinery.TransitionInterface;
 import smalgebra.BasicStateProposition;
 import pws.editor.annotation.StateSemanticsAnnotation;
@@ -40,6 +42,26 @@ public class ExtendedDashboardDialog extends JDialog {
     private static final String STYLE_BOLD = "bold";
     private static final String STYLE_GREEN_UNDERLINE = "greenUnderline";
     private static final String STYLE_RED_UNDERLINE = "redUnderline";
+
+    private static class OneStepEvolution {
+        private final String machineId;
+        private final String machineName;
+        private final Transition transition;
+        private final Configuration nextConfig;
+        private final java.util.List<PWSTransition> coveredTransitions;
+
+        private OneStepEvolution(String machineId,
+                                 String machineName,
+                                 Transition transition,
+                                 Configuration nextConfig,
+                                 java.util.List<PWSTransition> coveredTransitions) {
+            this.machineId = machineId;
+            this.machineName = machineName;
+            this.transition = transition;
+            this.nextConfig = nextConfig;
+            this.coveredTransitions = coveredTransitions != null ? coveredTransitions : Collections.emptyList();
+        }
+    }
 
     public ExtendedDashboardDialog(Window owner, PWSState state, PWSStateMachine stateMachine, Assembly assembly) {
         super(owner, "Extended Dashboard: " + state.getName(), ModalityType.MODELESS);
@@ -220,16 +242,14 @@ public class ExtendedDashboardDialog extends JDialog {
         
         // Get covered configurations from outgoing transitions
         Set<String> coveredCfgStrs = new HashSet<>();
-        if (stateMachine != null) {
-            for (TransitionInterface ti : stateMachine.getTransitions()) {
-                if (ti instanceof PWSTransition pt && pt.isEnabled() && pt.getSource() == state) {
-                    if (pt.getGuardProposition() != null && ss != null && assembly != null) {
-                        for (Configuration cfg : ss.getConfigurations()) {
-                            if (pt.getGuardProposition().evaluateConfiguration(cfg, assembly)) {
-                                coveredCfgStrs.add(cfg.toString());
-                            }
-                        }
-                    }
+        Map<String, java.util.List<PWSTransition>> coveredByTransition = new HashMap<>();
+        if (ss != null && stateMachine != null && assembly != null) {
+            for (Configuration cfg : ss.getConfigurations()) {
+                java.util.List<PWSTransition> covering = findCoveringTransitions(cfg);
+                if (!covering.isEmpty()) {
+                    String cfgStr = cfg.toString();
+                    coveredCfgStrs.add(cfgStr);
+                    coveredByTransition.put(cfgStr, covering);
                 }
             }
         }
@@ -254,6 +274,8 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText(" text = violates constraints, ", STYLE_GRAY);
             appendText("UNDERLINE", STYLE_GREEN_UNDERLINE);
             appendText(" = can evolve internally, ", STYLE_GRAY);
+            appendText("Component deadlock", STYLE_ORANGE);
+            appendText(" = listed below (yellow underline in dashboard), ", STYLE_GRAY);
             appendText("NO UNDERLINE", STYLE_GRAY);
             appendText(" = internally stuck (covered or true deadlock)\n", STYLE_GRAY);
             appendText("    Note: true deadlocks are explicitly labeled below and appear with a red underline in the dashboard.\n\n", STYLE_GRAY);
@@ -270,6 +292,7 @@ public class ExtendedDashboardDialog extends JDialog {
                 boolean isDeadlock = deadlockStrs.contains(cfgStr);
                 boolean canEvolve = !isDeadlock && !isEmptyConfig; // Empty config can't evolve
                 boolean isTrueDeadlock = isDeadlock && !isCovered;
+                java.util.List<String> componentDeadlocks = findComponentDeadlocks(cfg);
                 
                 // Determine style matching the dashboard:
                 // Text color = constraint satisfaction (green/red).
@@ -282,30 +305,33 @@ public class ExtendedDashboardDialog extends JDialog {
                 if (isEmptyConfig) {
                     // EMPTY CONFIG: Gray - means no component machines configured
                     style = STYLE_GRAY;
-                    indicator = " ○ No component machines configured";
+                    indicator = " ○";
                 } else if (canEvolve) {
                     // CAN EVOLVE: underline reflects internal evolution
                     style = satisfiesConstraint ? STYLE_GREEN_UNDERLINE : STYLE_RED_UNDERLINE;
-                    indicator = satisfiesConstraint
-                        ? " ↻ Can evolve internally (satisfies constraints)"
-                        : " ⚠ Violates constraints (can evolve internally)";
+                    indicator = " ↻";
                 } else {
                     // Internally stuck (covered or true deadlock)
                     style = satisfiesConstraint ? STYLE_GREEN : STYLE_RED;
                     if (isTrueDeadlock) {
-                        indicator = satisfiesConstraint
-                            ? " ⛔ TRUE DEADLOCK (satisfies constraints)"
-                            : " ⛔ TRUE DEADLOCK (violates constraints)";
+                        indicator = " ⛔";
                     } else {
-                        indicator = satisfiesConstraint
-                            ? " ✓ Covered by transition (internally stuck)"
-                            : " ⚠ Violates constraints (covered, internally stuck)";
+                        indicator = " ✓";
                     }
                 }
                 
                 appendText("    ", STYLE_NORMAL);
                 appendText(cfgStr, style);
                 appendText(indicator + "\n", STYLE_GRAY);
+
+                java.util.List<PWSTransition> coveringTransitions = coveredByTransition.getOrDefault(cfgStr, Collections.emptyList());
+                appendConfigurationDetails(cfg,
+                        isEmptyConfig,
+                        satisfiesConstraint,
+                        canEvolve,
+                        isTrueDeadlock,
+                        coveringTransitions,
+                        componentDeadlocks);
             }
         } else {
             appendText("  No computed semantics available\n", STYLE_GRAY);
@@ -570,6 +596,189 @@ public class ExtendedDashboardDialog extends JDialog {
             }
         }
         appendText("\n", STYLE_NORMAL);
+    }
+
+    private java.util.List<PWSTransition> findCoveringTransitions(Configuration cfg) {
+        java.util.List<PWSTransition> covering = new ArrayList<>();
+        if (cfg == null || stateMachine == null || assembly == null) {
+            return covering;
+        }
+        for (TransitionInterface ti : stateMachine.getTransitions()) {
+            if (ti instanceof PWSTransition pt && pt.isEnabled() && pt.getSource() == state) {
+                if (pt.getGuardProposition() != null
+                        && pt.getGuardProposition().evaluateConfiguration(cfg, assembly)) {
+                    covering.add(pt);
+                }
+            }
+        }
+        return covering;
+    }
+
+    private java.util.List<String> findComponentDeadlocks(Configuration cfg) {
+        java.util.List<String> results = new ArrayList<>();
+        if (cfg == null || assembly == null) {
+            return results;
+        }
+        for (smalgebra.BasicStateProposition bsp : cfg.getBasicStatePropositions()) {
+            if (bsp == null) continue;
+            String machineId = bsp.getMachineId();
+            String stateName = bsp.getStateName();
+            if (machineId == null || stateName == null) continue;
+            StateMachine machine = assembly.getStateMachines().get(machineId);
+            if (machine == null) continue;
+            machinery.StateInterface state = null;
+            for (machinery.StateInterface si : machine.getStates()) {
+                if (si != null && stateName.equals(si.getName())) {
+                    state = si;
+                    break;
+                }
+            }
+            if (state == null || "PseudoState".equals(state.getName())) continue;
+            boolean hasEnabledOutgoing = false;
+            for (TransitionInterface ti : machine.getTransitions()) {
+                if (ti != null && ti.getSource() == state && isTransitionEnabled(ti)) {
+                    hasEnabledOutgoing = true;
+                    break;
+                }
+            }
+            if (!hasEnabledOutgoing) {
+                results.add(machineId + "." + stateName);
+            }
+        }
+        return results;
+    }
+
+    private boolean isTransitionEnabled(TransitionInterface t) {
+        if (t instanceof machinery.Transition trans) {
+            return trans.isEnabled();
+        }
+        return true;
+    }
+
+    private OneStepEvolution findOneStepEvolution(Configuration cfg) {
+        if (cfg == null || assembly == null) {
+            return null;
+        }
+        Map<String, StateMachine> machines = assembly.getStateMachines();
+        if (machines == null || machines.isEmpty()) {
+            return null;
+        }
+        java.util.List<String> machineIds = new ArrayList<>(machines.keySet());
+        Collections.sort(machineIds);
+        OneStepEvolution first = null;
+        for (String machineId : machineIds) {
+            StateMachine machine = machines.get(machineId);
+            if (machine == null) continue;
+            String currentStateName = cfg.getStateName(machineId);
+            if (currentStateName == null) continue;
+            for (TransitionInterface ti : machine.getTransitions()) {
+                if (!(ti instanceof Transition t)) continue;
+                if (!t.isEnabled() || !t.isAutonomous()) continue;
+                if (t.getSource() == null || t.getTarget() == null) continue;
+                if (!currentStateName.equals(t.getSource().getName())) continue;
+                String targetStateName = t.getTarget().getName();
+                Configuration nextCfg = cfg.replaceConstraint(machineId, targetStateName);
+                if (nextCfg == null || nextCfg.equals(cfg)) continue;
+                java.util.List<PWSTransition> covering = findCoveringTransitions(nextCfg);
+                String machineName = machine.getName();
+                OneStepEvolution candidate = new OneStepEvolution(machineId, machineName, t, nextCfg, covering);
+                if (covering != null && !covering.isEmpty()) {
+                    return candidate;
+                }
+                if (first == null) {
+                    first = candidate;
+                }
+            }
+        }
+        return first;
+    }
+
+    private void appendConfigurationDetails(Configuration cfg,
+                                            boolean isEmptyConfig,
+                                            boolean satisfiesConstraint,
+                                            boolean canEvolve,
+                                            boolean isTrueDeadlock,
+                                            java.util.List<PWSTransition> coveringTransitions,
+                                            java.util.List<String> componentDeadlocks) {
+        if (cfg == null) return;
+        appendText("      1. ", STYLE_GRAY);
+        if (isEmptyConfig) {
+            appendText("No component machines configured.\n", STYLE_GRAY);
+        } else if (satisfiesConstraint) {
+            appendText("Satisfies constraints.\n", STYLE_GREEN);
+        } else {
+            appendText("Violates constraints.\n", STYLE_RED);
+        }
+
+        appendText("      2. ", STYLE_GRAY);
+        if (isEmptyConfig) {
+            appendText("Cannot evolve internally (no component machines configured).\n", STYLE_GRAY);
+        } else if (canEvolve) {
+            appendText("Can evolve internally by\n", STYLE_GRAY);
+            OneStepEvolution evo = findOneStepEvolution(cfg);
+            if (evo != null) {
+                String exitZone = evo.machineId + "." + evo.transition.getTarget().getName();
+                appendText("         one-step internal evolution: ", STYLE_GRAY);
+                appendText(formatMachineLabel(evo.machineId, evo.machineName) + ": " + evo.transition.getSource().getName()
+                        + " → " + evo.transition.getTarget().getName(), STYLE_NORMAL);
+                appendText(" => ", STYLE_GRAY);
+                appendText(evo.nextConfig.toString(), STYLE_NORMAL);
+                appendText(" into exit zone " + exitZone + "\n", STYLE_GRAY);
+            } else {
+                appendText("         one-step internal evolution details unavailable.\n", STYLE_GRAY);
+            }
+        } else {
+            appendText("Cannot evolve internally (no enabled autonomous transitions).\n", STYLE_GRAY);
+        }
+
+        appendText("      3. ", STYLE_GRAY);
+        if (coveringTransitions != null && !coveringTransitions.isEmpty()) {
+            appendText("Covered by PWS transition: ", STYLE_GRAY);
+            appendText(formatPwsTransitions(coveringTransitions) + "\n", STYLE_GREEN);
+        } else if (isTrueDeadlock) {
+            appendText("Not covered by any PWS transition (true deadlock).\n", STYLE_RED);
+        } else {
+            appendText("Not covered by any PWS transition.\n", STYLE_GRAY);
+        }
+
+        if (componentDeadlocks != null && !componentDeadlocks.isEmpty()) {
+            appendText("      4. ", STYLE_GRAY);
+            appendText("Component deadlock: ", STYLE_GRAY);
+            appendText(String.join(", ", componentDeadlocks) + "\n", STYLE_ORANGE);
+        }
+    }
+
+    private String formatPwsTransitions(java.util.List<PWSTransition> transitions) {
+        if (transitions == null || transitions.isEmpty()) {
+            return "(none)";
+        }
+        java.util.List<String> parts = new ArrayList<>();
+        for (PWSTransition pt : transitions) {
+            String src = pt.getSource() != null ? pt.getSource().getName() : "?";
+            String tgt = pt.getTarget() != null ? pt.getTarget().getName() : "?";
+            String label = src + " → " + tgt;
+            boolean isInitial = "PseudoState".equals(src);
+            if (isInitial) {
+                label += " [initial]";
+            } else if (pt.isTriggerable()) {
+                String trigger = pt.getTriggerEvent();
+                label += " [" + (trigger == null || trigger.isBlank() ? "trigger" : trigger) + "]";
+            } else {
+                label += " [autonomous]";
+            }
+            parts.add(label);
+        }
+        return String.join(", ", parts);
+    }
+
+    private String formatMachineLabel(String machineId, String machineName) {
+        if (machineName == null || machineName.isBlank()) {
+            return machineId != null ? machineId : "?";
+        }
+        if (machineId == null || machineId.isBlank()) {
+            return machineName;
+        }
+        return machineId + " (" + machineName + ")";
     }
 
     private void appendText(String text, String styleName) {

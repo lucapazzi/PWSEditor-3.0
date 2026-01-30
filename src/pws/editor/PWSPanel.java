@@ -29,6 +29,25 @@ public class PWSPanel extends JPanel {
         setLayout(new BorderLayout());
         listModel = new DefaultListModel<>();
         machineList = new JList<>(listModel);
+        machineList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list,
+                                                          Object value,
+                                                          int index,
+                                                          boolean isSelected,
+                                                          boolean cellHasFocus) {
+                JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                String text = value != null ? value.toString() : "";
+                String id = parseMachineId(text);
+                StateMachine machine = id != null ? assembly.getStateMachines().get(id) : null;
+                if (machine != null && hasComponentDeadlocks(machine)) {
+                    label.setText("<html><font color='red'>*</font> " + escapeHtml(text) + "</html>");
+                } else {
+                    label.setText(text);
+                }
+                return label;
+            }
+        });
         refreshList();
         JScrollPane scrollPane = new JScrollPane(machineList);
         add(scrollPane, BorderLayout.CENTER);
@@ -119,6 +138,45 @@ public class PWSPanel extends JPanel {
          * @param id machine id
          */
         void machineAdded(String id);
+    }
+
+    private String parseMachineId(String label) {
+        if (label == null) return null;
+        int idx = label.indexOf(" - ");
+        if (idx < 0) return null;
+        return label.substring(0, idx).trim();
+    }
+
+    private boolean hasComponentDeadlocks(StateMachine machine) {
+        if (machine == null) return false;
+        for (machinery.StateInterface state : machine.getStates()) {
+            if (state == null || "PseudoState".equals(state.getName())) continue;
+            boolean hasEnabledOutgoing = false;
+            for (machinery.TransitionInterface t : machine.getTransitions()) {
+                if (t != null && t.getSource() == state && isTransitionEnabled(t)) {
+                    hasEnabledOutgoing = true;
+                    break;
+                }
+            }
+            if (!hasEnabledOutgoing) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isTransitionEnabled(machinery.TransitionInterface t) {
+        if (t instanceof machinery.Transition trans) {
+            return trans.isEnabled();
+        }
+        return true;
+    }
+
+    private String escapeHtml(String text) {
+        if (text == null) return "";
+        return text.replace("&", "&amp;")
+                   .replace("<", "&lt;")
+                   .replace(">", "&gt;");
     }
 
     private MachineSelectionListener selectionListener = null;

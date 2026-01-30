@@ -30,6 +30,19 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     private Rectangle expandedBounds = null;
     // Size of the minimized indicator
     private static final int MINIMIZED_SIZE = 16;
+    private static final Color PARTIAL_DEADLOCK_COLOR = new Color(200, 160, 0);
+    private final java.util.List<ConfigHitArea> configHitAreas = new ArrayList<>();
+    private boolean csOnlyWarningActive = false;
+
+    private static class ConfigHitArea {
+        private final Rectangle bounds;
+        private final String tooltip;
+
+        private ConfigHitArea(Rectangle bounds, String tooltip) {
+            this.bounds = bounds;
+            this.tooltip = tooltip;
+        }
+    }
 
     public StateSemanticsAnnotation(PWSState content) {
         this(content, null, null);
@@ -41,6 +54,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         this.panel = panel;
         setOpaque(true);
         setBackground(Color.WHITE);
+        ToolTipManager.sharedInstance().registerComponent(this);
+        // Enable dynamic tooltips via getToolTipText override.
+        setToolTipText(" ");
         
         // Add double-click listener to toggle minimized state
         addMouseListener(new java.awt.event.MouseAdapter() {
@@ -51,6 +67,21 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 }
             }
         });
+    }
+
+    @Override
+    public String getToolTipText(MouseEvent e) {
+        if (e == null || minimized) return null;
+        Point p = e.getPoint();
+        for (ConfigHitArea area : configHitAreas) {
+            if (area != null && area.bounds != null && area.bounds.contains(p)) {
+                return area.tooltip;
+            }
+        }
+        if (csOnlyWarningActive) {
+            return "CS-only exit zones are provisional (from constraints only). Shown in blue.";
+        }
+        return null;
     }
     
     /**
@@ -317,11 +348,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     }
 
     private void updateCsOnlyTooltip(boolean hasWarning) {
-        if (hasWarning) {
-            setToolTipText("CS-only exit zones are provisional (from constraints only). Shown in blue.");
-        } else {
-            setToolTipText(null);
-        }
+        csOnlyWarningActive = hasWarning;
     }
 
     private void refreshExitZoneLabelLayout() {
@@ -477,7 +504,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         boolean rawAny = hasRaw && "ANY".equalsIgnoreCase(rawConstraint.trim());
         boolean hasCs = constraintsSem != null && !constraintsSem.getConfigurations().isEmpty();
         boolean anyConstraint = state.isPseudoState() || rawAny || (!hasRaw && !hasCs);
-        List<String> cfgStrs = new ArrayList<>();
+        List<pws.editor.semantics.Configuration> cfgList = new ArrayList<>();
         // Compute which state configurations are covered by at least one outgoing guard
         // Note: disabled transitions do not contribute to coverage
         PWSStateMachine pwsMachine = ((PWSStateMachinePanel) getParent()).getStateMachine();
@@ -495,7 +522,11 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
         }
         for (Object cfg : stateConfigs) {
-            cfgStrs.add(cfg.toString());
+            if (cfg instanceof pws.editor.semantics.Configuration c) {
+                cfgList.add(c);
+            } else if (cfg != null) {
+                // ignore unexpected config type for drawing
+            }
         }
         // Use cached deadlock configurations (computed during semantics recalculation, not at paint time)
         Set<String> deadlockCfgStrs = new HashSet<>();
@@ -506,11 +537,14 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
         }
         int totalWidth = 0;
-        for (String s : cfgStrs) {
+        for (pws.editor.semantics.Configuration cfg : cfgList) {
+            String s = cfg.toString();
             totalWidth += fm.stringWidth(s) + fm.charWidth(' ');
         }
         int x = (getWidth() - totalWidth) / 2;
-        for (String s : cfgStrs) {
+        configHitAreas.clear();
+        for (pws.editor.semantics.Configuration cfg : cfgList) {
+            String s = cfg.toString();
 
             // Special case: empty configuration "()" means no component machines configured
             boolean isEmptyConfig = s.equals("()");
@@ -525,13 +559,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             if (!satisfiesConstraint && constraintsSem != null && stateConfigs != null) {
                 // Rebuild configuration object from stateConfigs for implication check
                 for (Object cfgObj : stateConfigs) {
-                    if (cfgObj instanceof pws.editor.semantics.Configuration cfg && cfg.toString().equals(s)) {
-                        satisfiesConstraint = cfg.implies(constraintsSem);
+                    if (cfgObj instanceof pws.editor.semantics.Configuration cfgCheck && cfgCheck.toString().equals(s)) {
+                        satisfiesConstraint = cfgCheck.implies(constraintsSem);
                         break;
                     }
                 }
             }
             boolean isTrueDeadlock = isDeadlock && !isCovered;
+            java.util.List<String> componentDeadlocks = findComponentDeadlocks(cfg, asm);
+            boolean hasComponentDeadlock = !componentDeadlocks.isEmpty();
             
             // Color logic:
             // - Gray: Empty config (no component machines) - neutral/informational
@@ -547,15 +583,37 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             // Underline logic:
             // - Green underline: can evolve internally
             // - Red underline: true deadlock (internally stuck and not covered)
+            // - Yellow underline: component deadlock in configuration
             // - No underline for empty config or covered-but-stuck
-            if (canEvolve) {
-                int sw = fm.stringWidth(s);
-                g2d.setColor(Color.GREEN.darker());
-                g2d.drawLine(x, y + 1, x + sw, y + 1);
-            } else if (isTrueDeadlock) {
-                int sw = fm.stringWidth(s);
+            int sw = fm.stringWidth(s);
+            if (isTrueDeadlock) {
                 g2d.setColor(Color.RED);
                 g2d.drawLine(x, y + 1, x + sw, y + 1);
+            } else if (hasComponentDeadlock) {
+                g2d.setColor(PARTIAL_DEADLOCK_COLOR);
+                g2d.drawLine(x, y + 1, x + sw, y + 1);
+            } else if (canEvolve) {
+                g2d.setColor(Color.GREEN.darker());
+                g2d.drawLine(x, y + 1, x + sw, y + 1);
+            }
+            if (sw > 0) {
+                StringBuilder tip = new StringBuilder();
+                if (isEmptyConfig) {
+                    tip.append("No component machines configured.");
+                } else if (isTrueDeadlock) {
+                    tip.append("True deadlock: cannot evolve internally and not covered by any transition.");
+                } else if (canEvolve) {
+                    tip.append("Can evolve internally.");
+                } else {
+                    tip.append("Internally stuck but covered by an outgoing transition.");
+                }
+                if (!componentDeadlocks.isEmpty()) {
+                    if (tip.length() > 0) tip.append(" ");
+                    tip.append("Component deadlock: ").append(String.join(", ", componentDeadlocks)).append(".");
+                }
+                configHitAreas.add(new ConfigHitArea(
+                        new Rectangle(x, y - fm.getAscent(), sw, fm.getHeight()),
+                        tip.toString()));
             }
             x += fm.stringWidth(s) + fm.charWidth(' ');
         }
@@ -776,6 +834,45 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         g2d.setColor(statusColor.darker());
         g2d.setStroke(new BasicStroke(1.5f));
         g2d.drawRoundRect(1, 1, size - 3, size - 3, radius, radius);
+    }
+
+    private java.util.List<String> findComponentDeadlocks(pws.editor.semantics.Configuration cfg, Assembly asm) {
+        java.util.List<String> results = new ArrayList<>();
+        if (cfg == null || asm == null) return results;
+        for (BasicStateProposition bsp : cfg.getBasicStatePropositions()) {
+            if (bsp == null) continue;
+            String machineId = bsp.getMachineId();
+            String stateName = bsp.getStateName();
+            if (machineId == null || stateName == null) continue;
+            machinery.StateMachine machine = asm.getStateMachines().get(machineId);
+            if (machine == null) continue;
+            machinery.StateInterface state = null;
+            for (machinery.StateInterface si : machine.getStates()) {
+                if (si != null && stateName.equals(si.getName())) {
+                    state = si;
+                    break;
+                }
+            }
+            if (state == null || "PseudoState".equals(state.getName())) continue;
+            boolean hasEnabledOutgoing = false;
+            for (machinery.TransitionInterface ti : machine.getTransitions()) {
+                if (ti != null && ti.getSource() == state && isTransitionEnabled(ti)) {
+                    hasEnabledOutgoing = true;
+                    break;
+                }
+            }
+            if (!hasEnabledOutgoing) {
+                results.add(machineId + "." + stateName);
+            }
+        }
+        return results;
+    }
+
+    private boolean isTransitionEnabled(machinery.TransitionInterface t) {
+        if (t instanceof machinery.Transition trans) {
+            return trans.isEnabled();
+        }
+        return true;
     }
     
     /**

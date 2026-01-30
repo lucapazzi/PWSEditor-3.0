@@ -92,6 +92,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         setLayout(null);
         addMouseListener(this);
         addMouseMotionListener(this);
+        javax.swing.ToolTipManager.sharedInstance().registerComponent(this);
         // Enable keyboard focus so we can capture arrow keys
         setFocusable(true);
         // --- WASD-key bindings to pan the entire diagram ---
@@ -159,6 +160,14 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         drawTransitions(g);
         updateTriggerLabels(); // Add draggable labels for transitions with triggers
         // (Focus glow removed — visual hint disabled during resizing)
+        if (isComponentMachine() && hasComponentDeadlocks()) {
+            Graphics2D g2d = (Graphics2D) g;
+            Stroke old = g2d.getStroke();
+            g2d.setColor(new Color(180, 0, 0));
+            g2d.setStroke(new BasicStroke(2.0f));
+            g2d.drawRect(1, 1, getWidth() - 3, getHeight() - 3);
+            g2d.setStroke(old);
+        }
     }
 
     // Remove and clear all trigger labels
@@ -273,6 +282,13 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                     g2d.setColor(Color.BLACK);
                 }
                 g2d.drawOval(x, y, DIAMETER, DIAMETER);
+                if (isComponentDeadlockState(state)) {
+                    Stroke prev = g2d.getStroke();
+                    g2d.setStroke(new BasicStroke(2.0f));
+                    g2d.setColor(Color.RED);
+                    g2d.drawOval(x - 2, y - 2, DIAMETER + 4, DIAMETER + 4);
+                    g2d.setStroke(prev);
+                }
                 String name = state.getName();
                 FontMetrics fm = g2d.getFontMetrics();
                 int textWidth = fm.stringWidth(name);
@@ -283,6 +299,17 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             }
         }
         g2d.setStroke(oldStroke);
+    }
+
+    @Override
+    public String getToolTipText(MouseEvent e) {
+        if (!isComponentMachine()) return null;
+        StateInterface state = getStateAt(e.getPoint());
+        if (state == null) return null;
+        if (isComponentDeadlockState(state)) {
+            return "Deadlock state (no enabled outgoing transitions)";
+        }
+        return null;
     }
 
     protected void drawTransitions(Graphics g) {
@@ -355,6 +382,40 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         if (editMode) {
             drawControlHandle(g2d, cp);
         }
+    }
+
+    private boolean isComponentMachine() {
+        return !(stateMachine instanceof pws.PWSStateMachine);
+    }
+
+    private boolean hasComponentDeadlocks() {
+        if (!isComponentMachine()) return false;
+        for (StateInterface state : stateMachine.getStates()) {
+            if (isComponentDeadlockState(state)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isComponentDeadlockState(StateInterface state) {
+        if (!isComponentMachine() || state == null) return false;
+        if ("PseudoState".equals(state.getName())) return false;
+        boolean hasEnabledOutgoing = false;
+        for (TransitionInterface t : stateMachine.getTransitions()) {
+            if (t != null && t.getSource() == state && isTransitionEnabled(t)) {
+                hasEnabledOutgoing = true;
+                break;
+            }
+        }
+        return !hasEnabledOutgoing;
+    }
+
+    private boolean isTransitionEnabled(TransitionInterface t) {
+        if (t instanceof machinery.Transition trans) {
+            return trans.isEnabled();
+        }
+        return true;
     }
 
     private Point computeControlPoint(Point centerSource, Point centerTarget) {
@@ -860,8 +921,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             toggleEnableItem.addActionListener(ae -> {
                 trans.setEnabled(!trans.isEnabled());
                 // Schedule semantics recalculation - search up the hierarchy for PWSEditor
-                java.awt.Window win = javax.swing.SwingUtilities.getWindowAncestor(this);
-                if (win instanceof pws.editor.PWSEditor pwsEd) {
+                pws.editor.PWSEditor pwsEd = findOwningPWSEditor();
+                if (pwsEd != null) {
                     pwsEd.scheduleSemanticsRecalculation();
                     if (pwsEd.getDocument() != null) {
                         pwsEd.getDocument().setDirty(true);
@@ -884,6 +945,19 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         // Menu item to delete the transition
         JMenuItem deleteItem = new JMenuItem("Delete Transition");
         deleteItem.addActionListener(ae -> {
+            Object[] options = new Object[] {"Yes", "No"};
+            int confirm = JOptionPane.showOptionDialog(
+                    this,
+                    "Are you sure you want to delete the transition?",
+                    "Confirm deletion",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE,
+                    null,
+                    options,
+                    options[0]);
+            if (confirm != JOptionPane.YES_OPTION) {
+                return;
+            }
             // Use the helper method to remove the transition and all associated references
             deleteTransition(t);
             // Schedule semantics recalculation if inside PWSEditor
@@ -901,6 +975,21 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         // (These entries could be the same for initial and normal transitions if behavior should be uniform.)
 
         popup.show(this, e.getX(), e.getY());
+    }
+
+    private pws.editor.PWSEditor findOwningPWSEditor() {
+        java.awt.Window win = javax.swing.SwingUtilities.getWindowAncestor(this);
+        while (win != null) {
+            if (win instanceof pws.editor.PWSEditor pwsEd) {
+                return pwsEd;
+            }
+            if (win instanceof java.awt.Dialog dialog) {
+                win = dialog.getOwner();
+                continue;
+            }
+            break;
+        }
+        return null;
     }
 
     private void showPopupMenuForState(MouseEvent e, StateInterface state) {
@@ -928,12 +1017,14 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             });
             popup.add(createTransItem);
 
-            JMenuItem deleteItem = new JMenuItem("Delete");
+            JMenuItem deleteItem = new JMenuItem("Delete State");
             deleteItem.addActionListener(ae -> {
                     System.out.println("Delete menu item clicked for state: " + state.getName());
-                int confirm = JOptionPane.showConfirmDialog(this,
+                Object[] options = new Object[] {"Yes", "No"};
+                int confirm = JOptionPane.showOptionDialog(this,
                     "Are you sure you want to delete state: " + state.getName() + "?",
-                    "Confirm deletion", JOptionPane.YES_NO_OPTION);
+                    "Confirm deletion", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE,
+                    null, options, options[0]);
                 if (confirm == JOptionPane.YES_OPTION) {
                     boolean removed = stateMachine.getStates().remove(state);
                     if (removed) {
