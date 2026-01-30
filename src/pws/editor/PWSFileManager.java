@@ -95,6 +95,7 @@ public class PWSFileManager {
                         if (loaded.getAnnotations() != null) {
                             panel.importAnnotations(loaded.getAnnotations());
                         }
+                        editor.syncViewMenuSelections();
 
                         // Ensure dashboards are visible and restored
                         try {

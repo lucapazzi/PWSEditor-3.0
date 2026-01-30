@@ -136,7 +136,8 @@ public class Annotation<T> extends JComponent implements Serializable {
             f = new Font("Dialog", Font.PLAIN, 12);
             setFont(f);
         }
-        Font derived = f.deriveFont(Font.PLAIN, 12f);
+        float size = f.getSize2D();
+        Font derived = f.deriveFont(Font.PLAIN, size);
         FontMetrics fm = getFontMetrics(derived);
         // Use buildDisplayText() instead of getContentAsString()
         int width = fm.stringWidth(buildDisplayText()) + 10;
@@ -157,7 +158,11 @@ public class Annotation<T> extends JComponent implements Serializable {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2d = (Graphics2D) g;
-        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
+        Font base = getFont();
+        if (base == null) {
+            base = new Font("Dialog", Font.PLAIN, 12);
+        }
+        g2d.setFont(base.deriveFont(Font.PLAIN, base.getSize2D()));
         g2d.setColor(Color.BLACK);
         String text = buildDisplayText();
         FontMetrics fm = g2d.getFontMetrics();

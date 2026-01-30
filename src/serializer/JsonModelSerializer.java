@@ -626,6 +626,15 @@ public final class JsonModelSerializer {
         if (data.showExitZoneMachineIds != null) {
             map.put("showExitZoneMachineIds", data.showExitZoneMachineIds);
         }
+        if (data.stateDiameter != null) {
+            map.put("stateDiameter", data.stateDiameter);
+        }
+        if (data.stateBorderThickness != null) {
+            map.put("stateBorderThickness", data.stateBorderThickness);
+        }
+        if (data.stateFontSize != null) {
+            map.put("stateFontSize", data.stateFontSize);
+        }
         List<Object> states = new ArrayList<>();
         for (PWSStateMachinePanel.StateAnnotationData s : data.stateAnnotations) {
             Map<String, Object> sMap = new LinkedHashMap<>();
@@ -668,6 +677,14 @@ public final class JsonModelSerializer {
         PWSStateMachinePanel.AnnotationData data = new PWSStateMachinePanel.AnnotationData();
         if (map != null && map.containsKey("showExitZoneMachineIds")) {
             data.showExitZoneMachineIds = getBoolean(map, "showExitZoneMachineIds", true);
+        }
+        if (map != null) {
+            Integer diam = getNullableInt(map, "stateDiameter");
+            Double border = getNullableDouble(map, "stateBorderThickness");
+            Double font = getNullableDouble(map, "stateFontSize");
+            if (diam != null) data.stateDiameter = diam;
+            if (border != null) data.stateBorderThickness = border.floatValue();
+            if (font != null) data.stateFontSize = font.floatValue();
         }
         List<Object> states = asList(map.get("states"), "states");
         for (Object o : states) {

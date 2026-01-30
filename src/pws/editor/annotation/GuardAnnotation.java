@@ -252,8 +252,9 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             baseFont = new Font("Dialog", Font.PLAIN, 12);
             setFont(baseFont);
         }
-        Font plainFont = baseFont.deriveFont(Font.PLAIN, 12f);
-        Font boldFont = plainFont.deriveFont(Font.BOLD, 12f);
+        float size = baseFont.getSize2D();
+        Font plainFont = baseFont.deriveFont(Font.PLAIN, size);
+        Font boldFont = plainFont.deriveFont(Font.BOLD, size);
         
         // Set color based on problematic status
         if (issueLevel == GuardIssueLevel.RED) {
@@ -296,8 +297,9 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             f = new Font("Dialog", Font.PLAIN, 12);
             setFont(f);
         }
-        Font plainFont = f.deriveFont(Font.PLAIN, 12f);
-        Font boldFont = plainFont.deriveFont(Font.BOLD, 12f);
+        float size = f.getSize2D();
+        Font plainFont = f.deriveFont(Font.PLAIN, size);
+        Font boldFont = plainFont.deriveFont(Font.BOLD, size);
         FontMetrics fmPlain = getFontMetrics(plainFont);
         FontMetrics fmBold = getFontMetrics(boldFont);
 

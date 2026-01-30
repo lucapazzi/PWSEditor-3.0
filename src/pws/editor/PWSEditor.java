@@ -60,6 +60,9 @@ public class PWSEditor extends JFrame {
     private JCheckBoxMenuItem showGridItem;
     private JCheckBoxMenuItem snapToGridItem;
     private JMenuItem gridSizeItem;
+    private JMenu stateSizeMenu;
+    private JMenu stateBorderMenu;
+    private JMenu stateFontMenu;
     private JMenuItem ltlEditorItem;
     private JMenuItem ltlCheckNowItem;
     private LTLChecksDialog ltlChecksDialog;
@@ -803,6 +806,99 @@ public class PWSEditor extends JFrame {
         });
         viewMenu.add(gridSizeItem);
 
+        stateSizeMenu = new JMenu("State size");
+        ButtonGroup sizeGroup = new ButtonGroup();
+        int[] sizes = new int[] {40, 50, 60};
+        String[] sizeLabels = new String[] {"Small (40)", "Medium (50)", "Large (60)"};
+        for (int i = 0; i < sizes.length; i++) {
+            int size = sizes[i];
+            JRadioButtonMenuItem item = new JRadioButtonMenuItem(sizeLabels[i]);
+            item.addActionListener(e -> {
+                if (baseEditor == null) return;
+                PWSStateMachinePanel panel =
+                    (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+                panel.setStateDiameter(size);
+                panel.repaint();
+            });
+            sizeGroup.add(item);
+            stateSizeMenu.add(item);
+        }
+        // Default selection based on current panel state
+        try {
+            PWSStateMachinePanel panel =
+                (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+            int current = panel.getStateDiameter();
+            for (int i = 0; i < sizes.length; i++) {
+                if (sizes[i] == current) {
+                    ((JRadioButtonMenuItem) stateSizeMenu.getItem(i)).setSelected(true);
+                    break;
+                }
+            }
+        } catch (Exception ignored) {}
+        viewMenu.add(stateSizeMenu);
+
+        stateBorderMenu = new JMenu("State border thickness");
+        ButtonGroup borderGroup = new ButtonGroup();
+        float[] thicknesses = new float[] {1.0f, 2.0f, 3.0f};
+        String[] thicknessLabels = new String[] {"Thin (1)", "Medium (2)", "Thick (3)"};
+        for (int i = 0; i < thicknesses.length; i++) {
+            float thickness = thicknesses[i];
+            JRadioButtonMenuItem item = new JRadioButtonMenuItem(thicknessLabels[i]);
+            item.addActionListener(e -> {
+                if (baseEditor == null) return;
+                PWSStateMachinePanel panel =
+                    (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+                panel.setStateBorderThickness(thickness);
+                panel.repaint();
+            });
+            borderGroup.add(item);
+            stateBorderMenu.add(item);
+        }
+        // Default selection based on current panel state
+        try {
+            PWSStateMachinePanel panel =
+                (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+            float current = panel.getStateBorderThickness();
+            for (int i = 0; i < thicknesses.length; i++) {
+                if (Float.compare(thicknesses[i], current) == 0) {
+                    ((JRadioButtonMenuItem) stateBorderMenu.getItem(i)).setSelected(true);
+                    break;
+                }
+            }
+        } catch (Exception ignored) {}
+        viewMenu.add(stateBorderMenu);
+
+        stateFontMenu = new JMenu("State font size");
+        ButtonGroup fontGroup = new ButtonGroup();
+        float[] fontSizes = new float[] {10f, 12f, 14f};
+        String[] fontLabels = new String[] {"Small (10)", "Medium (12)", "Large (14)"};
+        for (int i = 0; i < fontSizes.length; i++) {
+            float size = fontSizes[i];
+            JRadioButtonMenuItem item = new JRadioButtonMenuItem(fontLabels[i]);
+            item.addActionListener(e -> {
+                if (baseEditor == null) return;
+                PWSStateMachinePanel panel =
+                    (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+                panel.setStateFontSize(size);
+                panel.repaint();
+            });
+            fontGroup.add(item);
+            stateFontMenu.add(item);
+        }
+        // Default selection based on current panel state
+        try {
+            PWSStateMachinePanel panel =
+                (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+            float current = panel.getStateFontSize();
+            for (int i = 0; i < fontSizes.length; i++) {
+                if (Float.compare(fontSizes[i], current) == 0) {
+                    ((JRadioButtonMenuItem) stateFontMenu.getItem(i)).setSelected(true);
+                    break;
+                }
+            }
+        } catch (Exception ignored) {}
+        viewMenu.add(stateFontMenu);
+
         // LTL Formula editor for the current assembly
         ltlEditorItem = new JMenuItem("LTL Editor...");
         ltlEditorItem.addActionListener(e -> {
@@ -866,8 +962,61 @@ public class PWSEditor extends JFrame {
         if (showGridItem != null) showGridItem.setEnabled(ctrl);
         if (snapToGridItem != null) snapToGridItem.setEnabled(ctrl);
         if (gridSizeItem != null) gridSizeItem.setEnabled(ctrl);
+        if (stateSizeMenu != null) stateSizeMenu.setEnabled(ctrl);
+        if (stateBorderMenu != null) stateBorderMenu.setEnabled(ctrl);
+        if (stateFontMenu != null) stateFontMenu.setEnabled(ctrl);
         if (ltlEditorItem != null) ltlEditorItem.setEnabled(ctrl);
         if (ltlCheckNowItem != null) ltlCheckNowItem.setEnabled(ctrl);
+        if (ctrl) {
+            syncViewMenuSelections();
+        }
+    }
+
+    public void syncViewMenuSelections() {
+        if (!controllerEditorVisible || baseEditor == null) return;
+        PWSStateMachinePanel panel =
+            (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+        if (panel == null) return;
+
+        if (stateSizeMenu != null) {
+            int[] sizes = new int[] {40, 50, 60};
+            int current = panel.getStateDiameter();
+            for (int i = 0; i < sizes.length && i < stateSizeMenu.getItemCount(); i++) {
+                if (sizes[i] == current) {
+                    JMenuItem mi = stateSizeMenu.getItem(i);
+                    if (mi instanceof JRadioButtonMenuItem) {
+                        ((JRadioButtonMenuItem) mi).setSelected(true);
+                        break;
+                    }
+                }
+            }
+        }
+        if (stateBorderMenu != null) {
+            float[] thicknesses = new float[] {1.0f, 2.0f, 3.0f};
+            float current = panel.getStateBorderThickness();
+            for (int i = 0; i < thicknesses.length && i < stateBorderMenu.getItemCount(); i++) {
+                if (Float.compare(thicknesses[i], current) == 0) {
+                    JMenuItem mi = stateBorderMenu.getItem(i);
+                    if (mi instanceof JRadioButtonMenuItem) {
+                        ((JRadioButtonMenuItem) mi).setSelected(true);
+                        break;
+                    }
+                }
+            }
+        }
+        if (stateFontMenu != null) {
+            float[] fontSizes = new float[] {10f, 12f, 14f};
+            float current = panel.getStateFontSize();
+            for (int i = 0; i < fontSizes.length && i < stateFontMenu.getItemCount(); i++) {
+                if (Float.compare(fontSizes[i], current) == 0) {
+                    JMenuItem mi = stateFontMenu.getItem(i);
+                    if (mi instanceof JRadioButtonMenuItem) {
+                        ((JRadioButtonMenuItem) mi).setSelected(true);
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     /** Keeps the Edit mode menu item and panel in sync. */

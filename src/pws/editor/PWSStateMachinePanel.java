@@ -11,6 +11,7 @@ import pws.PWSState;
 import pws.PWSStateMachine;
 import pws.PWSTransition;
 import pws.editor.annotation.ActionAnnotation;
+import pws.editor.annotation.Annotation;
 import pws.editor.annotation.GuardAnnotation;
 import pws.editor.annotation.StateSemanticsAnnotation;
 import pws.editor.annotation.TransitionSemanticsAnnotation;
@@ -60,6 +61,25 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         setFocusable(true);
         // Mouse listeners are inherited from StateMachinePanel.
         restoreVisibleStateAnnotations();
+    }
+
+    @Override
+    protected void addImpl(Component comp, Object constraints, int index) {
+        applyFontToAnnotation(comp);
+        super.addImpl(comp, constraints, index);
+    }
+
+    private void applyFontToAnnotation(Component comp) {
+        if (!(comp instanceof Annotation)) return;
+        Font base = getFont();
+        if (base == null) {
+            base = new Font("Dialog", Font.PLAIN, Math.round(getStateFontSize()));
+        }
+        float size = getStateFontSize();
+        comp.setFont(base.deriveFont(base.getStyle(), size));
+        if (comp instanceof JComponent) {
+            resizeAnnotationCentered((JComponent) comp);
+        }
     }
 
     /**
@@ -161,6 +181,60 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             }
         }
         resizeCanvasToContent();
+    }
+
+    @Override
+    public void setStateFontSize(float size) {
+        super.setStateFontSize(size);
+        applyFontSizeToAnnotations(size);
+    }
+
+    private void applyFontSizeToAnnotations(float size) {
+        Font base = getFont();
+        if (base == null) {
+            base = new Font("Dialog", Font.PLAIN, Math.round(size));
+        }
+        Font derived = base.deriveFont(size);
+        for (StateInterface si : stateMachine.getStates()) {
+            if (si instanceof PWSState ps) {
+                StateSemanticsAnnotation ann = ps.getAnnotation();
+                if (ann != null) {
+                    ann.setFont(derived);
+                    resizeAnnotationCentered(ann);
+                }
+            }
+        }
+        for (TransitionInterface ti : stateMachine.getTransitions()) {
+            if (ti instanceof PWSTransition pt) {
+                if (pt.getGuardAnnotation() != null) {
+                    pt.getGuardAnnotation().setFont(derived);
+                    resizeAnnotationCentered(pt.getGuardAnnotation());
+                }
+                if (pt.getActionAnnotation() != null) {
+                    pt.getActionAnnotation().setFont(derived);
+                    resizeAnnotationCentered(pt.getActionAnnotation());
+                }
+                if (pt.getSemanticsAnnotation() != null) {
+                    pt.getSemanticsAnnotation().setFont(derived);
+                    resizeAnnotationCentered(pt.getSemanticsAnnotation());
+                }
+            }
+        }
+        revalidate();
+        repaint();
+    }
+
+    private void resizeAnnotationCentered(JComponent comp) {
+        if (comp == null) return;
+        Rectangle bounds = comp.getBounds();
+        int centerX = bounds.x + bounds.width / 2;
+        int centerY = bounds.y + bounds.height / 2;
+        Dimension pref = comp.getPreferredSize();
+        int w = Math.max(1, pref.width);
+        int h = Math.max(1, pref.height);
+        comp.setBounds(centerX - w / 2, centerY - h / 2, w, h);
+        comp.revalidate();
+        comp.repaint();
     }
 
     @Override
@@ -1655,6 +1729,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         public final java.util.List<StateAnnotationData> stateAnnotations = new java.util.ArrayList<>();
         public final java.util.List<TransitionAnnotationData> transitionAnnotations = new java.util.ArrayList<>();
         public Boolean showExitZoneMachineIds;
+        public Integer stateDiameter;
+        public Float stateBorderThickness;
+        public Float stateFontSize;
     }
 
     public static class StateAnnotationData {
@@ -1684,6 +1761,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     public AnnotationData exportAnnotations() {
         AnnotationData data = new AnnotationData();
         data.showExitZoneMachineIds = StateSemanticsAnnotation.isShowExitZoneMachineIds();
+        data.stateDiameter = getStateDiameter();
+        data.stateBorderThickness = getStateBorderThickness();
+        data.stateFontSize = getStateFontSize();
 
         // State annotations.
         for (StateInterface s : stateMachine.getStates()) {
@@ -1760,6 +1840,15 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         if (data == null) return;
         if (data.showExitZoneMachineIds != null) {
             StateSemanticsAnnotation.setShowExitZoneMachineIds(data.showExitZoneMachineIds);
+        }
+        if (data.stateDiameter != null) {
+            setStateDiameter(data.stateDiameter);
+        }
+        if (data.stateBorderThickness != null) {
+            setStateBorderThickness(data.stateBorderThickness);
+        }
+        if (data.stateFontSize != null) {
+            setStateFontSize(data.stateFontSize);
         }
 
         // Restore state annotations.

@@ -72,15 +72,61 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         this.gridSize = gridSize;
         repaint();
     }
+    public int getStateDiameter() {
+        return DIAMETER;
+    }
+
+    public void setStateDiameter(int diameter) {
+        if (diameter < 20) return;
+        DIAMETER = diameter;
+        RADIUS = DIAMETER / 2;
+        PSEUDO_DIAMETER = Math.max(6, DIAMETER / 3);
+        PSEUDO_RADIUS = PSEUDO_DIAMETER / 2;
+        repaint();
+    }
+
+    public float getStateBorderThickness() {
+        return stateBorderThickness;
+    }
+
+    public void setStateBorderThickness(float thickness) {
+        if (thickness <= 0f) return;
+        stateBorderThickness = thickness;
+        repaint();
+    }
+
+    public float getStateFontSize() {
+        return stateFontSize;
+    }
+
+    public void setStateFontSize(float size) {
+        if (size <= 0f) return;
+        stateFontSize = size;
+        Font base = getFont();
+        if (base == null) {
+            base = new Font("Dialog", Font.PLAIN, 12);
+        }
+        Font derived = base.deriveFont(stateFontSize);
+        setFont(derived);
+        for (DraggableTriggerLabel label : triggerLabels.values()) {
+            if (label != null) {
+                label.setFont(derived);
+                label.setSize(label.getPreferredSize());
+            }
+        }
+        repaint();
+    }
 // Initial transition mode flag
     protected boolean initialTransitionMode = false;
 
-    // Graphic constants
-    protected final int DIAMETER = 50;
-    protected final int RADIUS = DIAMETER / 2;
+    // Graphic constants (configurable)
+    protected int DIAMETER = 50;
+    protected int RADIUS = DIAMETER / 2;
     // Reduce pseudostate diameter to one third of the normal diameter.
-    protected final int PSEUDO_DIAMETER = DIAMETER / 3;
-    protected final int PSEUDO_RADIUS = PSEUDO_DIAMETER / 2;
+    protected int PSEUDO_DIAMETER = DIAMETER / 3;
+    protected int PSEUDO_RADIUS = PSEUDO_DIAMETER / 2;
+    protected float stateBorderThickness = 1.0f;
+    protected float stateFontSize = 12f;
 
     // Map to hold trigger labels for transitions
     protected Map<TransitionInterface, DraggableTriggerLabel> triggerLabels = new HashMap<>();
@@ -200,6 +246,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 if (label == null) {
                     // Create a new label, associating it with the transition.
                     label = new DraggableTriggerLabel(t.getTriggerEvent(), t);
+                    if (getFont() != null) {
+                        label.setFont(getFont());
+                    }
                     // Compute default position.
                     State sourceState = (State) t.getSource();
                     State targetState = (State) t.getTarget();
@@ -262,7 +311,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected void drawStates(Graphics g) {
         Graphics2D g2d = (Graphics2D) g;
         Stroke oldStroke = g2d.getStroke();
-        g2d.setStroke(new BasicStroke(1.0f));
+        g2d.setStroke(new BasicStroke(stateBorderThickness));
         List<StateInterface> states = stateMachine.getStates();
         for (StateInterface state : states) {
             Point pos = ((State) state).getPosition();

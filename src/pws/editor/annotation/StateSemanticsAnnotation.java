@@ -44,6 +44,28 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
     }
 
+    private Font getBaseFont() {
+        Font f = getFont();
+        if (f == null) {
+            f = new Font("Dialog", Font.PLAIN, 12);
+        }
+        return f;
+    }
+
+    private float getBaseFontSize() {
+        return getBaseFont().getSize2D();
+    }
+
+    private Font getNormalFont() {
+        float size = getBaseFontSize();
+        return getBaseFont().deriveFont(Font.PLAIN, size);
+    }
+
+    private Font getSmallFont() {
+        float size = Math.max(8f, getBaseFontSize() - 3f);
+        return getBaseFont().deriveFont(Font.ITALIC, size);
+    }
+
     public StateSemanticsAnnotation(PWSState content) {
         this(content, null, null);
     }
@@ -405,12 +427,12 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             g2d.fillRoundRect(0, 0, getWidth(), getHeight(), CORNER_RADIUS, CORNER_RADIUS);
         }
         
-        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
+        g2d.setFont(getNormalFont());
         g2d.setColor(Color.BLACK);
 
         PWSState state = content;
-        FontMetrics fm = g2d.getFontMetrics();
-        Font smallFont = getFont().deriveFont(Font.ITALIC, 9f);
+        FontMetrics fm = g2d.getFontMetrics(getNormalFont());
+        Font smallFont = getSmallFont();
         FontMetrics fmSmall = g2d.getFontMetrics(smallFont);
         int lineHeight = fm.getHeight();
         int smallLineHeight = fmSmall.getHeight();
@@ -420,12 +442,12 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         
         // Draw subtle section label for constraints
         y += smallLineHeight;
-        g2d.setFont(getFont().deriveFont(Font.ITALIC, 9f));
+        g2d.setFont(smallFont);
         g2d.setColor(new Color(150, 150, 150));
         g2d.drawString("constraints", padding, y);
         
         // 1) Constraint semantics (blue, centered)
-        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
+        g2d.setFont(getNormalFont());
         y += lineHeight;
         String constraintSem;
         String raw = state.getRawConstraintText();
@@ -488,10 +510,10 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         
         // Draw subtle section label for configurations
         y += smallLineHeight + 1;
-        g2d.setFont(getFont().deriveFont(Font.ITALIC, 9f));
+        g2d.setFont(smallFont);
         g2d.setColor(new Color(150, 150, 150));
         g2d.drawString("configs", padding, y);
-        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
+        g2d.setFont(getNormalFont());
 
         // 2) Actual state semantics: each configuration green if in constraints, red otherwise
         y += lineHeight;
@@ -667,7 +689,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         legendX += fmSmall.stringWidth(" / ");
         g2d.setColor(new Color(120, 120, 120));
         g2d.drawString("internal", legendX, y);
-        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
+        g2d.setFont(getNormalFont());
 
         // 3) Reactive exit zones: centered, comma-separated, colored by origin and coverage
         y += lineHeight;
@@ -1034,8 +1056,8 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         List<String> zoneLabels = buildExitZoneLabels(zones);
 
         String[] lines = new String[] { constraintSem, actualSem };
-        FontMetrics fm = getFontMetrics(getFont().deriveFont(Font.PLAIN, 12f));
-        FontMetrics fmSmall = getFontMetrics(getFont().deriveFont(Font.ITALIC, 9f));
+        FontMetrics fm = getFontMetrics(getNormalFont());
+        FontMetrics fmSmall = getFontMetrics(getSmallFont());
         int maxWidth = 0;
         for (String line : lines) {
             maxWidth = Math.max(maxWidth, fm.stringWidth(line));

@@ -201,7 +201,11 @@ public class ActionAnnotation extends Annotation<ActionList> {
         
         Graphics2D g2d = (Graphics2D) g;
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2d.setFont(getFont().deriveFont(Font.PLAIN, 12f));
+        Font base = getFont();
+        if (base == null) {
+            base = new Font("Dialog", Font.PLAIN, 12);
+        }
+        g2d.setFont(base.deriveFont(Font.PLAIN, base.getSize2D()));
         
         // Set color based on orphan status
         if (hasOrphanActions) {
