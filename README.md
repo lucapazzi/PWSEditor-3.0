@@ -72,3 +72,27 @@ The `scripts/build.sh` helper compiles the editor against the bundled libraries 
 ```
 
 It cleans `out/` before compiling, so rerun when dependencies or sources change. You can then run the editor with `java -cp out:...`.
+
+## Building an executable jar
+
+To generate a runnable jar with its runtime dependencies, use:
+
+```sh
+./scripts/build-jar.sh
+```
+
+This produces `dist/PWSEditor.jar` plus the dependency jars in `dist/lib/`. Run it with:
+
+```sh
+java -jar dist/PWSEditor.jar
+```
+
+## macOS desktop launcher
+
+To generate a macOS `.app` you can double-click:
+
+```sh
+./scripts/build-macos-app.sh
+```
+
+It produces `dist/PWSEditor.app`. Drag it to your Desktop or Applications, then launch it normally.
