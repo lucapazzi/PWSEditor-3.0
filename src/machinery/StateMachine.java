@@ -152,12 +152,22 @@ public class StateMachine implements StateMachineInterface, Cloneable {
             StateInterface clonedSource = stateMap.get(t.getSource());
             StateInterface clonedTarget = stateMap.get(t.getTarget());
             // Create a new Transition with the same properties.
+            Transition original = (Transition) t;
             Transition newTransition = new Transition(clonedSource, clonedTarget, t.isAutonomous(), t.getTriggerEvent());
+            String originalId = original.getId();
+            if (originalId != null) {
+                newTransition.setId(originalId);
+            }
             // Copy the controlPoint if it exists. This deep-copies the Point.
-            Point originalControlPoint = ((Transition) t).getControlPoint();
+            Point originalControlPoint = original.getControlPoint();
             if (originalControlPoint != null) {
                 newTransition.setControlPoint(new Point(originalControlPoint));
             }
+            Point originalTriggerOffset = original.getTriggerOffset();
+            if (originalTriggerOffset != null) {
+                newTransition.setTriggerOffset(new Point(originalTriggerOffset));
+            }
+            newTransition.setEnabled(original.isEnabled());
             clone.addTransition(newTransition);
 
             // Update the incoming/outgoing relationships for the cloned states.

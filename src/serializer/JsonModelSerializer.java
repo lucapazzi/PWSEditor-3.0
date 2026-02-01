@@ -5,6 +5,7 @@ import assembly.ActionList;
 import assembly.Assembly;
 import assembly.LTLFormula;
 import assembly.MachineLibrary;
+import editor.StateMachinePanel;
 import machinery.State;
 import machinery.StateInterface;
 import machinery.StateMachine;
@@ -59,6 +60,24 @@ public final class JsonModelSerializer {
         }
     }
 
+    public static final class LoadedStateMachine {
+        private final StateMachine model;
+        private final StateMachinePanel.AliasData annotations;
+
+        public LoadedStateMachine(StateMachine model, StateMachinePanel.AliasData annotations) {
+            this.model = model;
+            this.annotations = annotations;
+        }
+
+        public StateMachine getModel() {
+            return model;
+        }
+
+        public StateMachinePanel.AliasData getAnnotations() {
+            return annotations;
+        }
+    }
+
     public static void savePwsWorkspace(PWSStateMachine model,
                                         PWSStateMachinePanel.AnnotationData annotations,
                                         File file) throws IOException {
@@ -97,21 +116,38 @@ public final class JsonModelSerializer {
     }
 
     public static void saveStateMachine(StateMachine machine, File file) throws IOException {
+        saveStateMachine(machine, null, file);
+    }
+
+    public static void saveStateMachine(StateMachine machine,
+                                        StateMachinePanel.AliasData annotations,
+                                        File file) throws IOException {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("formatVersion", FORMAT_VERSION);
         root.put("type", "state-machine");
         root.put("machine", basicStateMachineToMap(machine));
+        if (annotations != null) {
+            root.put("annotations", aliasDataToMap(annotations));
+        }
         JsonIO.writeFile(file, root);
     }
 
     public static StateMachine loadStateMachine(File file) throws IOException {
+        LoadedStateMachine loaded = loadStateMachineWithAnnotations(file);
+        return loaded != null ? loaded.getModel() : null;
+    }
+
+    public static LoadedStateMachine loadStateMachineWithAnnotations(File file) throws IOException {
         Object parsed = JsonIO.readFile(file);
         Map<String, Object> root = asMap(parsed, "state-machine");
         Object machineObj = root.get("machine");
         Map<String, Object> machineMap = (machineObj instanceof Map)
                 ? asMap(machineObj, "machine")
                 : root;
-        return basicStateMachineFromMap(machineMap);
+        StateMachine machine = basicStateMachineFromMap(machineMap);
+        Map<String, Object> annMap = asMap(root.get("annotations"), "annotations");
+        StateMachinePanel.AliasData annotations = aliasDataFromMap(annMap);
+        return new LoadedStateMachine(machine, annotations);
     }
 
     public static void saveMachineLibrary(MachineLibrary library, File file) throws IOException {
@@ -426,6 +462,11 @@ public final class JsonModelSerializer {
                 entryMap.put("libraryKey", libKey);
             } else {
                 entryMap.put("machine", basicStateMachineToMap(sm));
+                StateMachinePanel.AliasData aliasData = assembly.getAliasData(id);
+                Map<String, Object> aliasMap = aliasDataToMap(aliasData);
+                if (!aliasMap.isEmpty()) {
+                    entryMap.put("annotations", aliasMap);
+                }
             }
             machineMap.put(id, entryMap);
         }
@@ -444,6 +485,7 @@ public final class JsonModelSerializer {
 
     private static void loadAssemblyInto(Map<String, Object> map, Assembly assembly) throws IOException {
         assembly.getStateMachines().clear();
+        assembly.clearAliasData();
         Map<String, Object> machines = asMap(map.get("machines"), "machines");
         for (Map.Entry<String, Object> entry : machines.entrySet()) {
             String id = entry.getKey();
@@ -463,6 +505,14 @@ public final class JsonModelSerializer {
             }
             if (sm != null) {
                 assembly.addStateMachine(id, sm);
+                if (libKey == null) {
+                    Map<String, Object> annMap = asMap(entryMap.get("annotations"), "annotations");
+                    StateMachinePanel.AliasData aliasData = aliasDataFromMap(annMap);
+                    if (aliasData != null
+                            && (!aliasData.pseudoAliases.isEmpty() || !aliasData.pseudoAliasByTransition.isEmpty())) {
+                        assembly.setAliasData(id, aliasData);
+                    }
+                }
             }
         }
         List<Object> ltlList = asList(map.get("ltlFormulas"), "ltlFormulas");
@@ -480,7 +530,17 @@ public final class JsonModelSerializer {
         Map<String, Object> map = new LinkedHashMap<>();
         Map<String, Object> machines = new LinkedHashMap<>();
         for (Map.Entry<String, StateMachine> entry : library.getMachines().entrySet()) {
-            machines.put(entry.getKey(), basicStateMachineToMap(entry.getValue()));
+            String key = entry.getKey();
+            StateMachinePanel.AliasData aliasData = library.getAliasData(key);
+            Map<String, Object> aliasMap = aliasDataToMap(aliasData);
+            if (aliasMap.isEmpty()) {
+                machines.put(key, basicStateMachineToMap(entry.getValue()));
+            } else {
+                Map<String, Object> entryMap = new LinkedHashMap<>();
+                entryMap.put("machine", basicStateMachineToMap(entry.getValue()));
+                entryMap.put("annotations", aliasMap);
+                machines.put(key, entryMap);
+            }
         }
         map.put("machines", machines);
         return map;
@@ -491,9 +551,21 @@ public final class JsonModelSerializer {
         Map<String, Object> machines = asMap(map.get("machines"), "machines");
         for (Map.Entry<String, Object> entry : machines.entrySet()) {
             String key = entry.getKey();
-            Map<String, Object> mMap = asMap(entry.getValue(), "machine");
-            StateMachine sm = basicStateMachineFromMap(mMap);
-            library.addMachine(key, sm);
+            Map<String, Object> entryMap = asMap(entry.getValue(), "machine");
+            Map<String, Object> machineMap = entryMap;
+            Map<String, Object> annotationsMap = null;
+            if (entryMap.containsKey("machine")) {
+                machineMap = asMap(entryMap.get("machine"), "machine");
+                annotationsMap = asMap(entryMap.get("annotations"), "annotations");
+            }
+            StateMachine sm = basicStateMachineFromMap(machineMap);
+            StateMachinePanel.AliasData aliasData = aliasDataFromMap(annotationsMap);
+            if (aliasData != null
+                    && (!aliasData.pseudoAliases.isEmpty() || !aliasData.pseudoAliasByTransition.isEmpty())) {
+                library.addMachine(key, sm, aliasData);
+            } else {
+                library.addMachine(key, sm);
+            }
         }
     }
 
@@ -635,6 +707,26 @@ public final class JsonModelSerializer {
         if (data.stateFontSize != null) {
             map.put("stateFontSize", data.stateFontSize);
         }
+        List<Object> pseudoAliases = new ArrayList<>();
+        for (Point p : data.pseudoAliases) {
+            if (p != null) pseudoAliases.add(pointToMap(p));
+        }
+        if (!pseudoAliases.isEmpty()) {
+            map.put("pseudoAliases", pseudoAliases);
+        }
+        List<Object> pseudoAliasByTransition = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : data.pseudoAliasByTransition.entrySet()) {
+            String id = entry.getKey();
+            Integer idx = entry.getValue();
+            if (id == null || idx == null) continue;
+            Map<String, Object> aliasMap = new LinkedHashMap<>();
+            aliasMap.put("transitionId", id);
+            aliasMap.put("aliasIndex", idx);
+            pseudoAliasByTransition.add(aliasMap);
+        }
+        if (!pseudoAliasByTransition.isEmpty()) {
+            map.put("pseudoAliasByTransition", pseudoAliasByTransition);
+        }
         List<Object> states = new ArrayList<>();
         for (PWSStateMachinePanel.StateAnnotationData s : data.stateAnnotations) {
             Map<String, Object> sMap = new LinkedHashMap<>();
@@ -673,6 +765,34 @@ public final class JsonModelSerializer {
         return map;
     }
 
+    private static Map<String, Object> aliasDataToMap(StateMachinePanel.AliasData data) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (data == null) {
+            return map;
+        }
+        List<Object> pseudoAliases = new ArrayList<>();
+        for (Point p : data.pseudoAliases) {
+            if (p != null) pseudoAliases.add(pointToMap(p));
+        }
+        if (!pseudoAliases.isEmpty()) {
+            map.put("pseudoAliases", pseudoAliases);
+        }
+        List<Object> pseudoAliasByTransition = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : data.pseudoAliasByTransition.entrySet()) {
+            String id = entry.getKey();
+            Integer idx = entry.getValue();
+            if (id == null || idx == null) continue;
+            Map<String, Object> aliasMap = new LinkedHashMap<>();
+            aliasMap.put("transitionId", id);
+            aliasMap.put("aliasIndex", idx);
+            pseudoAliasByTransition.add(aliasMap);
+        }
+        if (!pseudoAliasByTransition.isEmpty()) {
+            map.put("pseudoAliasByTransition", pseudoAliasByTransition);
+        }
+        return map;
+    }
+
     private static PWSStateMachinePanel.AnnotationData annotationDataFromMap(Map<String, Object> map) {
         PWSStateMachinePanel.AnnotationData data = new PWSStateMachinePanel.AnnotationData();
         if (map != null && map.containsKey("showExitZoneMachineIds")) {
@@ -685,6 +805,20 @@ public final class JsonModelSerializer {
             if (diam != null) data.stateDiameter = diam;
             if (border != null) data.stateBorderThickness = border.floatValue();
             if (font != null) data.stateFontSize = font.floatValue();
+        }
+        List<Object> aliasList = asList(map.get("pseudoAliases"), "pseudoAliases");
+        for (Object o : aliasList) {
+            Point p = pointFromMap(o);
+            if (p != null) data.pseudoAliases.add(p);
+        }
+        List<Object> aliasMappings = asList(map.get("pseudoAliasByTransition"), "pseudoAliasByTransition");
+        for (Object o : aliasMappings) {
+            Map<String, Object> aliasMap = asMap(o, "pseudo alias mapping");
+            String id = getString(aliasMap, "transitionId", null);
+            Integer idx = getNullableInt(aliasMap, "aliasIndex");
+            if (id != null && idx != null) {
+                data.pseudoAliasByTransition.put(id, idx);
+            }
         }
         List<Object> states = asList(map.get("states"), "states");
         for (Object o : states) {
@@ -727,6 +861,26 @@ public final class JsonModelSerializer {
                 t.semanticsOffsetY = semOff.y;
             }
             data.transitionAnnotations.add(t);
+        }
+        return data;
+    }
+
+    private static StateMachinePanel.AliasData aliasDataFromMap(Map<String, Object> map) {
+        StateMachinePanel.AliasData data = new StateMachinePanel.AliasData();
+        if (map == null) return data;
+        List<Object> aliasList = asList(map.get("pseudoAliases"), "pseudoAliases");
+        for (Object o : aliasList) {
+            Point p = pointFromMap(o);
+            if (p != null) data.pseudoAliases.add(p);
+        }
+        List<Object> aliasMappings = asList(map.get("pseudoAliasByTransition"), "pseudoAliasByTransition");
+        for (Object o : aliasMappings) {
+            Map<String, Object> aliasMap = asMap(o, "pseudo alias mapping");
+            String id = getString(aliasMap, "transitionId", null);
+            Integer idx = getNullableInt(aliasMap, "aliasIndex");
+            if (id != null && idx != null) {
+                data.pseudoAliasByTransition.put(id, idx);
+            }
         }
         return data;
     }

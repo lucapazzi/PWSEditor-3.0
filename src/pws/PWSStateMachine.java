@@ -67,17 +67,20 @@ public class PWSStateMachine extends StateMachine {
      * Recalculates and applies the semantics for all states and transitions in this PWSStateMachine.
      *
      * Steps performed:
-     * 1) Initialize the pseudostate semantics by calling assembly.calculateInitialStateSemantics().
+     * 1) Initialize the pseudostate semantics using the assembly closure.
      * 2) Compute a fixed-point over all other states' semantics via SemanticsVisitor.
-     * 3) Assign the newly computed semantics back to each PWSState, skipping the pseudostate to preserve its initial semantics.
+     * 3) Assign the newly computed semantics back to each PWSState, skipping the pseudostate to preserve its closure semantics.
      * 4) Update each PWSTransition’s transitionSemantics by computing its pre- and post-conditions.
      */
     public void recalculateSemantics() {
         // Initialize pseudostate semantics
         if (pseudoState instanceof PWSState) {
             PWSState pseudo = (PWSState) pseudoState;
-            Semantics init = assembly.calculateInitialStateSemantics();
-            pseudo.setStateSemantics(init);
+            Semantics closure = calculateAssemblyClosure();
+            if (closure == null && assembly != null) {
+                closure = assembly.calculateInitialStateSemantics();
+            }
+            pseudo.setStateSemantics(closure);
         }
 
         // Compute fixed-point semantics for all states via SemanticsVisitor
@@ -221,6 +224,11 @@ public class PWSStateMachine extends StateMachine {
         StateMachine machine = assembly.getStateMachines().remove(oldId);
         if (machine != null) {
             assembly.addStateMachine(newId, machine);
+        }
+        // Preserve alias data for assembly-local machines
+        if (assembly.getAliasData(oldId) != null) {
+            assembly.setAliasData(newId, assembly.getAliasData(oldId));
+            assembly.removeAliasData(oldId);
         }
 
         List<LTLFormula> formulas = assembly.getLTLFormulas();
@@ -673,6 +681,55 @@ public class PWSStateMachine extends StateMachine {
         }
         Semantics cs = ps.getConstraintsSemantics();
         return cs != null && !cs.getConfigurations().isEmpty();
+    }
+
+    public Semantics calculateAssemblyClosure() {
+        if (assembly == null) return null;
+        return calculateAssemblyClosure(assembly.calculateInitialStateSemantics());
+    }
+
+    public Semantics calculateAssemblyClosure(Semantics initial) {
+        if (initial == null || assembly == null) return null;
+        Semantics closure = initial.clone();
+        int maxIterations = 1000;
+        for (int i = 0; i < maxIterations; i++) {
+            java.util.Set<ExitZone> zones = findExitZones(closure);
+            if (zones == null || zones.isEmpty()) {
+                break;
+            }
+            Semantics next = closure;
+            for (ExitZone ez : zones) {
+                if (ez == null || ez.getSource() == null || ez.getTarget() == null || ez.getTransition() == null) {
+                    continue;
+                }
+                String machineId = ez.getStateMachineId();
+                if (machineId == null || machineId.isBlank()) {
+                    machineId = ez.getSource().getMachineId();
+                }
+                if (machineId == null || machineId.isBlank()) {
+                    continue;
+                }
+                String sourceState = ez.getSource().getStateName();
+                String targetState = ez.getTarget().getStateName();
+                if (sourceState == null || targetState == null) {
+                    continue;
+                }
+                Semantics codomain = closure.computeCodomain(
+                        machineId,
+                        assembly,
+                        sourceState,
+                        targetState
+                );
+                if (codomain != null && !codomain.ISEMPTY()) {
+                    next = next.OR(codomain);
+                }
+            }
+            if (next.equals(closure)) {
+                break;
+            }
+            closure = next;
+        }
+        return closure;
     }
 
     /**

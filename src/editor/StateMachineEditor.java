@@ -78,13 +78,22 @@ public class StateMachineEditor extends JFrame {
             if (option == JFileChooser.APPROVE_OPTION) {
                 File file = fileChooser.getSelectedFile();
                 try {
-                    StateMachine loadedMachine = JsonModelSerializer.loadStateMachine(file);
+                    JsonModelSerializer.LoadedStateMachine loaded = JsonModelSerializer.loadStateMachineWithAnnotations(file);
+                    StateMachine loadedMachine = loaded != null ? loaded.getModel() : null;
+                    if (loadedMachine == null) {
+                        JOptionPane.showMessageDialog(StateMachineEditor.this,
+                                "File does not contain a valid StateMachine.");
+                        return;
+                    }
 
                     stateMachine.setStates(loadedMachine.getStates());
                     stateMachine.setTransitions(loadedMachine.getTransitions());
                     stateMachine.setEvents(loadedMachine.getEvents());
                     stateMachine.setName(loadedMachine.getName());
                     stateMachine.setPseudoState(loadedMachine.getPseudoState());
+                    if (loaded != null && statePanel != null) {
+                        statePanel.importAliasData(loaded.getAnnotations());
+                    }
 
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
                             "Machine successfully loaded: " + loadedMachine.getName());
@@ -109,7 +118,8 @@ public class StateMachineEditor extends JFrame {
                     file = new File(file.getAbsolutePath() + ".sm");
                 }
                 try {
-                    JsonModelSerializer.saveStateMachine(stateMachine, file);
+                    StateMachinePanel.AliasData aliasData = (statePanel != null) ? statePanel.exportAliasData() : null;
+                    JsonModelSerializer.saveStateMachine(stateMachine, aliasData, file);
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
                             "Machine saved: " + stateMachine.getName());
                 } catch (Exception ex) {

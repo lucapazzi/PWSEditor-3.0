@@ -42,7 +42,7 @@ public class SemanticsVisitor {
         for (StateInterface si : machine.getStates()) {
             semMap.put((PWSState) si, Semantics.bottom(asmId));
         }
-        // Seed pseudostate with top (all configurations)
+        // Seed pseudostate with assembly closure (initial semantics closed under exit zones)
         PWSState pseudo = null;
         for (PWSState s : semMap.keySet()) {
             if (s.isPseudoState()) {
@@ -53,8 +53,12 @@ public class SemanticsVisitor {
         if (pseudo == null) {
             throw new IllegalStateException("No pseudostate found in machine.");
         }
-        // seed pseudostate with initial assembly semantics
-        semMap.put(pseudo, asm.calculateInitialStateSemantics());
+        // seed pseudostate with assembly closure
+        Semantics closure = machine.calculateAssemblyClosure();
+        if (closure == null) {
+            closure = asm.calculateInitialStateSemantics();
+        }
+        semMap.put(pseudo, closure);
 
         // Worklist of states to process
         Deque<PWSState> worklist = new ArrayDeque<>();

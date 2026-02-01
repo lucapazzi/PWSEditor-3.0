@@ -27,8 +27,10 @@ import java.awt.font.TextAttribute;
 import java.awt.geom.Point2D;
 import java.awt.geom.QuadCurve2D;
 import java.text.AttributedString;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -101,7 +103,14 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     public void setAllStateDashboardsVisible(boolean visible) {
         for (StateInterface si : stateMachine.getStates()) {
             if (si instanceof PWSState p) {
-                p.setAnnotationVisible(visible);
+                if (p.isPseudoState()) {
+                    p.setAnnotationVisible(false);
+                    if (p.getAnnotation() != null) {
+                        p.getAnnotation().setVisible(false);
+                    }
+                } else {
+                    p.setAnnotationVisible(visible);
+                }
             }
         }
         repaint();
@@ -124,6 +133,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         Assembly assembly = ((PWSStateMachine) stateMachine).getAssembly();
         for (StateInterface si : stateMachine.getStates()) {
             if (si instanceof PWSState pwsState) {
+                if (pwsState.isPseudoState()) {
+                    pwsState.setAnnotationVisible(false);
+                    if (pwsState.getAnnotation() != null) {
+                        pwsState.getAnnotation().setVisible(false);
+                    }
+                    continue;
+                }
                 if (!pwsState.isAnnotationVisible()) {
                     continue;
                 }
@@ -300,8 +316,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         // Compute centers of source and target nodes.
         machinery.State sourceState = (machinery.State) t.getSource();
         machinery.State targetState = (machinery.State) t.getTarget();
-        Point sourcePos = sourceState.getPosition();
-        Point targetPos = targetState.getPosition();
+        Point sourcePos = getStatePositionForTransition(sourceState, t, true);
+        Point targetPos = getStatePositionForTransition(targetState, t, false);
         int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
         int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
         Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -652,7 +668,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     PWSTransition trans = (PWSTransition) t;
                     machinery.State state = (machinery.State) t.getSource();
                     int radius = state.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
-                    Point center = new Point(state.getPosition().x + radius, state.getPosition().y + radius);
+                    Point pos = getStatePositionForTransition(state, t, true);
+                    Point center = new Point(pos.x + radius, pos.y + radius);
                     
                     // Get current angles
                     Double startAngle = trans.getSelfLoopStartAngle();
@@ -732,12 +749,20 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         StateInterface state = getStateAt(p);
         if (state != null) {
             selectedState = state;
-            Point pos = ((machinery.State) state).getPosition();
-            dragOffset = new Point(p.x - pos.x, p.y - pos.y);
+            selectedPseudoAliasIndex = -1;
+            if (isPseudoState(state) && hitPseudoAliasIndex >= 0 && hitPseudoAliasIndex < pseudoStateAliases.size()) {
+                selectedPseudoAliasIndex = hitPseudoAliasIndex;
+                Point aliasPos = pseudoStateAliases.get(selectedPseudoAliasIndex);
+                dragOffset = new Point(p.x - aliasPos.x, p.y - aliasPos.y);
+            } else {
+                Point pos = ((machinery.State) state).getPosition();
+                dragOffset = new Point(p.x - pos.x, p.y - pos.y);
+            }
             canvasDragActive = false;
             canvasDragLast = null;
         } else {
             selectedState = null;
+            selectedPseudoAliasIndex = -1;
             if (SwingUtilities.isLeftMouseButton(e)) {
                 canvasDragActive = true;
                 canvasDragLast = p;
@@ -764,7 +789,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             PWSTransition trans = (PWSTransition) selectedSelfLoopTransition;
             machinery.State state = (machinery.State) selectedSelfLoopTransition.getSource();
             int radius = state.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
-            Point center = new Point(state.getPosition().x + radius, state.getPosition().y + radius);
+            Point pos = getStatePositionForTransition(state, selectedSelfLoopTransition, true);
+            Point center = new Point(pos.x + radius, pos.y + radius);
             
             // Calculate angle from center to mouse position
             double dx = e.getX() - center.x;
@@ -786,6 +812,20 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 newControlPoint = snap(newControlPoint);
             }
             ((Transition) selectedTransitionForControl).setControlPoint(newControlPoint);
+            repaint();
+        } else if (selectedPseudoAliasIndex >= 0 && dragOffset != null) {
+            Point newPoint = e.getPoint();
+            int rawX = newPoint.x - dragOffset.x;
+            int rawY = newPoint.y - dragOffset.y;
+            int r = PSEUDO_DIAMETER / 2;
+            if (snapToGrid) {
+                Point center = new Point(rawX + r, rawY + r);
+                Point snappedCenter = snap(center);
+                rawX = snappedCenter.x - r;
+                rawY = snappedCenter.y - r;
+            }
+            Point aliasPos = pseudoStateAliases.get(selectedPseudoAliasIndex);
+            aliasPos.setLocation(rawX, rawY);
             repaint();
         } else if (selectedState != null && dragOffset != null) {
             Point newPoint = e.getPoint();
@@ -842,6 +882,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                             pt.setSelfLoopStartAngle(null);
                             pt.setSelfLoopEndAngle(null);
                         }
+                        if (draggingEndpointStart) {
+                            if (isPseudoState(hit)) {
+                                rememberPseudoAliasForTransition(tr, hitPseudoAliasIndex);
+                            } else {
+                                clearPseudoAliasForTransition(tr);
+                            }
+                        }
                     }
                 }
             }
@@ -862,7 +909,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
         // Final snap on release, in case of small offsets
         if (snapToGrid) {
-            if (selectedState != null) {
+            if (selectedPseudoAliasIndex >= 0 && selectedPseudoAliasIndex < pseudoStateAliases.size()) {
+                Point pos = pseudoStateAliases.get(selectedPseudoAliasIndex);
+                int r = PSEUDO_DIAMETER / 2;
+                Point center = new Point(pos.x + r, pos.y + r);
+                Point snappedCenter = snap(center);
+                pos.setLocation(snappedCenter.x - r, snappedCenter.y - r);
+            } else if (selectedState != null) {
                 machinery.State st = (machinery.State) selectedState;
                 java.awt.Point pos = st.getPosition();
 
@@ -887,6 +940,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         selectedTransitionForControl = null;
         controlDragOffset = null;
         selectedState = null;
+        selectedPseudoAliasIndex = -1;
         dragOffset = null;
         selectedSelfLoopTransition = null;
         draggingSelfLoopStart = false;
@@ -979,6 +1033,17 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             maxY = Math.max(maxY, y2);
         }
 
+        for (Point pos : pseudoStateAliases) {
+            int x1 = pos.x;
+            int y1 = pos.y;
+            int x2 = pos.x + PSEUDO_DIAMETER;
+            int y2 = pos.y + PSEUDO_DIAMETER;
+            minX = Math.min(minX, x1);
+            minY = Math.min(minY, y1);
+            maxX = Math.max(maxX, x2);
+            maxY = Math.max(maxY, y2);
+        }
+
         for (Component comp : getComponents()) {
             if (comp instanceof StateSemanticsAnnotation && comp.isVisible()) {
                 Rectangle r = comp.getBounds();
@@ -1024,14 +1089,15 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                         newTransition.setGuardProposition(new smalgebra.FalseProposition());
                     }
                     stateMachine.addTransition(newTransition);
+                    rememberPseudoAliasForTransition(newTransition, initialTransitionAliasIndex);
                     // Create a (transient) ActionAnnotation but keep it hidden for autonomous transitions
                     try {
                         ActionAnnotation actionAnnot = new ActionAnnotation(newTransition.getActionList(), ((PWSStateMachine)stateMachine).getAssembly(), newActions -> newTransition.setActionList(newActions), newTransition);
                         // place roughly on the curve (0.5)
                         machinery.State sourceState = (machinery.State) newTransition.getSource();
                         machinery.State targetState = (machinery.State) newTransition.getTarget();
-                        Point sourcePos = sourceState.getPosition();
-                        Point targetPos = targetState.getPosition();
+                        Point sourcePos = getStatePositionForTransition(sourceState, newTransition, true);
+                        Point targetPos = getStatePositionForTransition(targetState, newTransition, false);
                         int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                         int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                         Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -1062,6 +1128,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             JOptionPane.showMessageDialog(this, "Select a valid state (not PseudoState).");
         }
         initialTransitionMode = false;
+        initialTransitionAliasIndex = -1;
         revalidate();
         repaint();
     }
@@ -1074,6 +1141,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         if (clickedState != null) {
             if (transitionSourceState == null) {
                 transitionSourceState = clickedState;
+                if (isPseudoState(clickedState) && hitPseudoAliasIndex >= 0) {
+                    transitionSourcePseudoAliasIndex = hitPseudoAliasIndex;
+                } else {
+                    transitionSourcePseudoAliasIndex = -1;
+                }
                 // Debug: link mode source selection (commented out)
                 // System.out.println("Link mode: Source state selected: " + transitionSourceState.getName());
             } else {
@@ -1082,6 +1154,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     JOptionPane.showMessageDialog(this, "Cannot create transition to PseudoState.");
                     linkMode = false;
                     transitionSourceState = null;
+                    transitionSourcePseudoAliasIndex = -1;
                     return;
                 }
                 String trigger = JOptionPane.showInputDialog(this, "Enter trigger event (leave blank for autonomous):");
@@ -1121,14 +1194,17 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 // The user can later modify them by clicking on the corresponding annotations.
 
                 stateMachine.addTransition(newTransition);
+                if (isPseudoState(transitionSourceState)) {
+                    rememberPseudoAliasForTransition(newTransition, transitionSourcePseudoAliasIndex);
+                }
                 // If autonomous (no trigger) create hidden action annotation by default
                 if (newTransition.isAutonomous()) {
                     try {
                         ActionAnnotation actionAnnot = new ActionAnnotation(newTransition.getActionList(), ((PWSStateMachine)stateMachine).getAssembly(), newActions -> newTransition.setActionList(newActions), newTransition);
                         machinery.State sourceState = (machinery.State) newTransition.getSource();
                         machinery.State targetState = (machinery.State) newTransition.getTarget();
-                        Point sourcePos = sourceState.getPosition();
-                        Point targetPos = targetState.getPosition();
+                        Point sourcePos = getStatePositionForTransition(sourceState, newTransition, true);
+                        Point targetPos = getStatePositionForTransition(targetState, newTransition, false);
                         int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                         int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                         Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -1150,6 +1226,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 //    (clickedState == transitionSourceState ? " (self-loop)" : ""));
                 linkMode = false;
                 transitionSourceState = null;
+                transitionSourcePseudoAliasIndex = -1;
                 java.awt.Window w = SwingUtilities.getWindowAncestor(this);
                 if (w instanceof PWSEditor pe) {
                     pe.markDocumentDirty();
@@ -1179,6 +1256,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         // Otherwise, show state popup or empty‑space popup.
         StateInterface state = getStateAt(p);
         if (state != null) {
+            menuPseudoAliasIndex = isPseudoState(state) ? hitPseudoAliasIndex : -1;
             showPopupMenuForState(e, state);
         } else {
             showEmptySpacePopup(e);
@@ -1192,6 +1270,12 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             addNewStateAt(e.getPoint());
         });
         popup.add(addStateItem);
+
+        JMenuItem addPseudoAliasItem = new JMenuItem("Create pseudostate alias");
+        addPseudoAliasItem.addActionListener(ae -> {
+            createPseudoAliasAt(e.getPoint());
+        });
+        popup.add(addPseudoAliasItem);
         
         popup.addSeparator();
 
@@ -1326,6 +1410,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     public void enableLinkModeWithSource(StateInterface sourceState) {
         linkMode = true;
         transitionSourceState = sourceState;
+        transitionSourcePseudoAliasIndex = -1;
     }
 
     private void showTransitionPopup(MouseEvent e, TransitionInterface t) {
@@ -1370,8 +1455,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                         try {
                             machinery.State sourceState = (machinery.State) pt.getSource();
                             machinery.State targetState = (machinery.State) pt.getTarget();
-                            Point sourcePos = sourceState.getPosition();
-                            Point targetPos = targetState.getPosition();
+                            Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                            Point targetPos = getStatePositionForTransition(targetState, pt, false);
                             int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                             int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                             Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -1414,8 +1499,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     try {
                         machinery.State sourceState = (machinery.State) pt.getSource();
                         machinery.State targetState = (machinery.State) pt.getTarget();
-                        Point sourcePos = sourceState.getPosition();
-                        Point targetPos = targetState.getPosition();
+                        Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                        Point targetPos = getStatePositionForTransition(targetState, pt, false);
                         int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                         int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                         Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -1452,8 +1537,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     try {
                         machinery.State sourceState = (machinery.State) pt.getSource();
                         machinery.State targetState = (machinery.State) pt.getTarget();
-                        Point sourcePos = sourceState.getPosition();
-                        Point targetPos = targetState.getPosition();
+                        Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                        Point targetPos = getStatePositionForTransition(targetState, pt, false);
                         int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                         int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                         Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -1523,61 +1608,32 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         JPopupMenu popup = new JPopupMenu();
 
         if (state instanceof PWSState && ((PWSState) state).isPseudoState()) {
-            PWSState pwsState = (PWSState) state;
-            // Use a toggle menu item for the pseudo-state
-            String toggleText = pwsState.isAnnotationVisible() ? "Hide dashboard" : "Show dashboard";
-            JMenuItem toggleAnnotItem = new JMenuItem(toggleText);
-            toggleAnnotItem.addActionListener(ae -> {
-                if (!pwsState.isAnnotationVisible()) {
-                    System.out.println("Show pseudo-state annotation invoked");
-                    // Create the annotation if it doesn't exist and make it visible
-                    StateSemanticsAnnotation annot = pwsState.getAnnotation();
-                    if (annot == null) {
-                        annot = new StateSemanticsAnnotation(pwsState, ((PWSStateMachine) stateMachine).getAssembly(), this);
-                        // Position the annotation with its center on the grid point
-                        Point pos = ((machinery.State) pwsState).getPosition();
-                        int d = pwsState.getName().equals("PseudoState") ? PSEUDO_DIAMETER : DIAMETER;
-                        int stateCenter = pos.x + d / 2;
-                        // Center the annotation above the state (60 pixels above center)
-                        int annotCenterX = stateCenter;
-                        int annotCenterY = pos.y - 60;
-                        annot.setBounds(annotCenterX - 60, annotCenterY - 15, 120, 30);
-                        pwsState.setAnnotation(annot);
-                        add(annot);
-                        System.out.println("Created new StateAnnotation for " + pwsState.getName());
-                    } else {
-                        annot.setVisible(true);
-                        System.out.println("Set StateAnnotation visibility to true");
-                    }
-                    pwsState.setAnnotationVisible(true);
-                    // Ensure semantics up-to-date (single call, not duplicate)
-                    java.awt.Container win2 = javax.swing.SwingUtilities.getWindowAncestor(this);
-                    if (win2 instanceof pws.editor.PWSEditor) {
-                        ((pws.editor.PWSEditor) win2).scheduleSemanticsRecalculation();
-                    }
-                } else {
-                    // If the annotation is visible, hide it
-                    if (pwsState.getAnnotation() != null) {
-                        pwsState.getAnnotation().setVisible(false);
-                        System.out.println("Pseudo-state annotation hidden");
-                    }
-                    pwsState.setAnnotationVisible(false);
-                }
-                revalidate();
-                repaint();
-            });
-            popup.add(toggleAnnotItem);
-
             // Add Initial Transition item
             JMenuItem addInitialTransItem = new JMenuItem("Add initial transition");
             addInitialTransItem.addActionListener(ae -> {
+                initialTransitionAliasIndex = menuPseudoAliasIndex;
                 enableInitialTransitionMode();
             });
             popup.add(addInitialTransItem);
 
-            JMenuItem infoItem = new JMenuItem("Pseudo-state cannot be deleted");
-            infoItem.setEnabled(false);
-            popup.add(infoItem);
+            if (getTotalPseudoAliasCount() > 1) {
+                JMenuItem deleteAliasItem = new JMenuItem("Delete pseudostate alias");
+                deleteAliasItem.addActionListener(ae -> {
+                    if (menuPseudoAliasIndex >= 0) {
+                        removePseudoAliasAt(menuPseudoAliasIndex);
+                    } else {
+                        deletePrimaryPseudoAlias();
+                    }
+                    menuPseudoAliasIndex = -1;
+                    revalidate();
+                    repaint();
+                });
+                popup.add(deleteAliasItem);
+            } else {
+                JMenuItem infoItem = new JMenuItem("Pseudostate alias cannot be deleted");
+                infoItem.setEnabled(false);
+                popup.add(infoItem);
+            }
         } else {
             // Normal state case
             // Create transition item - only if state is not the pseudostate
@@ -1728,6 +1784,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     public static class AnnotationData {
         public final java.util.List<StateAnnotationData> stateAnnotations = new java.util.ArrayList<>();
         public final java.util.List<TransitionAnnotationData> transitionAnnotations = new java.util.ArrayList<>();
+        public final java.util.List<Point> pseudoAliases = new java.util.ArrayList<>();
+        public final java.util.Map<String, Integer> pseudoAliasByTransition = new java.util.LinkedHashMap<>();
         public Boolean showExitZoneMachineIds;
         public Integer stateDiameter;
         public Float stateBorderThickness;
@@ -1765,10 +1823,28 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         data.stateBorderThickness = getStateBorderThickness();
         data.stateFontSize = getStateFontSize();
 
+        for (Point pos : pseudoStateAliases) {
+            if (pos != null) {
+                data.pseudoAliases.add(new Point(pos));
+            }
+        }
+        for (Map.Entry<TransitionInterface, Integer> entry : pseudoAliasByTransition.entrySet()) {
+            TransitionInterface t = entry.getKey();
+            Integer aliasIndex = entry.getValue();
+            if (!(t instanceof PWSTransition) || aliasIndex == null) continue;
+            String id = ((PWSTransition) t).getId();
+            if (id == null) continue;
+            if (aliasIndex < 0 || aliasIndex >= pseudoStateAliases.size()) continue;
+            data.pseudoAliasByTransition.put(id, aliasIndex);
+        }
+
         // State annotations.
         for (StateInterface s : stateMachine.getStates()) {
             if (s instanceof PWSState) {
                 PWSState pState = (PWSState) s;
+                if (pState.isPseudoState()) {
+                    continue;
+                }
                 StateAnnotationData rec = new StateAnnotationData();
                 rec.stateName = pState.getName();
                 Rectangle annotBounds = (pState.getAnnotation() != null) ? pState.getAnnotation().getBounds() : null;
@@ -1801,8 +1877,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 try {
                     machinery.State sourceState = (machinery.State) pt.getSource();
                     machinery.State targetState = (machinery.State) pt.getTarget();
-                    Point sourcePos = sourceState.getPosition();
-                    Point targetPos = targetState.getPosition();
+                    Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                    Point targetPos = getStatePositionForTransition(targetState, pt, false);
                     int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                     int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                     Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -1851,6 +1927,35 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             setStateFontSize(data.stateFontSize);
         }
 
+        pseudoStateAliases.clear();
+        pseudoAliasByTransition.clear();
+        if (data.pseudoAliases != null) {
+            for (Point pos : data.pseudoAliases) {
+                if (pos != null) {
+                    pseudoStateAliases.add(new Point(pos));
+                }
+            }
+        }
+        if (data.pseudoAliasByTransition != null && !data.pseudoAliasByTransition.isEmpty()) {
+            Map<String, TransitionInterface> transitionById = new HashMap<>();
+            for (TransitionInterface t : stateMachine.getTransitions()) {
+                if (t instanceof PWSTransition pt) {
+                    String id = pt.getId();
+                    if (id != null) transitionById.put(id, t);
+                }
+            }
+            for (Map.Entry<String, Integer> entry : data.pseudoAliasByTransition.entrySet()) {
+                String id = entry.getKey();
+                Integer aliasIndex = entry.getValue();
+                if (id == null || aliasIndex == null) continue;
+                if (aliasIndex < 0 || aliasIndex >= pseudoStateAliases.size()) continue;
+                TransitionInterface t = transitionById.get(id);
+                if (t != null) {
+                    rememberPseudoAliasForTransition(t, aliasIndex);
+                }
+            }
+        }
+
         // Restore state annotations.
         for (StateAnnotationData rec : data.stateAnnotations) {
             String stateName = rec.stateName;
@@ -1862,6 +1967,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             for (StateInterface s : stateMachine.getStates()) {
                 if (s instanceof PWSState && s.getName().equals(stateName)) {
                     PWSState pState = (PWSState) s;
+                    if (pState.isPseudoState()) {
+                        pState.setAnnotationVisible(false);
+                        if (pState.getAnnotation() != null) {
+                            pState.getAnnotation().setVisible(false);
+                        }
+                        break;
+                    }
                     if (annotBounds != null || relOffsetX != Integer.MIN_VALUE) {
                         if (pState.getAnnotation() == null) {
                             StateSemanticsAnnotation annot = new StateSemanticsAnnotation(
@@ -1939,8 +2051,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                             if (guardOffsetX != Integer.MIN_VALUE) {
                                 machinery.State sourceState = (machinery.State) pt.getSource();
                                 machinery.State targetState = (machinery.State) pt.getTarget();
-                                Point sourcePos = sourceState.getPosition();
-                                Point targetPos = targetState.getPosition();
+                                Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                                Point targetPos = getStatePositionForTransition(targetState, pt, false);
                                 int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                 int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                 Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -1963,8 +2075,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                             if (guardOffsetX != Integer.MIN_VALUE) {
                                 machinery.State sourceState = (machinery.State) pt.getSource();
                                 machinery.State targetState = (machinery.State) pt.getTarget();
-                                Point sourcePos = sourceState.getPosition();
-                                Point targetPos = targetState.getPosition();
+                                Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                                Point targetPos = getStatePositionForTransition(targetState, pt, false);
                                 int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                 int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                 Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -1990,8 +2102,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                             if (actionOffsetX != Integer.MIN_VALUE) {
                                 machinery.State sourceState = (machinery.State) pt.getSource();
                                 machinery.State targetState = (machinery.State) pt.getTarget();
-                                Point sourcePos = sourceState.getPosition();
-                                Point targetPos = targetState.getPosition();
+                                Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                                Point targetPos = getStatePositionForTransition(targetState, pt, false);
                                 int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                 int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                 Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -2014,8 +2126,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                             if (actionOffsetX != Integer.MIN_VALUE) {
                                 machinery.State sourceState = (machinery.State) pt.getSource();
                                 machinery.State targetState = (machinery.State) pt.getTarget();
-                                Point sourcePos = sourceState.getPosition();
-                                Point targetPos = targetState.getPosition();
+                                Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                                Point targetPos = getStatePositionForTransition(targetState, pt, false);
                                 int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                 int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                 Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -2042,8 +2154,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                             if (semOffsetX != Integer.MIN_VALUE) {
                                 machinery.State sourceState = (machinery.State) pt.getSource();
                                 machinery.State targetState = (machinery.State) pt.getTarget();
-                                Point sourcePos = sourceState.getPosition();
-                                Point targetPos = targetState.getPosition();
+                                Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                                Point targetPos = getStatePositionForTransition(targetState, pt, false);
                                 int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                 int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                 Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -2066,8 +2178,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                             if (semOffsetX != Integer.MIN_VALUE) {
                                 machinery.State sourceState = (machinery.State) pt.getSource();
                                 machinery.State targetState = (machinery.State) pt.getTarget();
-                                Point sourcePos = sourceState.getPosition();
-                                Point targetPos = targetState.getPosition();
+                                Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                                Point targetPos = getStatePositionForTransition(targetState, pt, false);
                                 int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                 int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                 Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -2102,6 +2214,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         for (StateInterface s : stateMachine.getStates()) {
             if (s instanceof PWSState) {
                 PWSState pState = (PWSState) s;
+                if (pState.isPseudoState()) {
+                    continue;
+                }
                 String stateName = pState.getName();
                 Rectangle annotBounds = (pState.getAnnotation() != null) ? pState.getAnnotation().getBounds() : null;
                 oos.writeUTF(stateName);
@@ -2151,8 +2266,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     // Compute curve reference points
                     machinery.State sourceState = (machinery.State) pt.getSource();
                     machinery.State targetState = (machinery.State) pt.getTarget();
-                    Point sourcePos = sourceState.getPosition();
-                    Point targetPos = targetState.getPosition();
+                    Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                    Point targetPos = getStatePositionForTransition(targetState, pt, false);
                     int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                     int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                     Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -2223,6 +2338,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             for (StateInterface s : stateMachine.getStates()) {
                 if (s instanceof PWSState && s.getName().equals(stateName)) {
                     PWSState pState = (PWSState) s;
+                    if (pState.isPseudoState()) {
+                        pState.setAnnotationVisible(false);
+                        if (pState.getAnnotation() != null) {
+                            pState.getAnnotation().setVisible(false);
+                        }
+                        break;
+                    }
                     if (annotBounds != null || relOffsetX != Integer.MIN_VALUE) {
                         if (pState.getAnnotation() == null) {
                             StateSemanticsAnnotation annot = new StateSemanticsAnnotation(
@@ -2319,8 +2441,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                                 if (guardOffsetX != Integer.MIN_VALUE) {
                                     machinery.State sourceState = (machinery.State) pt.getSource();
                                     machinery.State targetState = (machinery.State) pt.getTarget();
-                                    Point sourcePos = sourceState.getPosition();
-                                    Point targetPos = targetState.getPosition();
+                                    Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                                    Point targetPos = getStatePositionForTransition(targetState, pt, false);
                                     int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                     int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                     Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -2343,8 +2465,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                                 if (guardOffsetX != Integer.MIN_VALUE) {
                                     machinery.State sourceState = (machinery.State) pt.getSource();
                                     machinery.State targetState = (machinery.State) pt.getTarget();
-                                    Point sourcePos = sourceState.getPosition();
-                                    Point targetPos = targetState.getPosition();
+                                    Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                                    Point targetPos = getStatePositionForTransition(targetState, pt, false);
                                     int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                     int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                     Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -2371,8 +2493,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                                 if (actionOffsetX != Integer.MIN_VALUE) {
                                     machinery.State sourceState = (machinery.State) pt.getSource();
                                     machinery.State targetState = (machinery.State) pt.getTarget();
-                                    Point sourcePos = sourceState.getPosition();
-                                    Point targetPos = targetState.getPosition();
+                                    Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                                    Point targetPos = getStatePositionForTransition(targetState, pt, false);
                                     int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                     int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                     Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -2395,8 +2517,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                                 if (actionOffsetX != Integer.MIN_VALUE) {
                                     machinery.State sourceState = (machinery.State) pt.getSource();
                                     machinery.State targetState = (machinery.State) pt.getTarget();
-                                    Point sourcePos = sourceState.getPosition();
-                                    Point targetPos = targetState.getPosition();
+                                    Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                                    Point targetPos = getStatePositionForTransition(targetState, pt, false);
                                     int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                     int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                     Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -2424,8 +2546,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                                 if (semOffsetX != Integer.MIN_VALUE) {
                                     machinery.State sourceState = (machinery.State) pt.getSource();
                                     machinery.State targetState = (machinery.State) pt.getTarget();
-                                    Point sourcePos = sourceState.getPosition();
-                                    Point targetPos = targetState.getPosition();
+                                    Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                                    Point targetPos = getStatePositionForTransition(targetState, pt, false);
                                     int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                     int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                     Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -2448,8 +2570,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                                 if (semOffsetX != Integer.MIN_VALUE) {
                                     machinery.State sourceState = (machinery.State) pt.getSource();
                                     machinery.State targetState = (machinery.State) pt.getTarget();
-                                    Point sourcePos = sourceState.getPosition();
-                                    Point targetPos = targetState.getPosition();
+                                    Point sourcePos = getStatePositionForTransition(sourceState, pt, true);
+                                    Point targetPos = getStatePositionForTransition(targetState, pt, false);
                                     int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                     int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                                     Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -2491,6 +2613,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         if (t instanceof PWSTransition) {
             clearAnnotationsForTransition((PWSTransition) t);
         }
+        clearPseudoAliasForTransition(t);
         // Remove the transition from the global list.
         stateMachine.getTransitions().remove(t);
 
@@ -2532,8 +2655,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         if (t == null || t.getSource() == null || t.getTarget() == null) return null;
         machinery.State sourceState = (machinery.State) t.getSource();
         machinery.State targetState = (machinery.State) t.getTarget();
-        Point sourcePos = sourceState.getPosition();
-        Point targetPos = targetState.getPosition();
+        Point sourcePos = getStatePositionForTransition(sourceState, t, true);
+        Point targetPos = getStatePositionForTransition(targetState, t, false);
         int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
         int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
         Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);

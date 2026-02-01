@@ -183,6 +183,7 @@ public class PWSEditor extends JFrame {
         JPanel rightTop = new JPanel(new BorderLayout());
         // Create a split view: Assembly | Library
         this.libraryPanel = new MachineLibraryPanel(pwsStateMachine.getAssembly());
+        this.libraryPanel.setBeforeSaveLibrary(() -> syncEmbeddedLibraryAliasData());
 
         JPanel assemblyWrapper = new JPanel(new BorderLayout());
         JLabel rightHeader = new JLabel("Assembly", SwingConstants.CENTER);
@@ -265,6 +266,7 @@ public class PWSEditor extends JFrame {
             assemblyPanel.setMachineSelectionListener(new pws.editor.PWSPanel.MachineSelectionListener() {
             @Override
             public void machineSelected(String id) {
+                syncEmbeddedLibraryAliasData();
                 StateMachine machine = pwsStateMachine.getAssembly().getStateMachines().get(id);
                 if (machine != null) {
                     SwingUtilities.invokeLater(() -> {
@@ -275,6 +277,7 @@ public class PWSEditor extends JFrame {
                                 embeddedEditor = new StateMachineEditor(machine, pwsStateMachine.getAssembly(), title);
                                 embeddedEditor.setModelChangedCallback(() -> scheduleSemanticsRecalculation());
                                 embeddedEditor.setCloseCallback(() -> {
+                                    syncEmbeddedLibraryAliasData();
                                     embeddedEditor = null;
                                     machineEditorContainer.removeAll();
                                     JLabel placeholder = new JLabel("Select a machine (assembly or library) to edit", SwingConstants.CENTER);
@@ -299,6 +302,13 @@ public class PWSEditor extends JFrame {
 
                             JMenuBar mb = embeddedEditor.getJMenuBar();
                             StateMachinePanel smPanel = embeddedEditor.getStateMachinePanel();
+                            if (smPanel != null) {
+                                String libKey = findLibraryKeyForMachine(machine);
+                                StateMachinePanel.AliasData aliasData = (libKey != null)
+                                        ? pwsStateMachine.getAssembly().getMachineLibrary().getAliasData(libKey)
+                                        : pwsStateMachine.getAssembly().getAliasData(id);
+                                smPanel.importAliasData(aliasData);
+                            }
 
                             JPanel wrapper = new JPanel(new BorderLayout());
                             JPanel topArea = new JPanel(new BorderLayout());
@@ -326,6 +336,11 @@ public class PWSEditor extends JFrame {
                             header.setFont(header.getFont().deriveFont(Font.BOLD));
                             wrapper.add(header, BorderLayout.NORTH);
                             StateMachinePanel smPanel = new StateMachinePanel(machine);
+                            String libKey = findLibraryKeyForMachine(machine);
+                            StateMachinePanel.AliasData aliasData = (libKey != null)
+                                    ? pwsStateMachine.getAssembly().getMachineLibrary().getAliasData(libKey)
+                                    : pwsStateMachine.getAssembly().getAliasData(id);
+                            smPanel.importAliasData(aliasData);
                             wrapper.add(smPanel, BorderLayout.CENTER);
                             machineEditorContainer.add(wrapper, BorderLayout.CENTER);
                             machineEditorContainer.revalidate();
@@ -402,6 +417,7 @@ public class PWSEditor extends JFrame {
         libraryPanel.setLibrarySelectionListener(new MachineLibraryPanel.LibrarySelectionListener() {
             @Override
             public void librarySelected(String key) {
+                syncEmbeddedLibraryAliasData();
                 StateMachine machine = pwsStateMachine.getAssembly().getMachineLibrary().get(key);
                 if (machine != null) {
                     SwingUtilities.invokeLater(() -> {
@@ -412,6 +428,7 @@ public class PWSEditor extends JFrame {
                                 embeddedEditor = new StateMachineEditor(machine, pwsStateMachine.getAssembly(), title);
                                 embeddedEditor.setModelChangedCallback(() -> scheduleSemanticsRecalculation());
                                 embeddedEditor.setCloseCallback(() -> {
+                                    syncEmbeddedLibraryAliasData();
                                     embeddedEditor = null;
                                     machineEditorContainer.removeAll();
                                     JLabel placeholder = new JLabel("Select a machine (assembly or library) to edit", SwingConstants.CENTER);
@@ -427,6 +444,11 @@ public class PWSEditor extends JFrame {
 
                             JMenuBar mb = embeddedEditor.getJMenuBar();
                             StateMachinePanel smPanel = embeddedEditor.getStateMachinePanel();
+                            if (smPanel != null) {
+                                StateMachinePanel.AliasData aliasData = pwsStateMachine.getAssembly()
+                                        .getMachineLibrary().getAliasData(key);
+                                smPanel.importAliasData(aliasData);
+                            }
 
                             JPanel wrapper = new JPanel(new BorderLayout());
                             JPanel topArea = new JPanel(new BorderLayout());
@@ -454,6 +476,9 @@ public class PWSEditor extends JFrame {
                             header.setFont(header.getFont().deriveFont(Font.BOLD));
                             wrapper.add(header, BorderLayout.NORTH);
                             StateMachinePanel smPanel = new StateMachinePanel(machine);
+                            StateMachinePanel.AliasData aliasData = pwsStateMachine.getAssembly()
+                                    .getMachineLibrary().getAliasData(key);
+                            smPanel.importAliasData(aliasData);
                             wrapper.add(smPanel, BorderLayout.CENTER);
                             machineEditorContainer.add(wrapper, BorderLayout.CENTER);
                             machineEditorContainer.revalidate();
@@ -487,6 +512,12 @@ public class PWSEditor extends JFrame {
                         StateMachine machine = pwsStateMachine.getAssembly().getMachineLibrary().get(key);
                         if (machine != null && embeddedEditor != null) {
                             embeddedEditor.bindStateMachine(machine);
+                            StateMachinePanel smPanel = embeddedEditor.getStateMachinePanel();
+                            if (smPanel != null) {
+                                StateMachinePanel.AliasData aliasData = pwsStateMachine.getAssembly()
+                                        .getMachineLibrary().getAliasData(key);
+                                smPanel.importAliasData(aliasData);
+                            }
                             machineEditorContainer.revalidate();
                             machineEditorContainer.repaint();
                         }
@@ -1143,6 +1174,42 @@ public class PWSEditor extends JFrame {
         }
     }
 
+    /**
+     * Persist alias data for the currently embedded machine (library or assembly).
+     */
+    public void syncEmbeddedLibraryAliasData() {
+        if (embeddedEditor == null || embeddedMachineId == null) return;
+        if (pwsStateMachine == null) return;
+        StateMachinePanel panel = embeddedEditor.getStateMachinePanel();
+        if (panel == null) return;
+        StateMachinePanel.AliasData data = panel.exportAliasData();
+        if (embeddedMachineId.startsWith("lib:")) {
+            String key = embeddedMachineId.substring(4);
+            pwsStateMachine.getAssembly().getMachineLibrary().setAliasData(key, data);
+            return;
+        }
+
+        StateMachine machine = pwsStateMachine.getAssembly()
+                .getStateMachines().get(embeddedMachineId);
+        String libKey = findLibraryKeyForMachine(machine);
+        if (libKey != null) {
+            pwsStateMachine.getAssembly().getMachineLibrary().setAliasData(libKey, data);
+        } else {
+            pwsStateMachine.getAssembly().setAliasData(embeddedMachineId, data);
+        }
+    }
+
+    private String findLibraryKeyForMachine(StateMachine machine) {
+        if (machine == null || pwsStateMachine == null) return null;
+        for (Map.Entry<String, StateMachine> entry
+                : pwsStateMachine.getAssembly().getMachineLibrary().getMachines().entrySet()) {
+            if (entry.getValue() == machine) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
     // Rebuild UI when a new model is provided (used by open/new)
     public void rebuildUIForNewModel(PWSStateMachine model) {
         this.pwsStateMachine = model;
@@ -1231,49 +1298,10 @@ public class PWSEditor extends JFrame {
     }
 
     private Semantics computeExitZoneClosure(PWSStateMachine machine, Semantics initial) {
-        if (machine == null || initial == null || machine.getAssembly() == null) {
+        if (machine == null || initial == null) {
             return null;
         }
-        Semantics closure = initial.clone();
-        int maxIterations = 1000;
-        for (int i = 0; i < maxIterations; i++) {
-            java.util.Set<pws.editor.semantics.ExitZone> zones = machine.findExitZones(closure);
-            if (zones == null || zones.isEmpty()) {
-                break;
-            }
-            Semantics next = closure;
-            for (pws.editor.semantics.ExitZone ez : zones) {
-                if (ez == null || ez.getSource() == null || ez.getTarget() == null || ez.getTransition() == null) {
-                    continue;
-                }
-                String machineId = ez.getStateMachineId();
-                if (machineId == null || machineId.isBlank()) {
-                    machineId = ez.getSource().getMachineId();
-                }
-                if (machineId == null || machineId.isBlank()) {
-                    continue;
-                }
-                String sourceState = ez.getSource().getStateName();
-                String targetState = ez.getTarget().getStateName();
-                if (sourceState == null || targetState == null) {
-                    continue;
-                }
-                Semantics codomain = closure.computeCodomain(
-                    machineId,
-                    machine.getAssembly(),
-                    sourceState,
-                    targetState
-                );
-                if (codomain != null && !codomain.ISEMPTY()) {
-                    next = next.OR(codomain);
-                }
-            }
-            if (next.equals(closure)) {
-                break;
-            }
-            closure = next;
-        }
-        return closure;
+        return machine.calculateAssemblyClosure(initial);
     }
 
     public void updateWindowTitle() {

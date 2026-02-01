@@ -130,7 +130,7 @@ public class PWSFileManager {
         if (target == preservedLibrary) return;
         target.clear();
         for (Map.Entry<String, StateMachine> entry : preservedLibrary.getMachines().entrySet()) {
-            target.addMachine(entry.getKey(), entry.getValue());
+            target.addMachine(entry.getKey(), entry.getValue(), preservedLibrary.getAliasData(entry.getKey()));
         }
     }
 
@@ -159,6 +159,7 @@ public class PWSFileManager {
         try {
             PWSDocument doc = editor.getDocument();
             if (doc == null) return false;
+            editor.syncEmbeddedLibraryAliasData();
             PWSStateMachine model = doc.getModel();
             PWSStateMachinePanel panel = (PWSStateMachinePanel) editor.getBaseEditor().getStateMachinePanel();
             JsonModelSerializer.savePwsWorkspace(model, panel.exportAnnotations(), file);

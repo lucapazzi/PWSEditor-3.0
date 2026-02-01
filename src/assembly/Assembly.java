@@ -1,5 +1,6 @@
 package assembly;
 
+import editor.StateMachinePanel;
 import machinery.StateInterface;
 import machinery.StateMachine;
 import pws.editor.semantics.Configuration;
@@ -16,6 +17,8 @@ public class Assembly implements AssemblyInterface {
     private MachineLibrary machineLibrary = new MachineLibrary();
     // Optional storage for LTL formulas associated with this assembly
     private java.util.List<LTLFormula> ltlFormulas = new java.util.ArrayList<>();
+    // Optional UI-only alias data for assembly-local machines (machineId -> alias data)
+    private Map<String, StateMachinePanel.AliasData> aliasDataByMachineId = new LinkedHashMap<>();
 
     /**
      * Creates an assembly with the given identifier.
@@ -54,6 +57,49 @@ public class Assembly implements AssemblyInterface {
     @Override
     public void addStateMachine(String identifier, StateMachine machine) {
         stateMachines.put(identifier, machine);
+    }
+
+    /**
+     * Returns alias data for a machine identifier.
+     *
+     * @param machineId assembly machine id
+     * @return alias data or null if none
+     */
+    public StateMachinePanel.AliasData getAliasData(String machineId) {
+        if (machineId == null) return null;
+        return aliasDataByMachineId.get(machineId);
+    }
+
+    /**
+     * Sets alias data for a machine identifier.
+     *
+     * @param machineId assembly machine id
+     * @param data alias data (null to clear)
+     */
+    public void setAliasData(String machineId, StateMachinePanel.AliasData data) {
+        if (machineId == null) return;
+        if (data == null) {
+            aliasDataByMachineId.remove(machineId);
+        } else {
+            aliasDataByMachineId.put(machineId, data);
+        }
+    }
+
+    /**
+     * Removes alias data for a machine identifier.
+     *
+     * @param machineId assembly machine id
+     */
+    public void removeAliasData(String machineId) {
+        if (machineId == null) return;
+        aliasDataByMachineId.remove(machineId);
+    }
+
+    /**
+     * Clears all alias data for assembly machines.
+     */
+    public void clearAliasData() {
+        aliasDataByMachineId.clear();
     }
 
     @Override

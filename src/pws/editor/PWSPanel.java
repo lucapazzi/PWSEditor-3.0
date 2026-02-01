@@ -2,6 +2,7 @@ package pws.editor;
 
 import assembly.Assembly;
 import assembly.MachineLibrary;
+import editor.StateMachinePanel;
 import assembly.AssemblyInterface;
 import editor.StateMachineEditor;
 import machinery.StateMachine;
@@ -249,8 +250,16 @@ public class PWSPanel extends JPanel {
                     } else if (assignChoice == 1) {
                         // Clone: deep clone and register in library
                         try {
+                            StateMachinePanel.AliasData aliasData =
+                                    copyAliasData(assembly.getMachineLibrary().getAliasData(selectedKey));
                             StateMachine cloned = m.clone();
                             String newKey = assembly.getMachineLibrary().addMachine(cloned);
+                            if (aliasData != null) {
+                                if (newKey != null && assembly.getMachineLibrary().get(newKey) == cloned) {
+                                    assembly.getMachineLibrary().setAliasData(newKey, copyAliasData(aliasData));
+                                }
+                                assembly.setAliasData(id, aliasData);
+                            }
                             assembly.addStateMachine(id, cloned);
                         } catch (Exception ex) {
                             ex.printStackTrace();
@@ -293,6 +302,11 @@ public class PWSPanel extends JPanel {
         try {
             StateMachine cloned = current.clone();
             String newKey = assembly.getMachineLibrary().addMachine(cloned);
+            StateMachinePanel.AliasData aliasData = copyAliasData(assembly.getAliasData(id));
+            if (aliasData != null && newKey != null
+                    && assembly.getMachineLibrary().get(newKey) == cloned) {
+                assembly.getMachineLibrary().setAliasData(newKey, aliasData);
+            }
             // reassign the assembly id to the cloned instance
             assembly.addStateMachine(id, cloned);
             refreshList();
@@ -318,10 +332,23 @@ public class PWSPanel extends JPanel {
         if (confirm == JOptionPane.YES_OPTION) {
             // Remove only the mapping corresponding to the selected id
             assembly.getStateMachines().remove(id);
+            assembly.removeAliasData(id);
             if (selectionListener != null) {
                 selectionListener.machineRemoved(id);
             }
             refreshList();
         }
+    }
+
+    private StateMachinePanel.AliasData copyAliasData(StateMachinePanel.AliasData source) {
+        if (source == null) return null;
+        StateMachinePanel.AliasData copy = new StateMachinePanel.AliasData();
+        for (Point pos : source.pseudoAliases) {
+            if (pos != null) {
+                copy.pseudoAliases.add(new Point(pos));
+            }
+        }
+        copy.pseudoAliasByTransition.putAll(source.pseudoAliasByTransition);
+        return copy;
     }
 }

@@ -2,7 +2,7 @@ package pws.editor;
 
 import assembly.Assembly;
 import assembly.MachineLibrary;
-import editor.StateMachineEditor;
+import editor.StateMachinePanel;
 import machinery.StateMachine;
 
 import javax.swing.*;
@@ -20,6 +20,7 @@ public class MachineLibraryPanel extends JPanel {
     private final Assembly assembly;
     private final DefaultListModel<String> listModel = new DefaultListModel<>();
     private final JList<String> list;
+    private Runnable beforeSaveLibrary = null;
 
     /** Listener for library selection and lifecycle events. */
     public interface LibrarySelectionListener {
@@ -156,6 +157,15 @@ public class MachineLibraryPanel extends JPanel {
     }
 
     /**
+     * Sets a callback invoked right before saving the library.
+     *
+     * @param r callback to invoke
+     */
+    public void setBeforeSaveLibrary(Runnable r) {
+        this.beforeSaveLibrary = r;
+    }
+
+    /**
      * Refreshes the list of machines from the library.
      */
     public void refreshList() {
@@ -223,9 +233,11 @@ public class MachineLibraryPanel extends JPanel {
         if (res != JFileChooser.APPROVE_OPTION) return;
         File file = fc.getSelectedFile();
         try {
-            StateMachine sm = JsonModelSerializer.loadStateMachine(file);
+            JsonModelSerializer.LoadedStateMachine loaded = JsonModelSerializer.loadStateMachineWithAnnotations(file);
+            StateMachine sm = loaded != null ? loaded.getModel() : null;
+            StateMachinePanel.AliasData aliasData = loaded != null ? loaded.getAnnotations() : null;
             if (sm != null) {
-                String key = assembly.getMachineLibrary().addMachine(sm);
+                String key = assembly.getMachineLibrary().addMachine(sm, aliasData);
                 refreshList();
                 if (listener != null) listener.libraryLoaded(key);
             } else {
@@ -251,7 +263,7 @@ public class MachineLibraryPanel extends JPanel {
                 MachineLibrary current = assembly.getMachineLibrary();
                 current.clear();
                 for (java.util.Map.Entry<String, machinery.StateMachine> entry : loaded.getMachines().entrySet()) {
-                    current.addMachine(entry.getKey(), entry.getValue());
+                    current.addMachine(entry.getKey(), entry.getValue(), loaded.getAliasData(entry.getKey()));
                 }
                 refreshList();
                 // Notify listener about a loaded library; pick first key if present
@@ -267,6 +279,9 @@ public class MachineLibraryPanel extends JPanel {
     }
 
     private void onSaveLibrary() {
+        if (beforeSaveLibrary != null) {
+            beforeSaveLibrary.run();
+        }
         JFileChooser fc = new JFileChooser();
         fc.setFileFilter(new FileNameExtensionFilter("Machine Library (.mlib)", "mlib"));
         if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;

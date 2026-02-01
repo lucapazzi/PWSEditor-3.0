@@ -10,8 +10,10 @@ import java.awt.event.*;
 import java.awt.Stroke;
 import java.awt.geom.Point2D;
 import java.awt.geom.QuadCurve2D;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -131,6 +133,20 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     // Map to hold trigger labels for transitions
     protected Map<TransitionInterface, DraggableTriggerLabel> triggerLabels = new HashMap<>();
 
+    // Pseudostate alias support (UI-only)
+    protected final List<Point> pseudoStateAliases = new ArrayList<>();
+    protected final Map<TransitionInterface, Integer> pseudoAliasByTransition = new HashMap<>();
+    protected int hitPseudoAliasIndex = -1;
+    protected int selectedPseudoAliasIndex = -1;
+    protected int menuPseudoAliasIndex = -1;
+    protected int initialTransitionAliasIndex = -1;
+    protected int transitionSourcePseudoAliasIndex = -1;
+
+    public static class AliasData {
+        public final List<Point> pseudoAliases = new ArrayList<>();
+        public final Map<String, Integer> pseudoAliasByTransition = new LinkedHashMap<>();
+    }
+
     public StateMachinePanel(StateMachine stateMachine) {
         this.stateMachine = stateMachine;
         setBackground(Color.WHITE);
@@ -158,6 +174,13 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
 
     public void setStateMachine(StateMachine sm) {
         this.stateMachine = sm;
+        pseudoStateAliases.clear();
+        pseudoAliasByTransition.clear();
+        hitPseudoAliasIndex = -1;
+        selectedPseudoAliasIndex = -1;
+        menuPseudoAliasIndex = -1;
+        initialTransitionAliasIndex = -1;
+        transitionSourcePseudoAliasIndex = -1;
     }
 
     public boolean isShowControlHandles() {
@@ -228,6 +251,14 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
      * Updates/creates draggable trigger labels for each triggerable transition.
      */
     protected void updateTriggerLabels() {
+        // Remove alias mappings for transitions that no longer exist
+        Iterator<Map.Entry<TransitionInterface, Integer>> aliasIt = pseudoAliasByTransition.entrySet().iterator();
+        while (aliasIt.hasNext()) {
+            Map.Entry<TransitionInterface, Integer> entry = aliasIt.next();
+            if (!stateMachine.getTransitions().contains(entry.getKey())) {
+                aliasIt.remove();
+            }
+        }
         // Remove labels for transitions no longer triggerable or removed
         Iterator<Map.Entry<TransitionInterface, DraggableTriggerLabel>> it = triggerLabels.entrySet().iterator();
         while (it.hasNext()) {
@@ -252,8 +283,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                     // Compute default position.
                     State sourceState = (State) t.getSource();
                     State targetState = (State) t.getTarget();
-                    Point sourcePos = sourceState.getPosition();
-                    Point targetPos = targetState.getPosition();
+                    Point sourcePos = getStatePositionForTransition(sourceState, t, true);
+                    Point targetPos = getStatePositionForTransition(targetState, t, false);
                     int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                     int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
                     Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -347,6 +378,12 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 g2d.drawString(name, textX, textY);
             }
         }
+        for (Point aliasPos : pseudoStateAliases) {
+            g2d.setColor(Color.BLACK);
+            g2d.fillOval(aliasPos.x, aliasPos.y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+            g2d.setColor(Color.BLACK);
+            g2d.drawOval(aliasPos.x, aliasPos.y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+        }
         g2d.setStroke(oldStroke);
     }
 
@@ -374,8 +411,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         // Get centers of source and target.
         State sourceState = (State) t.getSource();
         State targetState = (State) t.getTarget();
-        Point sourcePos = sourceState.getPosition();
-        Point targetPos = targetState.getPosition();
+        Point sourcePos = getStatePositionForTransition(sourceState, t, true);
+        Point targetPos = getStatePositionForTransition(targetState, t, false);
         int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
         int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
         Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
@@ -506,6 +543,170 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         return new Point2D.Double(dx / length, dy / length);
     }
 
+    protected boolean isPseudoState(StateInterface state) {
+        return state != null && "PseudoState".equals(state.getName());
+    }
+
+    protected StateInterface getPseudoStateOrNull() {
+        if (stateMachine == null) return null;
+        StateInterface pseudo = stateMachine.getPseudoState();
+        if (pseudo != null) return pseudo;
+        for (StateInterface s : stateMachine.getStates()) {
+            if (isPseudoState(s)) return s;
+        }
+        return null;
+    }
+
+    protected int getTotalPseudoAliasCount() {
+        return (getPseudoStateOrNull() == null ? 0 : 1) + pseudoStateAliases.size();
+    }
+
+    protected int getPseudoAliasIndexAt(Point p) {
+        for (int i = 0; i < pseudoStateAliases.size(); i++) {
+            Point pos = pseudoStateAliases.get(i);
+            Rectangle rect = new Rectangle(pos.x, pos.y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+            if (rect.contains(p)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    protected void createPseudoAliasAt(Point clickPoint) {
+        int radius = PSEUDO_DIAMETER / 2;
+        int centerX = clickPoint.x;
+        int centerY = clickPoint.y;
+        if (snapToGrid) {
+            Point snapped = snap(new Point(centerX, centerY));
+            centerX = snapped.x;
+            centerY = snapped.y;
+        }
+        Point topLeft = new Point(centerX - radius, centerY - radius);
+        StateInterface pseudo = getPseudoStateOrNull();
+        if (pseudo != null) {
+            Point pseudoPos = ((State) pseudo).getPosition();
+            if (pseudoPos != null && pseudoPos.equals(topLeft)) {
+                return;
+            }
+        }
+        for (Point alias : pseudoStateAliases) {
+            if (alias.equals(topLeft)) {
+                return;
+            }
+        }
+        pseudoStateAliases.add(topLeft);
+        repaint();
+    }
+
+    protected void rememberPseudoAliasForTransition(TransitionInterface t, int aliasIndex) {
+        if (t == null) return;
+        if (aliasIndex >= 0 && aliasIndex < pseudoStateAliases.size()) {
+            pseudoAliasByTransition.put(t, aliasIndex);
+        } else {
+            pseudoAliasByTransition.remove(t);
+        }
+    }
+
+    protected void clearPseudoAliasForTransition(TransitionInterface t) {
+        if (t == null) return;
+        pseudoAliasByTransition.remove(t);
+    }
+
+    protected void removePseudoAliasAt(int aliasIndex) {
+        if (aliasIndex < 0 || aliasIndex >= pseudoStateAliases.size()) return;
+        pseudoStateAliases.remove(aliasIndex);
+        Iterator<Map.Entry<TransitionInterface, Integer>> it = pseudoAliasByTransition.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<TransitionInterface, Integer> entry = it.next();
+            Integer idx = entry.getValue();
+            if (idx == null) {
+                it.remove();
+            } else if (idx == aliasIndex) {
+                it.remove();
+            } else if (idx > aliasIndex) {
+                entry.setValue(idx - 1);
+            }
+        }
+    }
+
+    protected void deletePrimaryPseudoAlias() {
+        if (pseudoStateAliases.isEmpty()) return;
+        StateInterface pseudo = getPseudoStateOrNull();
+        if (pseudo == null) return;
+        Point promoted = new Point(pseudoStateAliases.get(0));
+        removePseudoAliasAt(0);
+        ((State) pseudo).setPosition(promoted);
+    }
+
+    public AliasData exportAliasData() {
+        AliasData data = new AliasData();
+        for (Point pos : pseudoStateAliases) {
+            if (pos != null) {
+                data.pseudoAliases.add(new Point(pos));
+            }
+        }
+        for (Map.Entry<TransitionInterface, Integer> entry : pseudoAliasByTransition.entrySet()) {
+            TransitionInterface t = entry.getKey();
+            Integer aliasIndex = entry.getValue();
+            if (!(t instanceof Transition) || aliasIndex == null) continue;
+            String id = ((Transition) t).getId();
+            if (id == null || id.isBlank()) continue;
+            if (aliasIndex < 0 || aliasIndex >= pseudoStateAliases.size()) continue;
+            data.pseudoAliasByTransition.put(id, aliasIndex);
+        }
+        return data;
+    }
+
+    public void importAliasData(AliasData data) {
+        pseudoStateAliases.clear();
+        pseudoAliasByTransition.clear();
+        if (data == null) {
+            repaint();
+            return;
+        }
+        for (Point pos : data.pseudoAliases) {
+            if (pos != null) {
+                pseudoStateAliases.add(new Point(pos));
+            }
+        }
+        if (!data.pseudoAliasByTransition.isEmpty()) {
+            Map<String, TransitionInterface> transitionById = new HashMap<>();
+            for (TransitionInterface t : stateMachine.getTransitions()) {
+                if (t instanceof Transition) {
+                    String id = ((Transition) t).getId();
+                    if (id != null && !id.isBlank()) {
+                        transitionById.put(id, t);
+                    }
+                }
+            }
+            for (Map.Entry<String, Integer> entry : data.pseudoAliasByTransition.entrySet()) {
+                String id = entry.getKey();
+                Integer aliasIndex = entry.getValue();
+                if (id == null || aliasIndex == null) continue;
+                if (aliasIndex < 0 || aliasIndex >= pseudoStateAliases.size()) continue;
+                TransitionInterface t = transitionById.get(id);
+                if (t != null) {
+                    rememberPseudoAliasForTransition(t, aliasIndex);
+                }
+            }
+        }
+        repaint();
+    }
+
+    protected Point getStatePositionForTransition(StateInterface state, TransitionInterface t, boolean source) {
+        if (state == null) return null;
+        if (isPseudoState(state) && (source || (t != null && t.getSource() == t.getTarget()))) {
+            Integer idx = pseudoAliasByTransition.get(t);
+            if (idx != null) {
+                if (idx >= 0 && idx < pseudoStateAliases.size()) {
+                    return pseudoStateAliases.get(idx);
+                }
+                pseudoAliasByTransition.remove(t);
+            }
+        }
+        return ((State) state).getPosition();
+    }
+
     private void drawArrowHead(Graphics2D g2d, Point p0, Point p2, Point control) {
         double tangentX = p2.x - control.x;
         double tangentY = p2.y - control.y;
@@ -527,6 +728,15 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     }
 
     protected StateInterface getStateAt(Point p) {
+        hitPseudoAliasIndex = -1;
+        int aliasIndex = getPseudoAliasIndexAt(p);
+        if (aliasIndex >= 0) {
+            StateInterface pseudo = getPseudoStateOrNull();
+            if (pseudo != null) {
+                hitPseudoAliasIndex = aliasIndex;
+                return pseudo;
+            }
+        }
         List<StateInterface> states = stateMachine.getStates();
         for (StateInterface state : states) {
             Point pos = ((State) state).getPosition();
@@ -598,6 +808,10 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             label.setBounds(r.x + px, r.y + py, r.width, r.height);
         }
 
+        for (Point aliasPos : pseudoStateAliases) {
+            aliasPos.translate(px, py);
+        }
+
         repaint();
     }
 
@@ -666,12 +880,20 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         StateInterface state = getStateAt(p);
         if (state != null) {
             selectedState = state;
-            Point posState = ((State) state).getPosition();
-            dragOffset = new Point(p.x - posState.x, p.y - posState.y);
+            selectedPseudoAliasIndex = -1;
+            if (isPseudoState(state) && hitPseudoAliasIndex >= 0 && hitPseudoAliasIndex < pseudoStateAliases.size()) {
+                selectedPseudoAliasIndex = hitPseudoAliasIndex;
+                Point aliasPos = pseudoStateAliases.get(selectedPseudoAliasIndex);
+                dragOffset = new Point(p.x - aliasPos.x, p.y - aliasPos.y);
+            } else {
+                Point posState = ((State) state).getPosition();
+                dragOffset = new Point(p.x - posState.x, p.y - posState.y);
+            }
             canvasDragActive = false;
             canvasDragLast = null;
         } else {
             selectedState = null;
+            selectedPseudoAliasIndex = -1;
             if (SwingUtilities.isLeftMouseButton(e)) {
                 canvasDragActive = true;
                 canvasDragLast = p;
@@ -691,7 +913,13 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
 
         // Snap states and control points to grid on release (snap using state center)
         if (snapToGrid) {
-            if (selectedState != null) {
+            if (selectedPseudoAliasIndex >= 0 && selectedPseudoAliasIndex < pseudoStateAliases.size()) {
+                Point pos = pseudoStateAliases.get(selectedPseudoAliasIndex);
+                int r = PSEUDO_DIAMETER / 2;
+                Point center = new Point(pos.x + r, pos.y + r);
+                Point snappedCenter = snap(center);
+                pos.setLocation(snappedCenter.x - r, snappedCenter.y - r);
+            } else if (selectedState != null) {
                 State st = (State) selectedState;
                 Point pos = st.getPosition();
                 int d = st.getName().equals("PseudoState") ? PSEUDO_DIAMETER : DIAMETER;
@@ -712,6 +940,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         selectedTransitionForControl = null;
         controlDragOffset = null;
         selectedState = null;
+        selectedPseudoAliasIndex = -1;
         dragOffset = null;
         canvasDragActive = false;
         canvasDragLast = null;
@@ -730,6 +959,20 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             Point newPoint = e.getPoint();
             Point newControlPoint = new Point(newPoint.x - controlDragOffset.x, newPoint.y - controlDragOffset.y);
             ((Transition) selectedTransitionForControl).setControlPoint(newControlPoint);
+            repaint();
+        } else if (selectedPseudoAliasIndex >= 0 && dragOffset != null) {
+            Point newPoint = e.getPoint();
+            int rawX = newPoint.x - dragOffset.x;
+            int rawY = newPoint.y - dragOffset.y;
+            int r = PSEUDO_DIAMETER / 2;
+            if (snapToGrid) {
+                Point center = new Point(rawX + r, rawY + r);
+                Point snappedCenter = snap(center);
+                rawX = snappedCenter.x - r;
+                rawY = snappedCenter.y - r;
+            }
+            Point aliasPos = pseudoStateAliases.get(selectedPseudoAliasIndex);
+            aliasPos.setLocation(rawX, rawY);
             repaint();
         } else if (selectedState != null && dragOffset != null) {
             Point newPoint = e.getPoint();
@@ -797,6 +1040,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 if (!exists) {
                     TransitionInterface newTransition = new Transition(pseudo, clickedState, true, "");
                     stateMachine.addTransition(newTransition);
+                    rememberPseudoAliasForTransition(newTransition, initialTransitionAliasIndex);
                         // Schedule semantics recalculation if inside PWSEditor
                         java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
                         if (win instanceof pws.editor.PWSEditor) {
@@ -814,6 +1058,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             JOptionPane.showMessageDialog(this, "Select a valid state (not PseudoState).");
         }
         initialTransitionMode = false;
+        initialTransitionAliasIndex = -1;
         repaint();
     }
 
@@ -822,6 +1067,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         if (clickedState != null) {
                 if (transitionSourceState == null) {
                 transitionSourceState = clickedState;
+                if (isPseudoState(clickedState) && hitPseudoAliasIndex >= 0) {
+                    transitionSourcePseudoAliasIndex = hitPseudoAliasIndex;
+                } else {
+                    transitionSourcePseudoAliasIndex = -1;
+                }
                 // Debug: link mode source selection (commented out)
                 // System.out.println("Link mode: Source state selected: " + transitionSourceState.getName());
             } else {
@@ -831,6 +1081,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                         JOptionPane.showMessageDialog(this, "Cannot create transition to PseudoState.");
                         linkMode = false;
                         transitionSourceState = null;
+                        transitionSourcePseudoAliasIndex = -1;
                         return;
                     }
                     String trigger = JOptionPane.showInputDialog(this, "Enter trigger event (leave blank for autonomous):");
@@ -838,6 +1089,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                             (trigger == null || trigger.trim().isEmpty());
                     TransitionInterface newTransition = new Transition(transitionSourceState, clickedState, autonomous, trigger);
                     stateMachine.addTransition(newTransition);
+                    if (isPseudoState(transitionSourceState)) {
+                        rememberPseudoAliasForTransition(newTransition, transitionSourcePseudoAliasIndex);
+                    }
                     // Schedule semantics recalculation if inside PWSEditor
                     java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
                     if (win instanceof pws.editor.PWSEditor) {
@@ -851,6 +1105,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 }
                 linkMode = false;
                 transitionSourceState = null;
+                transitionSourcePseudoAliasIndex = -1;
             }
             repaint();
         } else {
@@ -869,6 +1124,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         }
         StateInterface state = getStateAt(p);
         if (state != null) {
+            menuPseudoAliasIndex = isPseudoState(state) ? hitPseudoAliasIndex : -1;
             showPopupMenuForState(e, state);
         } else {
             showEmptySpacePopup(e);
@@ -882,6 +1138,12 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             addNewStateAt(e.getPoint());
         });
         popup.add(addStateItem);
+
+        JMenuItem addPseudoAliasItem = new JMenuItem("Create pseudostate alias");
+        addPseudoAliasItem.addActionListener(ae -> {
+            createPseudoAliasAt(e.getPoint());
+        });
+        popup.add(addPseudoAliasItem);
 
         popup.addSeparator();
 
@@ -1046,17 +1308,32 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         // System.out.println("showPopupMenuForState invoked for state: " + state.getName());
         JPopupMenu popup = new JPopupMenu();
 
-        if (state.getName().equals("PseudoState")) {
+        if (isPseudoState(state)) {
             // Pseudo-state menu
             JMenuItem addInitialTransItem = new JMenuItem("Add initial transition");
             addInitialTransItem.addActionListener(ae -> {
+                initialTransitionAliasIndex = menuPseudoAliasIndex;
                 enableInitialTransitionMode();
             });
             popup.add(addInitialTransItem);
 
-            JMenuItem infoItem = new JMenuItem("Pseudostate not deletable");
-            infoItem.setEnabled(false);
-            popup.add(infoItem);
+            if (getTotalPseudoAliasCount() > 1) {
+                JMenuItem deleteAliasItem = new JMenuItem("Delete pseudostate alias");
+                deleteAliasItem.addActionListener(ae -> {
+                    if (menuPseudoAliasIndex >= 0) {
+                        removePseudoAliasAt(menuPseudoAliasIndex);
+                    } else {
+                        deletePrimaryPseudoAlias();
+                    }
+                    menuPseudoAliasIndex = -1;
+                    repaint();
+                });
+                popup.add(deleteAliasItem);
+            } else {
+                JMenuItem infoItem = new JMenuItem("Pseudostate alias cannot be deleted");
+                infoItem.setEnabled(false);
+                popup.add(infoItem);
+            }
         } else {
             // Normal state menu
             // Create transition item - only if state is not the pseudostate
@@ -1103,6 +1380,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     public void enableLinkModeWithSource(StateInterface sourceState) {
         linkMode = true;
         transitionSourceState = sourceState;
+        transitionSourcePseudoAliasIndex = -1;
     }
 
     /**
@@ -1117,6 +1395,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
 //        if (t instanceof PWSTransition) {
 //            clearAnnotationsForTransition((PWSTransition) t);
 //        }
+        clearPseudoAliasForTransition(t);
         // Remove the transition from the global list.
         stateMachine.getTransitions().remove(t);
 
