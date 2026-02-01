@@ -950,8 +950,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             toggleEnableItem.addActionListener(ae -> {
                 pt.setEnabled(!pt.isEnabled());
                 // Schedule semantics recalculation
-                java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
-                if (win instanceof pws.editor.PWSEditor pwsEd) {
+                pws.editor.PWSEditor pwsEd = findOwningPWSEditor();
+                if (pwsEd != null) {
                     pwsEd.scheduleSemanticsRecalculation();
                     if (pwsEd.getDocument() != null) {
                         pwsEd.getDocument().setDirty(true);

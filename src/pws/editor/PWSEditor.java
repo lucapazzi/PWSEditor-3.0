@@ -9,6 +9,7 @@ import machinery.StateMachine;
 import pws.PWSState;
 import pws.PWSStateMachine;
 import pws.editor.annotation.StateSemanticsAnnotation;
+import pws.editor.semantics.Semantics;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -40,6 +41,7 @@ public class PWSEditor extends JFrame {
     private StateMachineEditor baseEditor;  // Editor for the current state machine
     private PWSPanel assemblyPanel;         // Panel to manage the Assembly
     private MachineLibraryPanel libraryPanel; // inline library panel (exposed to menu actions)
+    private InitialConfigurationsPanel initialConfigsPanel;
     private JTabbedPane tabbedPane;         // Panel to switch between baseEditor and assemblyPanel
     private StateMachineEditor embeddedEditor = null; // single reusable embedded editor for assembly machines
     private JPanel machineEditorContainer; // promoted so removal callback can clear it
@@ -187,13 +189,24 @@ public class PWSEditor extends JFrame {
         rightHeader.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
         rightHeader.setFont(rightHeader.getFont().deriveFont(Font.BOLD));
         assemblyWrapper.add(rightHeader, BorderLayout.NORTH);
+        JPanel assemblyContent = new JPanel(new BorderLayout());
         if (assemblyPanel != null) {
-            assemblyWrapper.add(assemblyPanel, BorderLayout.CENTER);
+            assemblyContent.add(assemblyPanel, BorderLayout.CENTER);
         } else {
             JLabel placeholderAsm = new JLabel("No controller loaded. Use File -> New or Open.", SwingConstants.CENTER);
             placeholderAsm.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
-            assemblyWrapper.add(placeholderAsm, BorderLayout.CENTER);
+            assemblyContent.add(placeholderAsm, BorderLayout.CENTER);
         }
+
+        initialConfigsPanel = new InitialConfigurationsPanel();
+        if (assemblyPanel == null) {
+            initialConfigsPanel.setPlaceholder("No controller loaded.");
+        }
+
+        JSplitPane assemblySplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, assemblyContent, initialConfigsPanel);
+        assemblySplit.setResizeWeight(0.7);
+        assemblySplit.setOneTouchExpandable(true);
+        assemblyWrapper.add(assemblySplit, BorderLayout.CENTER);
 
         JPanel libraryWrapper = new JPanel(new BorderLayout());
         JLabel libHeader = new JLabel("Library", SwingConstants.CENTER);
@@ -359,6 +372,8 @@ public class PWSEditor extends JFrame {
                         topCardsLayout.show(topSwitchPanel, "library");
                     }
                 });
+                // Detach/clone changes the assembly mapping, so refresh semantics/initial configs
+                SwingUtilities.invokeLater(() -> scheduleSemanticsRecalculation());
             }
 
             @Override
@@ -485,6 +500,8 @@ public class PWSEditor extends JFrame {
                 librarySelected(key);
             }
         });
+
+        refreshInitialConfigurationsPanel();
     }
 
     private JMenuBar createMenuBar() {
@@ -752,6 +769,7 @@ public class PWSEditor extends JFrame {
                 (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
             panel.refreshStateAnnotationSizes();
             panel.repaint();
+            refreshInitialConfigurationsPanel();
             markDocumentDirty();
         });
         viewMenu.add(showExitZoneMachineIdsItem);
@@ -1032,6 +1050,9 @@ public class PWSEditor extends JFrame {
     /** Schedule an asynchronous semantics recalculation for the current model. */
     public void scheduleSemanticsRecalculation() {
         if (this.pwsStateMachine == null) return;
+
+        // Keep initial configurations panel in sync with assembly changes
+        SwingUtilities.invokeLater(this::refreshInitialConfigurationsPanel);
         
         // Cancel any previous running worker to avoid duplicate/interleaved computations
         if (currentSemanticsWorker != null && !currentSemanticsWorker.isDone()) {
@@ -1067,6 +1088,7 @@ public class PWSEditor extends JFrame {
                             panel.repaint();
                         }
                     } catch (Exception ignore) {}
+                    refreshInitialConfigurationsPanel();
                     if (currentDocument != null) currentDocument.setDirty(true);
                     updateWindowTitle();
                     runLTLChecks(false);
@@ -1159,6 +1181,7 @@ public class PWSEditor extends JFrame {
                             panel.restoreVisibleStateAnnotations();
                             panel.repaint();
                         } catch (Exception ignore) {}
+                        refreshInitialConfigurationsPanel();
                         // Clear dirty flag and refresh title
                         currentDocument.setDirty(false);
                         updateWindowTitle();
@@ -1180,6 +1203,77 @@ public class PWSEditor extends JFrame {
             this.currentDocument.setDirty(true);
             updateWindowTitle();
         }
+    }
+
+    private void refreshInitialConfigurationsPanel() {
+        if (initialConfigsPanel == null) return;
+        if (pwsStateMachine == null || pwsStateMachine.getAssembly() == null) {
+            initialConfigsPanel.setPlaceholder("No controller loaded.");
+            return;
+        }
+        try {
+            Semantics init = pwsStateMachine.getAssembly().calculateInitialStateSemantics();
+            initialConfigsPanel.setSemantics(init);
+            if (pwsStateMachine instanceof PWSStateMachine pwsMachine) {
+                initialConfigsPanel.setExitZones(
+                    pwsMachine.findExitZones(init),
+                    StateSemanticsAnnotation.isShowExitZoneMachineIds()
+                );
+                Semantics closure = computeExitZoneClosure(pwsMachine, init);
+                initialConfigsPanel.setClosure(closure);
+            } else {
+                initialConfigsPanel.setExitZones(null, StateSemanticsAnnotation.isShowExitZoneMachineIds());
+                initialConfigsPanel.setClosure(null);
+            }
+        } catch (Exception ex) {
+            initialConfigsPanel.setPlaceholder("Initial configurations unavailable.");
+        }
+    }
+
+    private Semantics computeExitZoneClosure(PWSStateMachine machine, Semantics initial) {
+        if (machine == null || initial == null || machine.getAssembly() == null) {
+            return null;
+        }
+        Semantics closure = initial.clone();
+        int maxIterations = 1000;
+        for (int i = 0; i < maxIterations; i++) {
+            java.util.Set<pws.editor.semantics.ExitZone> zones = machine.findExitZones(closure);
+            if (zones == null || zones.isEmpty()) {
+                break;
+            }
+            Semantics next = closure;
+            for (pws.editor.semantics.ExitZone ez : zones) {
+                if (ez == null || ez.getSource() == null || ez.getTarget() == null || ez.getTransition() == null) {
+                    continue;
+                }
+                String machineId = ez.getStateMachineId();
+                if (machineId == null || machineId.isBlank()) {
+                    machineId = ez.getSource().getMachineId();
+                }
+                if (machineId == null || machineId.isBlank()) {
+                    continue;
+                }
+                String sourceState = ez.getSource().getStateName();
+                String targetState = ez.getTarget().getStateName();
+                if (sourceState == null || targetState == null) {
+                    continue;
+                }
+                Semantics codomain = closure.computeCodomain(
+                    machineId,
+                    machine.getAssembly(),
+                    sourceState,
+                    targetState
+                );
+                if (codomain != null && !codomain.ISEMPTY()) {
+                    next = next.OR(codomain);
+                }
+            }
+            if (next.equals(closure)) {
+                break;
+            }
+            closure = next;
+        }
+        return closure;
     }
 
     public void updateWindowTitle() {
