@@ -1,0 +1,52 @@
+{
+  "formatVersion": 1,
+  "type": "pws-workspace",
+  "controller": {
+    "type": "pws",
+    "name": "TestSmoke",
+    "states": [
+      {
+        "id": 0,
+        "name": "PseudoState",
+        "x": 20,
+        "y": 20,
+        "constraints": {
+          "raw": "ANY",
+          "any": true
+        },
+        "rawConstraintText": "ANY"
+      }
+    ],
+    "transitions": [],
+    "pseudoState": 0
+  },
+  "assembly": {
+    "id": "PWSEditorAssembly",
+    "machines": {
+      "m1": {
+        "machine": {
+          "type": "base",
+          "name": "M1",
+          "states": [
+            {
+              "id": 0,
+              "name": "PseudoState",
+              "x": 20,
+              "y": 20
+            }
+          ],
+          "transitions": [],
+          "pseudoState": 0
+        }
+      }
+    },
+    "ltlFormulas": []
+  },
+  "library": {
+    "machines": {}
+  },
+  "annotations": {
+    "states": [],
+    "transitions": []
+  }
+}

@@ -89,6 +89,7 @@ public class PWSFileManager {
                     // Show controller editor when loading a model
                     editor.setControllerEditorVisible(true);
                     editor.rebuildUIForNewModel(model);
+                    SwingUtilities.invokeLater(() -> editor.applyWorkspaceUIState(loaded.getUiState()));
 
                     try {
                         PWSStateMachinePanel panel = (PWSStateMachinePanel) editor.getBaseEditor().getStateMachinePanel();
@@ -162,7 +163,7 @@ public class PWSFileManager {
             editor.syncEmbeddedLibraryAliasData();
             PWSStateMachine model = doc.getModel();
             PWSStateMachinePanel panel = (PWSStateMachinePanel) editor.getBaseEditor().getStateMachinePanel();
-            JsonModelSerializer.savePwsWorkspace(model, panel.exportAnnotations(), file);
+            JsonModelSerializer.savePwsWorkspace(model, panel.exportAnnotations(), editor.getWorkspaceUIState(), file);
 
             doc.setFile(file);
             doc.setDirty(false);

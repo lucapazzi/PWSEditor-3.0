@@ -45,10 +45,14 @@ public final class JsonModelSerializer {
     public static final class LoadedWorkspace {
         private final PWSStateMachine model;
         private final PWSStateMachinePanel.AnnotationData annotations;
+        private final WorkspaceUI uiState;
 
-        public LoadedWorkspace(PWSStateMachine model, PWSStateMachinePanel.AnnotationData annotations) {
+        public LoadedWorkspace(PWSStateMachine model,
+                               PWSStateMachinePanel.AnnotationData annotations,
+                               WorkspaceUI uiState) {
             this.model = model;
             this.annotations = annotations;
+            this.uiState = uiState;
         }
 
         public PWSStateMachine getModel() {
@@ -57,6 +61,10 @@ public final class JsonModelSerializer {
 
         public PWSStateMachinePanel.AnnotationData getAnnotations() {
             return annotations;
+        }
+
+        public WorkspaceUI getUiState() {
+            return uiState;
         }
     }
 
@@ -78,8 +86,17 @@ public final class JsonModelSerializer {
         }
     }
 
+    public static final class WorkspaceUI {
+        public Integer windowWidth;
+        public Integer windowHeight;
+        public Integer mainDivider;
+        public Integer rightDivider;
+        public Integer assemblyDivider;
+    }
+
     public static void savePwsWorkspace(PWSStateMachine model,
                                         PWSStateMachinePanel.AnnotationData annotations,
+                                        WorkspaceUI uiState,
                                         File file) throws IOException {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("formatVersion", FORMAT_VERSION);
@@ -89,6 +106,9 @@ public final class JsonModelSerializer {
         root.put("assembly", assemblyToMap(assembly));
         root.put("library", machineLibraryToMap(assembly.getMachineLibrary()));
         root.put("annotations", annotationDataToMap(annotations));
+        if (uiState != null) {
+            root.put("ui", uiStateToMap(uiState));
+        }
         JsonIO.writeFile(file, root);
     }
 
@@ -112,7 +132,10 @@ public final class JsonModelSerializer {
         Map<String, Object> annMap = asMap(root.get("annotations"), "annotations");
         PWSStateMachinePanel.AnnotationData annotations = annotationDataFromMap(annMap);
 
-        return new LoadedWorkspace(controller, annotations);
+        Map<String, Object> uiMap = asMap(root.get("ui"), null);
+        WorkspaceUI uiState = uiStateFromMap(uiMap);
+
+        return new LoadedWorkspace(controller, annotations, uiState);
     }
 
     public static void saveStateMachine(StateMachine machine, File file) throws IOException {
@@ -1060,6 +1083,34 @@ public final class JsonModelSerializer {
             return ((Number) v).intValue();
         }
         return null;
+    }
+
+    private static Map<String, Object> uiStateToMap(WorkspaceUI ui) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (ui.windowWidth != null) map.put("windowWidth", ui.windowWidth);
+        if (ui.windowHeight != null) map.put("windowHeight", ui.windowHeight);
+        if (ui.mainDivider != null) map.put("mainDivider", ui.mainDivider);
+        if (ui.rightDivider != null) map.put("rightDivider", ui.rightDivider);
+        if (ui.assemblyDivider != null) map.put("assemblyDivider", ui.assemblyDivider);
+        return map;
+    }
+
+    private static WorkspaceUI uiStateFromMap(Map<String, Object> map) {
+        if (map == null || map.isEmpty()) {
+            return null;
+        }
+        WorkspaceUI ui = new WorkspaceUI();
+        ui.windowWidth = getNullableInt(map, "windowWidth");
+        ui.windowHeight = getNullableInt(map, "windowHeight");
+        ui.mainDivider = getNullableInt(map, "mainDivider");
+        ui.rightDivider = getNullableInt(map, "rightDivider");
+        ui.assemblyDivider = getNullableInt(map, "assemblyDivider");
+        if (ui.windowWidth == null && ui.windowHeight == null
+                && ui.mainDivider == null && ui.rightDivider == null
+                && ui.assemblyDivider == null) {
+            return null;
+        }
+        return ui;
     }
 
     private static Double getNullableDouble(Map<String, Object> map, String key) {

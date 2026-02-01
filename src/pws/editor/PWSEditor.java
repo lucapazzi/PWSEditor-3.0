@@ -10,6 +10,7 @@ import pws.PWSState;
 import pws.PWSStateMachine;
 import pws.editor.annotation.StateSemanticsAnnotation;
 import pws.editor.semantics.Semantics;
+import serializer.JsonModelSerializer;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -49,6 +50,9 @@ public class PWSEditor extends JFrame {
     private CardLayout topCardsLayout;      // CardLayout for assembly/library switch
     private JPanel topSwitchPanel;          // Panel containing assembly/library cards
     private JToggleButton btnLibraryToggle; // Library toggle button reference
+    private JSplitPane mainSplitPane;
+    private JSplitPane rightSplitPane;
+    private JSplitPane assemblySplitPane;
     // Whether the left-hand controller editor should be shown.
     private boolean controllerEditorVisible = false;
     // Menu items that depend on the controller/editor being present
@@ -204,10 +208,10 @@ public class PWSEditor extends JFrame {
             initialConfigsPanel.setPlaceholder("No controller loaded.");
         }
 
-        JSplitPane assemblySplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, assemblyContent, initialConfigsPanel);
-        assemblySplit.setResizeWeight(0.7);
-        assemblySplit.setOneTouchExpandable(true);
-        assemblyWrapper.add(assemblySplit, BorderLayout.CENTER);
+        assemblySplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, assemblyContent, initialConfigsPanel);
+        assemblySplitPane.setResizeWeight(0.7);
+        assemblySplitPane.setOneTouchExpandable(true);
+        assemblyWrapper.add(assemblySplitPane, BorderLayout.CENTER);
 
         JPanel libraryWrapper = new JPanel(new BorderLayout());
         JLabel libHeader = new JLabel("Library", SwingConstants.CENTER);
@@ -253,13 +257,13 @@ public class PWSEditor extends JFrame {
         machineEditorContainer.add(placeholder, BorderLayout.CENTER);
 
         // Vertical split on the right: top cards (assembly/library) above the embedded editor
-        JSplitPane rightSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, topCardPanel, machineEditorContainer);
-        rightSplit.setResizeWeight(0.25);
-        rightSplit.setOneTouchExpandable(true);
+        rightSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, topCardPanel, machineEditorContainer);
+        rightSplitPane.setResizeWeight(0.25);
+        rightSplitPane.setOneTouchExpandable(true);
 
-        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftWrapper, rightSplit);
-        split.setResizeWeight(0.7);
-        getContentPane().add(split, BorderLayout.CENTER);
+        mainSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftWrapper, rightSplitPane);
+        mainSplitPane.setResizeWeight(0.7);
+        getContentPane().add(mainSplitPane, BorderLayout.CENTER);
 
         // Wire selection from the assembly panel to show the selected machine in the embedded editor
         if (assemblyPanel != null) {
@@ -1345,6 +1349,33 @@ public class PWSEditor extends JFrame {
             dlg.setVisible(true);
         });
         ltlChecksDialog.setOnRecheck(() -> runLTLChecks(true));
+    }
+
+    public JsonModelSerializer.WorkspaceUI getWorkspaceUIState() {
+        JsonModelSerializer.WorkspaceUI ui = new JsonModelSerializer.WorkspaceUI();
+        ui.windowWidth = getWidth() > 0 ? getWidth() : null;
+        ui.windowHeight = getHeight() > 0 ? getHeight() : null;
+        ui.mainDivider = (mainSplitPane != null) ? mainSplitPane.getDividerLocation() : null;
+        ui.rightDivider = (rightSplitPane != null) ? rightSplitPane.getDividerLocation() : null;
+        ui.assemblyDivider = (assemblySplitPane != null) ? assemblySplitPane.getDividerLocation() : null;
+        return ui;
+    }
+
+    public void applyWorkspaceUIState(JsonModelSerializer.WorkspaceUI ui) {
+        if (ui == null) return;
+        if (ui.windowWidth != null && ui.windowHeight != null
+                && ui.windowWidth > 0 && ui.windowHeight > 0) {
+            setSize(ui.windowWidth, ui.windowHeight);
+        }
+        if (mainSplitPane != null && ui.mainDivider != null && ui.mainDivider > 0) {
+            mainSplitPane.setDividerLocation(ui.mainDivider);
+        }
+        if (rightSplitPane != null && ui.rightDivider != null && ui.rightDivider > 0) {
+            rightSplitPane.setDividerLocation(ui.rightDivider);
+        }
+        if (assemblySplitPane != null && ui.assemblyDivider != null && ui.assemblyDivider > 0) {
+            assemblySplitPane.setDividerLocation(ui.assemblyDivider);
+        }
     }
 
     private static JWindow createSplashWindow() {

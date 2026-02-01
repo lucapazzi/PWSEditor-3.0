@@ -13,7 +13,7 @@ public class SaveLoadSmokeTest {
 
         String filename = "test_pws.pws";
         System.out.println("Saving to: " + filename);
-        JsonModelSerializer.savePwsWorkspace(p, null, new File(filename));
+        JsonModelSerializer.savePwsWorkspace(p, null, null, new File(filename));
 
         System.out.println("Loading from: " + filename);
         JsonModelSerializer.LoadedWorkspace loaded = JsonModelSerializer.loadPwsWorkspace(new File(filename));

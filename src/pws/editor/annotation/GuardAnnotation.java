@@ -235,6 +235,22 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                             return;
                         }
                     }
+                    if (stateSem != null && !stateSem.ISEMPTY()) {
+                        Semantics otherCoverage = collectTriggeredCoverage(ps, pt, triggerKey);
+                        Semantics union = new Semantics(assembly.getAssemblyId());
+                        if (otherCoverage != null && !otherCoverage.ISEMPTY()) {
+                            union = union.OR(otherCoverage);
+                        }
+                        if (!guardSem.ISEMPTY()) {
+                            union = union.OR(guardSem);
+                        }
+                        if (!stateSem.implies(union)) {
+                            issueLevel = GuardIssueLevel.ORANGE;
+                            problemReason = "Incomplete guard partition - some source semantics not covered for trigger '"
+                                    + triggerKey + "'";
+                            return;
+                        }
+                    }
                 }
             }
         }
