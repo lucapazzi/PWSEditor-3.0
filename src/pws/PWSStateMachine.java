@@ -111,10 +111,7 @@ public class PWSStateMachine extends StateMachine {
                 HashSet<ExitZone> ssZones = new HashSet<>(this.findExitZones(ps.getStateSemantics()));
                 HashSet<ExitZone> csZones = new HashSet<>();
                 if (hasExplicitConstraints(ps)) {
-                    Semantics cs = ps.getConstraintsSemantics();
-                    if (cs != null) {
-                        csZones.addAll(this.findExitZones(cs));
-                    }
+                    csZones.addAll(this.findProvisionalExitZones(ps));
                 }
 
                 // CS-only: in CS but not in SS
@@ -193,10 +190,7 @@ public class PWSStateMachine extends StateMachine {
         HashSet<ExitZone> ssZones = new HashSet<>(this.findExitZones(ps.getStateSemantics()));
         HashSet<ExitZone> csZones = new HashSet<>();
         if (hasExplicitConstraints(ps)) {
-            Semantics cs = ps.getConstraintsSemantics();
-            if (cs != null) {
-                csZones.addAll(this.findExitZones(cs));
-            }
+            csZones.addAll(this.findProvisionalExitZones(ps));
         }
 
         // CS-only: in CS but not in SS
@@ -681,6 +675,114 @@ public class PWSStateMachine extends StateMachine {
         }
         Semantics cs = ps.getConstraintsSemantics();
         return cs != null && !cs.getConfigurations().isEmpty();
+    }
+
+    private HashSet<ExitZone> findProvisionalExitZones(PWSState ps) {
+        HashSet<ExitZone> zones = new HashSet<>();
+        if (ps == null || assembly == null) {
+            return zones;
+        }
+
+        // Use raw constraints to avoid expanding unspecified machines into full configurations.
+        List<List<BasicStateProposition>> rawLines = parseRawConstraintLines(ps.getRawConstraintText());
+        if (!rawLines.isEmpty()) {
+            Map<String, StateMachine> stateMachines = assembly.getStateMachines();
+            for (List<BasicStateProposition> line : rawLines) {
+                for (BasicStateProposition bsp : line) {
+                    if (bsp == null) {
+                        continue;
+                    }
+                    StateMachine machine = stateMachines != null ? stateMachines.get(bsp.getMachineId()) : null;
+                    if (machine == null) {
+                        continue;
+                    }
+                    List<TransitionInterface> allTransitions = machine.getTransitions();
+                    if (allTransitions == null) {
+                        continue;
+                    }
+                    for (TransitionInterface t : allTransitions) {
+                        if (!(t instanceof Transition)) {
+                            continue;
+                        }
+                        Transition transition = (Transition) t;
+                        if (!transition.isEnabled() || !transition.isAutonomous()) {
+                            continue;
+                        }
+                        State sourceState = (State) transition.getSource();
+                        if (sourceState == null || !bsp.getStateName().equals(sourceState.getName())) {
+                            continue;
+                        }
+                        State targetState = (State) transition.getTarget();
+                        if (targetState == null) {
+                            continue;
+                        }
+                        BasicStateProposition bsSource =
+                                new BasicStateProposition(bsp.getMachineId(), sourceState.getName());
+                        BasicStateProposition bsTarget =
+                                new BasicStateProposition(bsp.getMachineId(), targetState.getName());
+                        zones.add(new ExitZone(bsp.getMachineId(), transition, bsSource, bsTarget));
+                    }
+                }
+            }
+            return zones;
+        }
+
+        Semantics cs = ps.getConstraintsSemantics();
+        if (cs != null) {
+            zones.addAll(this.findExitZones(cs));
+        }
+        return zones;
+    }
+
+    private List<List<BasicStateProposition>> parseRawConstraintLines(String raw) {
+        List<List<BasicStateProposition>> lines = new ArrayList<>();
+        if (raw == null) {
+            return lines;
+        }
+        String trimmedAll = raw.trim();
+        if (trimmedAll.isEmpty() || "ANY".equalsIgnoreCase(trimmedAll)) {
+            return lines;
+        }
+
+        String[] rawLines = trimmedAll.split("[\\n;]+");
+        for (String line : rawLines) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
+                trimmed = trimmed.substring(1, trimmed.length() - 1).trim();
+            }
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            String[] pairs = trimmed.split(",");
+            List<BasicStateProposition> props = new ArrayList<>();
+            for (String pair : pairs) {
+                String p = pair.trim();
+                if (p.isEmpty()) {
+                    continue;
+                }
+                String machine = null;
+                String stateName = null;
+                if (p.contains(":")) {
+                    String[] parts = p.split(":", 2);
+                    machine = parts[0].trim();
+                    stateName = parts[1].trim();
+                } else if (p.contains(".")) {
+                    String[] parts = p.split("\\.", 2);
+                    machine = parts[0].trim();
+                    stateName = parts[1].trim();
+                }
+                if (machine != null && !machine.isBlank() && stateName != null && !stateName.isBlank()) {
+                    props.add(new BasicStateProposition(machine, stateName));
+                }
+            }
+            if (!props.isEmpty()) {
+                lines.add(props);
+            }
+        }
+        return lines;
     }
 
     public Semantics calculateAssemblyClosure() {
