@@ -3,6 +3,7 @@ package pws.editor.annotation;
 import assembly.Assembly;
 import assembly.AssemblyInterface;
 import smalgebra.AndProposition;
+import smalgebra.OrProposition;
 import smalgebra.SMProposition;
 import smalgebra.TrueProposition;
 import smalgebra.FalseProposition;
@@ -16,9 +17,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.ArrayList;
+import java.util.StringJoiner;
 import java.util.function.Consumer;
 import pws.PWSTransition;
 import pws.PWSState;
+import pws.editor.GuardEditorDialog;
 import pws.editor.semantics.Configuration;
 import pws.editor.semantics.ExitZone;
 import pws.editor.semantics.Semantics;
@@ -37,7 +40,6 @@ public class GuardAnnotation extends Annotation<SMProposition> {
     private String problemReason = null;
     private static final Color COLOR_RED = new Color(180, 0, 0);
     private static final Color COLOR_ORANGE = new Color(204, 102, 0);
-    private static final String INIT_TRIGGER = "_init";
 
     private static final class GuardSegment {
         private final String text;
@@ -112,8 +114,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
 
     @Override
     protected String buildDisplayText() {
-        // Return the text with square brackets.
-        return "[" + (content == null ? "" : content.toString()) + "]";
+        return "[" + toConfigurationDisplay(content) + "]";
     }
 
     private boolean shouldHighlightAutonomousGuard() {
@@ -125,13 +126,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
 
     private List<GuardSegment> buildGuardSegments(SMProposition prop, boolean highlightAutonomous) {
         List<GuardSegment> segments = new ArrayList<>();
-        if (!highlightAutonomous) {
-            segments.add(new GuardSegment(buildDisplayText(), false));
-            return segments;
-        }
-        segments.add(new GuardSegment("[", false));
-        appendPropositionSegments(prop, segments);
-        segments.add(new GuardSegment("]", false));
+        segments.add(new GuardSegment("[" + toConfigurationDisplay(prop) + "]", highlightAutonomous));
         return segments;
     }
 
@@ -156,6 +151,61 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             return;
         }
         segments.add(new GuardSegment(prop.toString(), false));
+    }
+
+    private String toConfigurationDisplay(SMProposition prop) {
+        if (prop == null) return "";
+        java.util.List<java.util.List<BasicStateProposition>> products = expandToProducts(prop);
+        if (products.isEmpty()) return prop.toString();
+        if (products.size() == 1 && products.get(0).isEmpty()) {
+            return "TRUE";
+        }
+        StringJoiner orJoin = new StringJoiner(", ");
+        for (java.util.List<BasicStateProposition> product : products) {
+            StringJoiner andJoin = new StringJoiner(", ");
+            for (BasicStateProposition bsp : product) {
+                andJoin.add(bsp.toString());
+            }
+            orJoin.add("(" + andJoin + ")");
+        }
+        return orJoin.toString();
+    }
+
+    private java.util.List<java.util.List<BasicStateProposition>> expandToProducts(SMProposition prop) {
+        java.util.List<java.util.List<BasicStateProposition>> result = new ArrayList<>();
+        if (prop == null || prop instanceof FalseProposition) {
+            return result; // empty
+        }
+        if (prop instanceof TrueProposition) {
+            result.add(new ArrayList<>()); // empty product
+            return result;
+        }
+        if (prop instanceof BasicStateProposition bsp) {
+            java.util.List<BasicStateProposition> single = new ArrayList<>();
+            single.add(bsp);
+            result.add(single);
+            return result;
+        }
+        if (prop instanceof AndProposition and) {
+            var left = expandToProducts(and.getLeft());
+            var right = expandToProducts(and.getRight());
+            for (var l : left) {
+                for (var r : right) {
+                    java.util.List<BasicStateProposition> combo = new ArrayList<>(l.size() + r.size());
+                    combo.addAll(l);
+                    combo.addAll(r);
+                    result.add(combo);
+                }
+            }
+            return result;
+        }
+        if (prop instanceof OrProposition or) {
+            result.addAll(expandToProducts(or.getLeft()));
+            result.addAll(expandToProducts(or.getRight()));
+            return result;
+        }
+        // fallback
+        return result;
     }
     
     /**
@@ -394,7 +444,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                         otherTriggeredCoverage = collectTriggeredCoverage(p, associatedTransition, triggerKey);
                     }
                     // Check if this is a TRUE autonomous transition (not from pseudo-state)
-                    // Initial transitions from pseudo-state are event-triggered with hidden startup event
+                    // Initial transitions from pseudo-state are event-triggered with "_init"
                     if (isTrueAutonomous) {
                         // True autonomous transitions -> use eligible reactive exit zones
                         Set<String> eligibleTargets = collectEligibleAutonomousExitTargets(p, associatedTransition);
@@ -468,13 +518,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 // Initial transitions (from pseudo-state) should reset to TRUE (fire at startup)
                 // Autonomous transitions should reset to FALSE (placeholder)
                 SMProposition defaultGuard;
-                boolean isInitialTransition = false;
-                if (associatedTransition != null) {
-                    machinery.StateInterface src = associatedTransition.getSource();
-                    if (src instanceof PWSState ps && ps.isPseudoState()) {
-                        isInitialTransition = true;
-                    }
-                }
+                boolean isInitialTransition = associatedTransition instanceof PWSTransition pt && pt.isInitialTransition();
                 
                 if (isInitialTransition) {
                     // Initial transitions reset to TRUE - "fire at startup"
@@ -496,7 +540,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             List<SMProposition> guards = (List<SMProposition>) list;
             
             // Check if this is a TRUE autonomous transition (not initial from pseudo-state)
-            // Initial transitions from pseudo-state are event-triggered with hidden startup event
+            // Initial transitions from pseudo-state are event-triggered with "_init"
             boolean isTrueAutonomousTransition = false;
             if (associatedTransition != null && associatedTransition.isAutonomous()) {
                 machinery.StateInterface src = associatedTransition.getSource();
@@ -572,7 +616,21 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 }
             }
         }
+        maybeAddAdvancedGuardEditor(popup);
         popup.show(this, e.getX(), e.getY());
+    }
+
+    private void maybeAddAdvancedGuardEditor(JPopupMenu popup) {
+        if (associatedTransition instanceof PWSTransition pt && pt.isTriggerable()) {
+            popup.addSeparator();
+            JMenuItem advancedItem = new JMenuItem("Advanced guard editor...");
+            advancedItem.addActionListener(ae -> {
+                Window owner = SwingUtilities.getWindowAncestor(GuardAnnotation.this);
+                GuardEditorDialog dialog = new GuardEditorDialog(owner, pt, assembly, this::applyGuard);
+                dialog.setVisible(true);
+            });
+            popup.add(advancedItem);
+        }
     }
 
     private void applyGuard(SMProposition guard) {
@@ -602,8 +660,8 @@ public class GuardAnnotation extends Annotation<SMProposition> {
         if (pt.isTriggerable() && pt.getTriggerEvent() != null && !pt.getTriggerEvent().isEmpty()) {
             return pt.getTriggerEvent();
         }
-        if (srcState.isPseudoState()) {
-            return INIT_TRIGGER;
+        if (pt.isInitialTransition()) {
+            return PWSTransition.INIT_TRIGGER_EVENT;
         }
         return null;
     }

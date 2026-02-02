@@ -686,7 +686,25 @@ public class PWSStateMachine extends StateMachine {
         // Use raw constraints to avoid expanding unspecified machines into full configurations.
         List<List<BasicStateProposition>> rawLines = parseRawConstraintLines(ps.getRawConstraintText());
         if (!rawLines.isEmpty()) {
+            Map<String, java.util.Set<String>> allowedStates = new java.util.HashMap<>();
+            java.util.Set<String> wildcardMachines = new java.util.HashSet<>();
             Map<String, StateMachine> stateMachines = assembly.getStateMachines();
+            java.util.Set<String> allMachineIds = stateMachines != null ? stateMachines.keySet() : java.util.Set.of();
+            for (List<BasicStateProposition> line : rawLines) {
+                java.util.Set<String> lineMachines = new java.util.HashSet<>();
+                for (BasicStateProposition bsp : line) {
+                    if (bsp == null) continue;
+                    lineMachines.add(bsp.getMachineId());
+                    allowedStates
+                            .computeIfAbsent(bsp.getMachineId(), k -> new java.util.HashSet<>())
+                            .add(bsp.getStateName());
+                }
+                for (String machineId : allMachineIds) {
+                    if (!lineMachines.contains(machineId)) {
+                        wildcardMachines.add(machineId);
+                    }
+                }
+            }
             for (List<BasicStateProposition> line : rawLines) {
                 for (BasicStateProposition bsp : line) {
                     if (bsp == null) {
@@ -720,6 +738,9 @@ public class PWSStateMachine extends StateMachine {
                                 new BasicStateProposition(bsp.getMachineId(), sourceState.getName());
                         BasicStateProposition bsTarget =
                                 new BasicStateProposition(bsp.getMachineId(), targetState.getName());
+                        if (isInternalAgainstConstraints(bsTarget, allowedStates, wildcardMachines)) {
+                            continue;
+                        }
                         zones.add(new ExitZone(bsp.getMachineId(), transition, bsSource, bsTarget));
                     }
                 }
@@ -730,8 +751,31 @@ public class PWSStateMachine extends StateMachine {
         Semantics cs = ps.getConstraintsSemantics();
         if (cs != null) {
             zones.addAll(this.findExitZones(cs));
+            zones.removeIf(ez -> isInternalAgainstConstraints(cs, ez));
         }
         return zones;
+    }
+
+    private boolean isInternalAgainstConstraints(BasicStateProposition target,
+                                                 Map<String, java.util.Set<String>> allowedStates,
+                                                 java.util.Set<String> wildcardMachines) {
+        if (target == null) return false;
+        String machineId = target.getMachineId();
+        if (wildcardMachines != null && wildcardMachines.contains(machineId)) {
+            return true;
+        }
+        java.util.Set<String> allowed = allowedStates != null ? allowedStates.get(machineId) : null;
+        return allowed != null && allowed.contains(target.getStateName());
+    }
+
+    private boolean isInternalAgainstConstraints(Semantics cs, ExitZone ez) {
+        if (cs == null || ez == null || ez.getTarget() == null || assembly == null) return false;
+        try {
+            Semantics targetAndSem = ez.getTarget().toSemantics(assembly).AND(cs);
+            return !targetAndSem.ISEMPTY();
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private List<List<BasicStateProposition>> parseRawConstraintLines(String raw) {

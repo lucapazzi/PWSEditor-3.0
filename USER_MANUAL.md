@@ -55,11 +55,11 @@ A **Part-Whole Statechart** is a behavioral modeling formalism that describes:
 | Term | Definition |
 |------|-----------|
 | **State** | A control point in a state machine where the system can reside |
-| **Pseudo-State** | An initial state (marked with a small filled circle) |
+| **Pseudo-State** | A special anchor state (small filled circle) used for initial transitions and assembly-closure semantics |
 | **Transition** | A directed arc connecting states, optionally with triggers, guards, and actions |
 | **Triggered Transition** | A transition that fires when a specific event occurs (and guard is satisfied) |
 | **Autonomous Transition** | A transition without a trigger event; fires based on guard condition alone (monitors exit zones) |
-| **Initial Transition** | A transition from the pseudo-state; triggered by a hidden `_init` event at system startup |
+| **Initial Transition** | A transition from the pseudo-state; triggered by a hidden `_init` event at system startup (the trigger is not shown and `_init` is reserved) |
 | **Guard** | A boolean condition that must be true to enable a transition |
 | **Action** | An emission (event output) that occurs when a transition fires |
 | **Constraint Semantics** | User-specified allowed configurations for a state |
@@ -101,6 +101,8 @@ Edit the main controller state machine here. The canvas displays:
 
 - **Top Section**: Toggles between **Assembly** and **Library** views
   - **Assembly Tab**: Lists component machines in the current assembly
+    - **Initial Configurations Dashboard** (bottom of the Assembly tab): shows
+      **initial configurations**, **exit zones**, and **closure** for the assembly
   - **Library Tab**: Lists saved, reusable machine templates
 - **Bottom Section**: Embedded editor for viewing/editing selected assembly machines
 
@@ -128,7 +130,36 @@ To edit constraint semantics, right-click the state's dashboard and choose **Edi
 
 ### The Pseudo-State
 
-The pseudo-state (initial state) is automatically created and appears as a **small filled circle**. All state machines must start from this pseudo-state. It can be used as a source for transitions to define initial behavior.
+The pseudo-state is automatically created and appears as a **small filled circle**. It is the anchor for **initial transitions** and represents the **assembly-closure baseline** used when computing initial semantics.
+
+---
+
+## Assembly Initial Configurations Dashboard
+
+In the **Assembly** tab (right panel), the **Initial Configurations Dashboard** shows three rows:
+
+1. **Initial configs**: the set of configurations generated from each machine’s initial state(s).
+2. **Exit zones**: the autonomous exit zones derived from those initial configurations.
+3. **Closure**: the transitive closure obtained by repeatedly applying exit zones until
+   no new configurations appear.
+
+The dashboard uses the same visual style as state dashboards and refreshes automatically
+whenever the assembly or any component machine changes (including enabling/disabling transitions).
+
+#### Pseudo-State Aliases
+
+You can create **multiple aliases** of the pseudo-state to keep diagrams readable:
+
+1. **Right-click** an empty area of the canvas
+2. Select **"Create pseudostate alias"**
+3. Drag the alias to the desired location
+
+All aliases are equivalent to the real pseudo-state:
+- Initial transitions created from an alias behave exactly like those created from the original
+- Each initial transition remembers which alias it originates from (anchoring is preserved)
+- You can delete aliases, but **at least one** pseudo-state (original or alias) must remain
+
+**Note:** Pseudo-states do not have dashboards; dashboard options apply to regular states only.
 
 ### Visibility and Layout
 
@@ -149,7 +180,7 @@ The pseudo-state (initial state) is automatically created and appears as a **sma
 
 Alternatively:
 - Use **Create transition: choose arrival state** from the state context menu
-- For an initial transition from the pseudo-state, right-click the pseudo-state and choose **Add initial transition**
+- For an initial transition, right-click the pseudo-state (or any alias) and choose **Add initial transition**
 
 ### Editing Transition Properties
 
@@ -187,7 +218,7 @@ An **autonomous transition** has **no trigger event** — it fires based purely 
 - Enable the PWS controller to respond to internal configuration changes
 - Are essential for modeling fail-safe recovery, monitoring, and self-adaptation
 
-Example: A transition with guard `[m1.Failed ∨ m2.Error]` (no trigger) fires automatically when either component machine `m1` reaches state `Failed` or `m2` reaches state `Error`.
+Example: A transition with guard `[(m1.Failed), (m2.Error)]` (no trigger) fires automatically when either component machine `m1` reaches state `Failed` or `m2` reaches state `Error`.
 
 **When to Use Autonomous Transitions:**
 - Monitoring component machine states (e.g., detecting failures)
@@ -197,9 +228,10 @@ Example: A transition with guard `[m1.Failed ∨ m2.Error]` (no trigger) fires a
 
 #### Initial Transitions (Special Case)
 
-**Initial transitions** (from the pseudo-state) are a special case that deserves particular attention. Although they have no visible trigger event (like autonomous transitions), they are fundamentally different:
+**Initial transitions** (from the pseudo-state or its aliases) are a special case that deserves particular attention. Although they have no visible trigger event (like autonomous transitions), they are fundamentally different:
 
 - **Initial transitions are event-triggered** by a hidden system startup event (conceptually `_init`)
+- The `_init` trigger is **not displayed** on the transition label and is **reserved** (cannot be used on other triggered transitions)
 - When the controller starts, the system "emits" this hidden event, triggering the initial transition(s)
 - Multiple initial transitions can have different guards to select the appropriate starting state
 - Initial transitions **accept TRUE as a valid guard** — this simply means "fire at startup without additional conditions"
@@ -231,6 +263,15 @@ When editing an autonomous transition guard:
 
 **Autonomous guard styling:** For autonomous transitions, each exit-zone proposition inside the guard is drawn **bold and underlined** to make reactive conditions stand out. TRUE/FALSE remain normal weight.
 
+#### Advanced Guard Editor (Triggered Transitions)
+
+Triggered transitions provide an **Advanced Guard Editor** (via the guard annotation’s context menu) that mirrors the constraints editor:
+- Build guards as **OR-joined lines** of machine/state selections
+- Each line is a **product** (configuration) displayed as `(m1.S, m2.T)`
+- The preview uses the same **configuration format** (sum of products), not expanded disjunctions
+- The machine/state pickers are **filtered to states implied by the source state’s semantics**
+- Leaving all lines empty yields **ANY** (TRUE guard)
+
 #### Triggered Guard Partitioning (Determinism)
 
 Triggered transitions are **partitioned by source state + trigger event**. This partitioning **must be complete** to ensure determinism:
@@ -240,6 +281,7 @@ Triggered transitions are **partitioned by source state + trigger event**. This 
 Behavior in the editor:
 - Overlapping guards in the same (source, trigger) group are shown in **red**
 - Empty guards (no matching source semantics) are shown in **orange**
+- Incomplete partitions (some source semantics not covered for that trigger) are shown in **orange**
 - Guard menus filter out options that would **overlap** existing guards in the same group
 
 **Initial transitions** are a special case of triggered transitions with a hidden **_init** event, and they participate in the same partitioning rules from the pseudo-state.
@@ -256,12 +298,15 @@ Guards that appear in **red** indicate potential issues:
 
 **Tooltips**: Hover over a red guard to see an explanation of the specific problem.
 
-Guards that appear in **orange** indicate an empty triggered guard (no matching source semantics).
+Guards that appear in **orange** indicate either:
+- an empty triggered guard (no matching source semantics), or
+- an incomplete triggered partition (some source semantics are not covered for that trigger).
+Hover over an orange guard to see which trigger is missing coverage.
 
 **Note:** A **TRUE** guard on an autonomous transition is **allowed** and shown in black. It means the transition fires immediately upon entering the source state, and the destination inherits the source state's full semantics.
 
 **How to Fix:**
-- **FALSE guards**: Replace with a meaningful condition like `m1.Active` or `m1.Failed ∨ m2.Error`
+- **FALSE guards**: Replace with a meaningful condition like `(m1.Active)` or `(m1.Failed), (m2.Error)`
 - **Orphan guards**: Update the guard to reference exit zones that still exist in the state’s reactive semantics
 
 ### Autonomous Transitions and Exit Zones
@@ -370,6 +415,8 @@ The **Machine Library** is a repository of reusable state machine templates. Sav
 2. Click **Save**
 3. Choose a location and filename
 4. The entire library is saved as a `.mlib` file
+
+**Note:** Pseudo-state aliases and per-transition alias anchoring are preserved in library entries, including `.mlib` save/load and `.sm` import/export.
 
 ### Sharing Machines
 
@@ -855,6 +902,8 @@ When you don't constrain a machine in your semantics, you're saying "I don't car
 - Autonomous transitions in unconstrained machines are **internal evolution**—they don't require controller intervention
 - Only transitions that would violate **specified** constraints generate exit zones
 
+**Provisional (CS-only) exit zones follow the same rule:** they are computed **only** from explicitly constrained machines and **exclude internal transitions** with respect to the constraints. If a constraint line does not mention a machine, that machine is treated as **ANY**, and its autonomous transitions are **not** reported as provisional exit zones.
+
 ### Exit Zones and Controller Design
 
 Exit zones serve two purposes:
@@ -945,6 +994,11 @@ PWSEditor saves documents in `.pws` format, which includes:
 - All component machines in the assembly
 - The machine library
 - Annotation positions (guards, actions, semantics dashboards) and exit-zone label toggle
+- **View settings**: state size, state border thickness, and state font size
+- **Pseudo-state aliases and per-transition alias anchoring** (controller, assembly machines, and library entries)
+- **Window size and panel split positions** (layout restoration)
+
+Single machine files (`.sm`) and library files (`.mlib`) also preserve pseudo-state aliases and transition anchoring.
 
 ### Legacy Format Support
 
@@ -987,6 +1041,9 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 | **Show Grid** | Toggle grid display |
 | **Snap to Grid** | Toggle automatic grid snapping |
 | **Set grid size...** | Adjust snap-to-grid size |
+| **State size** | Choose state diameter (Small/Medium/Large) |
+| **State border thickness** | Choose state outline thickness (Thin/Medium/Thick) |
+| **State font size** | Choose font size for labels and annotations (Small/Medium/Large) |
 | **LTL Editor...** | Open the LTL formula editor |
 | **Check now** | Run LTL checks on the current model |
 
@@ -1014,12 +1071,14 @@ Lists transitions with problematic guard conditions:
 |--------------|-------------|------------------|
 | **FALSE Guard** | Placeholder that needs to be set — transition will never fire | Red guard label `[FALSE]` |
 | **Orphan Guard** | References an exit zone that no longer exists | Red guard label |
+| **Incomplete Triggered Partition** | Some source semantics are not covered for the trigger (see orange tooltip for the trigger name) | Orange guard label |
 
 **How to Fix:**
 - **FALSE**: Edit the guard to specify a meaningful condition (e.g., `m1.Failed`)
 - **Orphan**: Update the guard to reference exit zones that still exist
 
 **Note:** A **TRUE** guard on an autonomous transition is allowed and is **not** reported as a problem. It means the transition fires immediately upon entering the source state.
+Partition completeness warnings (orange guard labels) are visual-only and are not currently listed in the report.
 
 #### Action Problems (Orphan Actions)
 Lists actions that reference events not reachable from the source state's semantics or constraints. An action is "orphan" when:
@@ -1126,9 +1185,9 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
   - Deadlock configurations present
 - **Solution**: Check each row of the annotation for red items and address them
 
-#### "Pseudo-state was deleted"
-- **Solution**: The pseudo-state is essential; it will be restored when you reload
-- Add a fresh transition from the recreated pseudo-state
+#### "Pseudo-state or aliases missing"
+- **Solution**: At least one pseudo-state must exist; if it is removed it will be restored on reload
+- Recreate missing aliases from the canvas menu and reattach initial transitions if needed
 
 #### "Library didn't load"
 - **Solution**: Ensure the `.mlib` file is valid and matches the current assembly format

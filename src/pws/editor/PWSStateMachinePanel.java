@@ -388,15 +388,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             // drawTriggerAnnotation(g2d, t, p0, cp, p2);
         } else {
             int circleRadius = 5;
-            // Gray fill only for autonomous initial transitions from PseudoState, white (hollow) otherwise
-            boolean isPseudoInitial = !t.isTriggerable()
-                && t.getSource() instanceof PWSState
-                && ((PWSState) t.getSource()).isPseudoState();
-            if (isPseudoInitial) {
-                g2d.setColor(Color.LIGHT_GRAY);
-            } else {
-                g2d.setColor(Color.WHITE);
-            }
+            g2d.setColor(Color.WHITE);
             g2d.fillOval(p0.x - circleRadius, p0.y - circleRadius, circleRadius * 2, circleRadius * 2);
             // Outline: gray for disabled, black otherwise
             g2d.setColor(disabled ? Color.LIGHT_GRAY : Color.BLACK);
@@ -1063,7 +1055,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     // -------------------- HELPER METHODS FOR MOUSE --------------------
 
     /**
-     * Handles initial transition mode: creates an autonomous transition from the pseudo‑state.
+     * Handles initial transition mode: creates a triggerable "_init" transition from the pseudo‑state.
      */
     private void handleInitialTransitionMode(MouseEvent e) {
         StateInterface clickedState = getStateAt(e.getPoint());
@@ -1073,46 +1065,55 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     .filter(s -> s.getName().equals("PseudoState"))
                     .findFirst().orElse(null);
             if (pseudo != null) {
-                // Check if an autonomous transition from the PseudoState to the target already exists
+                // Check if an initial transition from the PseudoState to the target already exists
                 boolean exists = stateMachine.getTransitions().stream()
-                        .anyMatch(t -> t.getSource() == pseudo
+                        .anyMatch(t -> t instanceof PWSTransition pt
+                                && t.getSource() == pseudo
                                 && t.getTarget() == clickedState
-                                && t.isAutonomous());
+                                && pt.isInitialTransition());
                 if (!exists) {
-                    // Create the initial transition as a PWSTransition (empty trigger, autonomous mode)
-                    PWSTransition newTransition = new PWSTransition(pseudo, clickedState, true, "",((PWSStateMachine)stateMachine).getAssembly());
+                    // Create the initial transition as a triggerable "_init" event.
+                    PWSTransition newTransition = new PWSTransition(
+                            pseudo,
+                            clickedState,
+                            false,
+                            PWSTransition.INIT_TRIGGER_EVENT,
+                            ((PWSStateMachine)stateMachine).getAssembly()
+                    );
                     // Transition fields (guardProposition, actionList, transitionSemantics) are
                     // inizializzati ai valori di default (TrueProposition, lista vuota, TrueProposition).
                     boolean hasOtherInitial = stateMachine.getTransitions().stream()
-                            .anyMatch(t -> t.getSource() == pseudo && t.isAutonomous());
+                            .anyMatch(t -> t instanceof PWSTransition pt && pt.isInitialTransition());
                     if (hasOtherInitial) {
                         newTransition.setGuardProposition(new smalgebra.FalseProposition());
                     }
                     stateMachine.addTransition(newTransition);
                     rememberPseudoAliasForTransition(newTransition, initialTransitionAliasIndex);
-                    // Create a (transient) ActionAnnotation but keep it hidden for autonomous transitions
-                    try {
-                        ActionAnnotation actionAnnot = new ActionAnnotation(newTransition.getActionList(), ((PWSStateMachine)stateMachine).getAssembly(), newActions -> newTransition.setActionList(newActions), newTransition);
-                        // place roughly on the curve (0.5)
-                        machinery.State sourceState = (machinery.State) newTransition.getSource();
-                        machinery.State targetState = (machinery.State) newTransition.getTarget();
-                        Point sourcePos = getStatePositionForTransition(sourceState, newTransition, true);
-                        Point targetPos = getStatePositionForTransition(targetState, newTransition, false);
-                        int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
-                        int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
-                        Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
-                        Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
-                        Point cp = ((Transition) newTransition).getControlPoint();
-                        if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
-                        Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
-                        Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
-                        Point actionPoint = computePointOnCurve(p0, cp, p2, 0.5);
-                        actionAnnot.setBounds(actionPoint.x - 75, actionPoint.y - 10, 150, 20);
-                        newTransition.setActionAnnotation(actionAnnot);
-                        add(actionAnnot);
-                        actionAnnot.setVisible(false);
-                    } catch (Exception ignored) {}
-                    System.out.println("Initial transition created: PseudoState -> " + clickedState.getName());
+                    // Create a (transient) ActionAnnotation but keep it hidden for autonomous transitions.
+                    if (newTransition.isAutonomous()) {
+                        try {
+                            ActionAnnotation actionAnnot = new ActionAnnotation(newTransition.getActionList(), ((PWSStateMachine)stateMachine).getAssembly(), newActions -> newTransition.setActionList(newActions), newTransition);
+                            // place roughly on the curve (0.5)
+                            machinery.State sourceState = (machinery.State) newTransition.getSource();
+                            machinery.State targetState = (machinery.State) newTransition.getTarget();
+                            Point sourcePos = getStatePositionForTransition(sourceState, newTransition, true);
+                            Point targetPos = getStatePositionForTransition(targetState, newTransition, false);
+                            int sourceCenterOffset = sourceState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                            int targetCenterOffset = targetState.getName().equals("PseudoState") ? PSEUDO_RADIUS : RADIUS;
+                            Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+                            Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+                            Point cp = ((Transition) newTransition).getControlPoint();
+                            if (cp == null) cp = computeControlPoint(centerSource, centerTarget);
+                            Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+                            Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+                            Point actionPoint = computePointOnCurve(p0, cp, p2, 0.5);
+                            actionAnnot.setBounds(actionPoint.x - 75, actionPoint.y - 10, 150, 20);
+                            newTransition.setActionAnnotation(actionAnnot);
+                            add(actionAnnot);
+                            actionAnnot.setVisible(false);
+                        } catch (Exception ignored) {}
+                    }
+                    System.out.println("Initial transition created: PseudoState -_init-> " + clickedState.getName());
                     java.awt.Window w = SwingUtilities.getWindowAncestor(this);
                     if (w instanceof PWSEditor pe) {
                         pe.markDocumentDirty();
@@ -1158,8 +1159,15 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     return;
                 }
                 String trigger = JOptionPane.showInputDialog(this, "Enter trigger event (leave blank for autonomous):");
-                boolean autonomous = transitionSourceState.getName().equals("PseudoState") ||
-                        (trigger == null || trigger.trim().isEmpty());
+                if (trigger != null && "_init".equals(trigger.trim())
+                        && !(transitionSourceState instanceof PWSState ps && ps.isPseudoState())) {
+                    JOptionPane.showMessageDialog(this, "\"_init\" is reserved for initial transitions.");
+                    linkMode = false;
+                    transitionSourceState = null;
+                    transitionSourcePseudoAliasIndex = -1;
+                    return;
+                }
+                boolean autonomous = (trigger == null || trigger.trim().isEmpty());
                 PWSTransition newTransition = new PWSTransition(transitionSourceState, clickedState, autonomous, trigger,((PWSStateMachine)stateMachine).getAssembly());
                 
                 // For autonomous transitions (except from pseudostate), set FALSE as default guard
@@ -1168,14 +1176,16 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     newTransition.setGuardProposition(new smalgebra.FalseProposition());
                 }
                 if (transitionSourceState instanceof PWSState ps && ps.isPseudoState()) {
-                    boolean hasOtherInitial = stateMachine.getTransitions().stream()
-                            .anyMatch(t -> t.getSource() == transitionSourceState && t.isAutonomous());
-                    if (hasOtherInitial) {
-                        newTransition.setGuardProposition(new smalgebra.FalseProposition());
+                    if (newTransition.isInitialTransition()) {
+                        boolean hasOtherInitial = stateMachine.getTransitions().stream()
+                                .anyMatch(t -> t instanceof PWSTransition pt && pt.isInitialTransition());
+                        if (hasOtherInitial) {
+                            newTransition.setGuardProposition(new smalgebra.FalseProposition());
+                        }
                     }
                 }
                 // For triggered transitions sharing the same source+trigger, use FALSE to force partitioning
-                if (!autonomous && transitionSourceState instanceof PWSState ps && !ps.isPseudoState()) {
+                if (!autonomous && transitionSourceState instanceof PWSState) {
                     String trig = (trigger != null) ? trigger.trim() : "";
                     if (!trig.isEmpty()) {
                         for (TransitionInterface ti : stateMachine.getTransitions()) {

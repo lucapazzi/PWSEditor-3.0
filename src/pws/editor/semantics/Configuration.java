@@ -166,7 +166,7 @@ public class Configuration implements Serializable {
 
     @Override
     public String toString() {
-        StringJoiner joiner = new StringJoiner(",");
+        StringJoiner joiner = new StringJoiner(", ");
         for (BasicStateProposition bsp : propositions) {
             joiner.add(bsp.toString());
         }

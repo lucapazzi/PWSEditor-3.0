@@ -16,6 +16,7 @@ import java.io.Serializable;
 
 /** PWS transition with guard, actions, and semantics annotations. */
 public class PWSTransition extends Transition implements Serializable {
+    public static final String INIT_TRIGGER_EVENT = "_init";
     // Nuovi campi semantici
     private Assembly assembly;
     private SMProposition guardProposition;
@@ -91,6 +92,18 @@ public class PWSTransition extends Transition implements Serializable {
 
     public Semantics getTransitionSemantics() {
         return transitionSemantics;
+    }
+
+    public boolean isInitialTransition() {
+        StateInterface src = getSource();
+        if (!(src instanceof PWSState ps) || !ps.isPseudoState()) {
+            return false;
+        }
+        String trigger = getTriggerEvent();
+        if (!isAutonomous() && INIT_TRIGGER_EVENT.equals(trigger)) {
+            return true;
+        }
+        return isAutonomous() && (trigger == null || trigger.isBlank());
     }
 
     public void setTransitionSemantics(Semantics transitionSemantics) {

@@ -234,12 +234,10 @@ public class ControllerReportDialog extends JDialog {
         for (TransitionInterface ti : stateMachine.getTransitions()) {
             if (ti instanceof PWSTransition pt && pt.isEnabled()) {
                 transitionCount++;
-                // Check if it's an initial transition (from pseudo-state)
-                StateInterface src = pt.getSource();
-                boolean isInitial = (src instanceof PWSState ps && ps.isPseudoState());
+                // Check if it's an initial transition (pseudo-state + _init)
+                boolean isInitial = pt.isInitialTransition();
                 
                 if (isInitial) {
-                    // Initial transitions are event-triggered (hidden _init event)
                     initialCount++;
                 } else if (pt.isAutonomous()) {
                     // True autonomous transitions (guard-driven)
@@ -432,7 +430,7 @@ public class ControllerReportDialog extends JDialog {
             String tgtName = tgt != null ? tgt.getName() : "?";
             
             // Skip initial transitions
-            if (src instanceof PWSState ps && ps.isPseudoState()) continue;
+            if (pt.isInitialTransition()) continue;
             
             // Get valid actions from source state semantics
             Set<String> validActions = new HashSet<>();

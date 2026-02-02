@@ -214,7 +214,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
 
     public void enableInitialTransitionMode() {
         initialTransitionMode = true;
-        System.out.println("Initial transition mode activated: click on a target to create an autonomous transition from the pseudo‑state.");
+        System.out.println("Initial transition mode activated: click on a target to create a triggerable '_init' transition from the pseudo‑state.");
     }
 
     @Override
@@ -259,19 +259,19 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 aliasIt.remove();
             }
         }
-        // Remove labels for transitions no longer triggerable or removed
+        // Remove labels for transitions no longer triggerable, removed, or hidden (_init)
         Iterator<Map.Entry<TransitionInterface, DraggableTriggerLabel>> it = triggerLabels.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<TransitionInterface, DraggableTriggerLabel> entry = it.next();
             TransitionInterface t = entry.getKey();
-            if (!t.isTriggerable() || !stateMachine.getTransitions().contains(t)) {
+            if (!t.isTriggerable() || isInitTrigger(t) || !stateMachine.getTransitions().contains(t)) {
                 remove(entry.getValue());
                 it.remove();
             }
         }
         // Iterate over transitions to update or create trigger labels.
         for (TransitionInterface t : stateMachine.getTransitions()) {
-            if (t.isTriggerable()) {
+            if (t.isTriggerable() && !isInitTrigger(t)) {
                 // Get the label for this transition, if it exists.
                 DraggableTriggerLabel label = triggerLabels.get(t);
                 if (label == null) {
@@ -337,6 +337,17 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 }
             }
         }
+    }
+
+    private boolean isInitTrigger(TransitionInterface t) {
+        if (t == null || t.getTriggerEvent() == null) {
+            return false;
+        }
+        if (!"_init".equals(t.getTriggerEvent())) {
+            return false;
+        }
+        StateInterface src = t.getSource();
+        return src != null && "PseudoState".equals(src.getName());
     }
 
     protected void drawStates(Graphics g) {
@@ -450,14 +461,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         g2d.setStroke(oldStroke);
 
         // For triggerable transitions, the draggable label is now used.
-        if (!t.isTriggerable()) {
+        if (!t.isTriggerable() && !"PseudoState".equals(sourceState.getName())) {
             int circleRadius = 5;
-            // Gray fill only for initial transition from pseudostate, white (hollow) otherwise
-            if (sourceState.getName().equals("PseudoState")) {
-                g2d.setColor(Color.LIGHT_GRAY);
-            } else {
-                g2d.setColor(Color.WHITE);
-            }
+            g2d.setColor(Color.WHITE);
             g2d.fillOval(p0.x - circleRadius, p0.y - circleRadius, circleRadius * 2, circleRadius * 2);
             // Outline: gray for disabled, black otherwise
             g2d.setColor(disabled ? Color.LIGHT_GRAY : Color.BLACK);
@@ -1085,6 +1091,14 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                         return;
                     }
                     String trigger = JOptionPane.showInputDialog(this, "Enter trigger event (leave blank for autonomous):");
+                    if (trigger != null && "_init".equals(trigger.trim())
+                            && (transitionSourceState == null || !isPseudoState(transitionSourceState))) {
+                        JOptionPane.showMessageDialog(this, "\"_init\" is reserved for initial transitions.");
+                        linkMode = false;
+                        transitionSourceState = null;
+                        transitionSourcePseudoAliasIndex = -1;
+                        return;
+                    }
                     boolean autonomous = transitionSourceState.getName().equals("PseudoState") ||
                             (trigger == null || trigger.trim().isEmpty());
                     TransitionInterface newTransition = new Transition(transitionSourceState, clickedState, autonomous, trigger);

@@ -757,12 +757,11 @@ public class ExtendedDashboardDialog extends JDialog {
             String src = pt.getSource() != null ? pt.getSource().getName() : "?";
             String tgt = pt.getTarget() != null ? pt.getTarget().getName() : "?";
             String label = src + " → " + tgt;
-            boolean isInitial = "PseudoState".equals(src);
-            if (isInitial) {
-                label += " [initial]";
-            } else if (pt.isTriggerable()) {
+            if (pt.isTriggerable()) {
                 String trigger = pt.getTriggerEvent();
                 label += " [" + (trigger == null || trigger.isBlank() ? "trigger" : trigger) + "]";
+            } else if (pt.isInitialTransition()) {
+                label += " [initial]";
             } else {
                 label += " [autonomous]";
             }
