@@ -344,6 +344,7 @@ An **Assembly** is a collection of component state machines that work together. 
 1. Click the **Assembly** tab in the right panel
 2. A list of all machines in the assembly appears
 3. Each entry shows: `[id] - [name]`
+4. Drag a row up or down to reorder the assembly; dashboards and the initial-configurations view refresh to match the new order
 
 ### Adding a Machine to the Assembly
 
@@ -438,11 +439,11 @@ To share reusable machines across projects:
 
 ### Viewing Annotations
 
-1. Go to **View → Show state dashboards** to toggle annotation visibility
-2. Annotations appear as floating boxes near states, showing:
-   - Constraint configurations
-   - Computed configurations
-   - Exit zones (reactive semantics)
+1. Go to **View → Toggle state dashboards** to show or hide annotation visibility
+2. Each dashboard appears as a floating box near its state and uses a compact layout:
+   - A colored state-name band at the top (green/red) that matches the border; hover the name for a status explanation
+   - **Constraints** and **configs** shown as a matrix (columns = assembly machine IDs in list order, rows = configurations, `-` means unspecified)
+   - **Exit zones** stacked one per line; hover each exit zone for coverage/origin details
 
 ### Dashboard Minimization
 
@@ -607,6 +608,8 @@ This **partial configuration** is automatically interpreted as:
 
 In other words, specifying `(m1.A)` means "machine m1 is in state A, **regardless of** machine m2's state."
 
+**Dashboard display note:** The dashboard does **not** expand partial constraints into all combinations. It shows each constraint line as entered in the compact matrix, using `-` for unspecified machines.
+
 #### How It Works
 
 PWSEditor uses an implication-based semantics where:
@@ -644,24 +647,23 @@ The same logic applies to **transition guards**. A guard expression like `[m1.A]
 
 ### Semantics Display
 
-Hover over or click annotation boxes to see:
-- **Constraint**: Rules you defined (displayed in blue)
-- **Computed**: Derived semantics based on structure
-- **Violations**: Misaligned configurations highlighted in red
-- **Reactive Space**: Exit zones / transitions enabled from this state
+Hover over dashboard elements to see:
+- **State name band**: Explains why the border is green/red (reachable, constraint violations, exit-zone coverage, deadlocks)
+- **Configuration rows**: Each row is one configuration; tooltips explain evolution. If it can evolve internally, the tooltip lists target configurations and/or exit zones (possibly multiple)
+- **Exit zones**: Each line has a tooltip showing whether it is covered, uncovered, internal, orphan, or provisional
 
 ### Understanding Configuration Colors
 
-In the state annotation dashboard, each configuration has two independent visual attributes:
+In the state annotation dashboard, each configuration row has two independent visual attributes:
 
-#### Text Color (Constraint Satisfaction)
+#### Row/Cell Color (Constraint Satisfaction)
 
 | Color | Meaning |
 |-------|---------|
-| **Blue text** | Constraint semantics (user-defined) |
-| **Green text** | Computed configuration that satisfies constraints |
-| **Red text** | Computed configuration that violates constraints |
-| **Gray text** | Empty configuration (no component machines) |
+| **Blue** | Constraint semantics row (user-defined) |
+| **Green** | Computed configuration row that satisfies constraints |
+| **Red** | Computed configuration row that violates constraints |
+| **Gray** | Empty configuration (no component machines) |
 
 #### Underline (Evolution Capability)
 
@@ -698,6 +700,8 @@ The border color of the state dashboard indicates the overall health of the stat
 |--------|---------|
 | **Green border** | All OK — no issues detected |
 | **Red border** | Has issues — one or more problems need attention |
+
+The state name is shown in a colored band at the top of the dashboard; the band color matches the border. Hover the name to see a concise explanation of the status.
 
 **Red border triggers** (any of these conditions):
 - **Unreachable state**: Empty state semantics (no configurations) — the state cannot be reached
@@ -929,6 +933,8 @@ Internal exit zones (gray) represent autonomous component evolution that stays w
 
 **Label format:** Exit zones are shown as `m:S→T` by default (machine ID + source state → target state). To hide machine IDs, right-click the state dashboard and toggle **Show machine IDs in exit zones**.
 
+**Hover details:** Exit zones are displayed one per line; hover a line to see its coverage/origin details (covered, uncovered, internal, orphan, provisional). This replaces the need for a legend.
+
 **Note**: For detailed analysis including exit zone origin (CS-only, SS-only, or both) and orphan exit zones, right-click on the state dashboard and select **"Show Extended Details..."**.
 
 2. **Precise Control**: Use fully-specified configurations when you need exact control over which component states are allowed. This generates exit zones for any transition that would leave those exact configurations.
@@ -1037,7 +1043,7 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 
 | Option | Description |
 |--------|-------------|
-| **Show state dashboards** | Toggle display of semantic annotations |
+| **Toggle state dashboards** | Toggle display of semantic annotations |
 | **Show Grid** | Toggle grid display |
 | **Snap to Grid** | Toggle automatic grid snapping |
 | **Set grid size...** | Adjust snap-to-grid size |

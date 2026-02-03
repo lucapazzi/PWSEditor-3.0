@@ -11,6 +11,9 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
 import java.util.Map;
 
 /** Panel for browsing assembly machines and opening editors. */
@@ -30,6 +33,10 @@ public class PWSPanel extends JPanel {
         setLayout(new BorderLayout());
         listModel = new DefaultListModel<>();
         machineList = new JList<>(listModel);
+        machineList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        machineList.setDragEnabled(true);
+        machineList.setDropMode(DropMode.INSERT);
+        machineList.setTransferHandler(new AssemblyReorderTransferHandler());
         machineList.setCellRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list,
@@ -105,6 +112,80 @@ public class PWSPanel extends JPanel {
         buttonPanel.add(removeButton);
 
         add(buttonPanel, BorderLayout.SOUTH);
+    }
+
+    private void updateAssemblyOrderFromList() {
+        Map<String, StateMachine> machines = assembly.getStateMachines();
+        if (machines == null || machines.isEmpty()) return;
+        java.util.LinkedHashMap<String, StateMachine> reordered = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < listModel.size(); i++) {
+            String label = listModel.get(i);
+            String id = parseMachineId(label);
+            if (id != null && machines.containsKey(id)) {
+                reordered.put(id, machines.get(id));
+            }
+        }
+        for (Map.Entry<String, StateMachine> entry : machines.entrySet()) {
+            if (!reordered.containsKey(entry.getKey())) {
+                reordered.put(entry.getKey(), entry.getValue());
+            }
+        }
+        machines.clear();
+        machines.putAll(reordered);
+    }
+
+    private void notifyAssemblyOrderChanged() {
+        java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+        if (win instanceof pws.editor.PWSEditor pe) {
+            pe.onAssemblyOrderChanged();
+        }
+    }
+
+    private class AssemblyReorderTransferHandler extends TransferHandler {
+        private int dragIndex = -1;
+        private String dragValue = null;
+
+        @Override
+        protected Transferable createTransferable(JComponent c) {
+            dragIndex = machineList.getSelectedIndex();
+            dragValue = machineList.getSelectedValue();
+            return (dragValue == null) ? null : new StringSelection(dragValue);
+        }
+
+        @Override
+        public int getSourceActions(JComponent c) {
+            return MOVE;
+        }
+
+        @Override
+        public boolean canImport(TransferSupport support) {
+            return support.isDrop() && support.isDataFlavorSupported(DataFlavor.stringFlavor);
+        }
+
+        @Override
+        public boolean importData(TransferSupport support) {
+            if (!canImport(support)) return false;
+            if (dragValue == null || dragIndex < 0) return false;
+            JList.DropLocation dl = (JList.DropLocation) support.getDropLocation();
+            int index = dl.getIndex();
+            if (index < 0) index = listModel.getSize();
+            if (index == dragIndex || index == dragIndex + 1) return false;
+            listModel.remove(dragIndex);
+            if (index > dragIndex) index--;
+            if (index < 0) index = 0;
+            if (index > listModel.getSize()) index = listModel.getSize();
+            listModel.add(index, dragValue);
+            machineList.setSelectedIndex(index);
+            updateAssemblyOrderFromList();
+            notifyAssemblyOrderChanged();
+            return true;
+        }
+
+        @Override
+        protected void exportDone(JComponent source, Transferable data, int action) {
+            dragIndex = -1;
+            dragValue = null;
+        }
     }
 
     /** Callback interface to notify when a machine is selected (double-clicked). */

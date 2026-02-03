@@ -779,15 +779,9 @@ public class PWSEditor extends JFrame {
 
         // --- View menu: toggle state dashboards ---
         JMenu viewMenu = new JMenu("View");
-        showStateAnn = new JCheckBoxMenuItem("Show state dashboards", true);
+        showStateAnn = new JCheckBoxMenuItem("Toggle state dashboards", true);
         showStateAnn.addActionListener(e -> {
-            if (baseEditor == null) return;
-            boolean show = showStateAnn.isSelected();
-            // Retrieve the PWSStateMachinePanel and toggle annotations/dashboards
-            PWSStateMachinePanel panel =
-                (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
-            panel.setShowStateAnnotations(show);
-            panel.repaint();
+            applyDashboardVisibility();
             // Mark document dirty when the user toggles global dashboards
             markDocumentDirty();
         });
@@ -811,11 +805,7 @@ public class PWSEditor extends JFrame {
 
         // Ensure dashboards are visible at startup (preserve per-state visibility)
         try {
-            PWSStateMachinePanel panel = (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
-            panel.setShowStateAnnotations(true);
-            // Ensure any saved annotation components are restored and shown where appropriate
-            panel.restoreVisibleStateAnnotations();
-            panel.repaint();
+            applyDashboardVisibility();
         } catch (Exception ex) {
             // Ignore if panel is not yet ready
         }
@@ -1072,6 +1062,19 @@ public class PWSEditor extends JFrame {
         }
     }
 
+    void applyDashboardVisibility() {
+        if (!controllerEditorVisible || baseEditor == null) return;
+        PWSStateMachinePanel panel =
+            (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+        if (panel == null) return;
+        boolean show = (showStateAnn == null) || showStateAnn.isSelected();
+        panel.setShowStateAnnotations(show);
+        if (show) {
+            panel.restoreVisibleStateAnnotations();
+        }
+        panel.repaint();
+    }
+
     /** Keeps the Edit mode menu item and panel in sync. */
     public void setEditModeEnabled(boolean enabled) {
         if (editModeItem != null) {
@@ -1117,10 +1120,7 @@ public class PWSEditor extends JFrame {
                     get();
                     try {
                         if (baseEditor != null) {
-                            PWSStateMachinePanel panel = (PWSStateMachinePanel) ((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
-                            panel.setShowStateAnnotations(true);
-                            panel.restoreVisibleStateAnnotations();
-                            panel.repaint();
+                            applyDashboardVisibility();
                         }
                     } catch (Exception ignore) {}
                     refreshInitialConfigurationsPanel();
@@ -1247,10 +1247,7 @@ public class PWSEditor extends JFrame {
                         get(); // rethrow any exceptions
                         // Update UI on EDT
                         try {
-                            PWSStateMachinePanel panel = (PWSStateMachinePanel) ((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
-                            panel.setShowStateAnnotations(true);
-                            panel.restoreVisibleStateAnnotations();
-                            panel.repaint();
+                            applyDashboardVisibility();
                         } catch (Exception ignore) {}
                         refreshInitialConfigurationsPanel();
                         // Clear dirty flag and refresh title
@@ -1274,6 +1271,21 @@ public class PWSEditor extends JFrame {
             this.currentDocument.setDirty(true);
             updateWindowTitle();
         }
+    }
+
+    public void onAssemblyOrderChanged() {
+        markDocumentDirty();
+        SwingUtilities.invokeLater(() -> {
+            refreshInitialConfigurationsPanel();
+            if (baseEditor != null) {
+                try {
+                    PWSStateMachinePanel panel =
+                        (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+                    panel.refreshStateAnnotationSizes();
+                    panel.repaint();
+                } catch (Exception ignore) {}
+            }
+        });
     }
 
     private void refreshInitialConfigurationsPanel() {

@@ -31,14 +31,16 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     // Size of the minimized indicator
     private static final int MINIMIZED_SIZE = 16;
     private static final Color PARTIAL_DEADLOCK_COLOR = new Color(200, 160, 0);
-    private final java.util.List<ConfigHitArea> configHitAreas = new ArrayList<>();
+    private final java.util.List<HitArea> configHitAreas = new ArrayList<>();
+    private final java.util.List<HitArea> exitZoneHitAreas = new ArrayList<>();
+    private HitArea headerHitArea = null;
     private boolean csOnlyWarningActive = false;
 
-    private static class ConfigHitArea {
+    private static class HitArea {
         private final Rectangle bounds;
         private final String tooltip;
 
-        private ConfigHitArea(Rectangle bounds, String tooltip) {
+        private HitArea(Rectangle bounds, String tooltip) {
             this.bounds = bounds;
             this.tooltip = tooltip;
         }
@@ -95,7 +97,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     public String getToolTipText(MouseEvent e) {
         if (e == null || minimized) return null;
         Point p = e.getPoint();
-        for (ConfigHitArea area : configHitAreas) {
+        if (headerHitArea != null && headerHitArea.bounds != null && headerHitArea.bounds.contains(p)) {
+            return headerHitArea.tooltip;
+        }
+        for (HitArea area : exitZoneHitAreas) {
+            if (area != null && area.bounds != null && area.bounds.contains(p)) {
+                return area.tooltip;
+            }
+        }
+        for (HitArea area : configHitAreas) {
             if (area != null && area.bounds != null && area.bounds.contains(p)) {
                 return area.tooltip;
             }
@@ -287,6 +297,149 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         return lines.toString();
     }
 
+    private List<pws.editor.semantics.Configuration> buildConstraintConfigurations(PWSState state, Assembly asm) {
+        List<pws.editor.semantics.Configuration> configs = new ArrayList<>();
+        if (state == null) return configs;
+        String raw = state.getRawConstraintText();
+        boolean hasRaw = raw != null && !raw.isBlank();
+        boolean rawAny = hasRaw && "ANY".equalsIgnoreCase(raw.trim());
+        String assemblyId = (asm != null && asm.getAssemblyId() != null) ? asm.getAssemblyId() : "";
+        if (hasRaw) {
+            if (rawAny) {
+                configs.add(new pws.editor.semantics.Configuration(assemblyId));
+                return configs;
+            }
+            String[] lines = raw.split("\\r?\\n");
+            for (String line : lines) {
+                if (line == null) continue;
+                String trimmed = line.trim();
+                if (trimmed.isEmpty()) continue;
+                if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
+                    trimmed = trimmed.substring(1, trimmed.length() - 1).trim();
+                }
+                if (trimmed.isEmpty()) {
+                    configs.add(new pws.editor.semantics.Configuration(assemblyId));
+                    continue;
+                }
+                String[] parts = trimmed.split(",");
+                List<BasicStateProposition> props = new ArrayList<>();
+                for (String part : parts) {
+                    if (part == null) continue;
+                    String token = part.trim();
+                    if (token.isEmpty()) continue;
+                    int dot = token.indexOf('.');
+                    if (dot <= 0 || dot >= token.length() - 1) {
+                        continue;
+                    }
+                    String machineId = token.substring(0, dot).trim();
+                    String stateName = token.substring(dot + 1).trim();
+                    if (machineId.isEmpty() || stateName.isEmpty()) continue;
+                    props.add(new BasicStateProposition(machineId, stateName));
+                }
+                if (!props.isEmpty()) {
+                    configs.add(pws.editor.semantics.Configuration.fromBasicStatePropositions(assemblyId, props));
+                }
+            }
+            if (!configs.isEmpty()) {
+                return configs;
+            }
+        }
+        Semantics cs = state.getConstraintsSemantics();
+        if (cs != null && !cs.getConfigurations().isEmpty()) {
+            for (Object cfg : cs.getConfigurations()) {
+                if (cfg instanceof pws.editor.semantics.Configuration c) {
+                    configs.add(c);
+                }
+            }
+            if (!configs.isEmpty()) {
+                return configs;
+            }
+        }
+        configs.add(new pws.editor.semantics.Configuration(assemblyId));
+        return configs;
+    }
+
+    private String buildEvolutionHint(pws.editor.semantics.Configuration cfg, PWSState state, Assembly asm) {
+        if (cfg == null || state == null || asm == null) return null;
+        Map<String, machinery.StateMachine> machines = asm.getStateMachines();
+        if (machines == null || machines.isEmpty()) return null;
+        java.util.LinkedHashSet<String> exitZoneLabels = new java.util.LinkedHashSet<>();
+        java.util.LinkedHashSet<String> nextConfigLabels = new java.util.LinkedHashSet<>();
+        for (Map.Entry<String, machinery.StateMachine> entry : machines.entrySet()) {
+            String machineId = entry.getKey();
+            machinery.StateMachine machine = entry.getValue();
+            if (machine == null) continue;
+            String currentStateName = cfg.getStateName(machineId);
+            if (currentStateName == null) continue;
+            for (machinery.TransitionInterface ti : machine.getTransitions()) {
+                if (!(ti instanceof machinery.Transition t)) continue;
+                if (!t.isEnabled() || !t.isAutonomous()) continue;
+                if (t.getSource() == null || t.getTarget() == null) continue;
+                if (!currentStateName.equals(t.getSource().getName())) continue;
+                String targetStateName = t.getTarget().getName();
+                pws.editor.semantics.Configuration nextCfg = cfg.replaceConstraint(machineId, targetStateName);
+                if (nextCfg == null || nextCfg.equals(cfg)) continue;
+                ExitZone ez = findExitZoneForTransition(state, machineId, t, currentStateName, targetStateName);
+                if (ez != null) {
+                    String targetKey = getExitZoneTargetKey(ez);
+                    String label = formatExitZoneLabel(ez, targetKey, true);
+                    exitZoneLabels.add(label);
+                } else {
+                    nextConfigLabels.add(nextCfg.toString());
+                }
+            }
+        }
+        if (exitZoneLabels.isEmpty() && nextConfigLabels.isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        if (!exitZoneLabels.isEmpty()) {
+            sb.append("Evolves to exit zone");
+            if (exitZoneLabels.size() > 1) sb.append("s");
+            sb.append(" ").append(String.join(", ", exitZoneLabels)).append(".");
+        }
+        if (!nextConfigLabels.isEmpty()) {
+            if (sb.length() > 0) sb.append(" ");
+            sb.append("Evolves to configuration");
+            if (nextConfigLabels.size() > 1) sb.append("s");
+            sb.append(" ").append(String.join(", ", nextConfigLabels)).append(".");
+        }
+        return sb.toString();
+    }
+
+    private ExitZone findExitZoneForTransition(PWSState state,
+                                               String machineId,
+                                               machinery.Transition transition,
+                                               String sourceState,
+                                               String targetState) {
+        if (state == null) return null;
+        List<ExitZone> zones = new ArrayList<>();
+        if (state.getReactiveSemantics() != null) {
+            zones.addAll(state.getReactiveSemantics());
+        }
+        if (state.getCsOnlyExitZones() != null) {
+            zones.addAll(state.getCsOnlyExitZones());
+        }
+        if (state.getSsOnlyExitZones() != null) {
+            zones.addAll(state.getSsOnlyExitZones());
+        }
+        for (ExitZone ez : zones) {
+            if (ez == null) continue;
+            if (transition != null && ez.getTransition() == transition) {
+                return ez;
+            }
+            BasicStateProposition src = ez.getSource();
+            BasicStateProposition tgt = ez.getTarget();
+            if (src == null || tgt == null) continue;
+            if (machineId != null && !machineId.equals(src.getMachineId())) continue;
+            if (sourceState != null && !sourceState.equals(src.getStateName())) continue;
+            if (targetState != null && targetState.equals(tgt.getStateName())) {
+                return ez;
+            }
+        }
+        return null;
+    }
+
     @Override
     protected String buildDisplayText() {
         return "";
@@ -439,6 +592,176 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
 
         int padding = 6;
         int y = padding;
+
+        PWSStateMachine pwsMachine = (panel != null) ? panel.getStateMachine()
+                : (getParent() instanceof PWSStateMachinePanel p ? p.getStateMachine() : null);
+        Assembly asm = (pwsMachine != null) ? pwsMachine.getAssembly() : assembly;
+
+        Semantics constraintsSem = state.getConstraintsSemantics();
+        String rawConstraint = state.getRawConstraintText();
+        boolean hasRaw = rawConstraint != null && !rawConstraint.isBlank();
+        boolean rawAny = hasRaw && "ANY".equalsIgnoreCase(rawConstraint.trim());
+        boolean hasCs = constraintsSem != null && !constraintsSem.getConfigurations().isEmpty();
+        boolean anyConstraint = state.isPseudoState() || rawAny || (!hasRaw && !hasCs);
+
+        List<pws.editor.semantics.Configuration> constraintCfgList = buildConstraintConfigurations(state, asm);
+        List<pws.editor.semantics.Configuration> cfgList = new ArrayList<>();
+        if (state.getStateSemantics() != null) {
+            for (Object cfg : state.getStateSemantics().getConfigurations()) {
+                if (cfg instanceof pws.editor.semantics.Configuration c) {
+                    cfgList.add(c);
+                }
+            }
+        }
+
+        List<String> machineIds = new ArrayList<>();
+        if (asm != null && asm.getStateMachines() != null) {
+            machineIds.addAll(asm.getStateMachines().keySet());
+        }
+
+        int colGap = 10;
+        int tableWidth = 0;
+        int startX = padding;
+        int[] colWidths = null;
+        if (!machineIds.isEmpty()) {
+            colWidths = new int[machineIds.size()];
+            for (int i = 0; i < machineIds.size(); i++) {
+                int headerWidth = fmSmall.stringWidth(machineIds.get(i));
+                int dashWidth = fm.stringWidth("-");
+                colWidths[i] = Math.max(headerWidth, dashWidth);
+            }
+            for (pws.editor.semantics.Configuration cfg : constraintCfgList) {
+                for (int i = 0; i < machineIds.size(); i++) {
+                    String cell = cfg.getStateName(machineIds.get(i));
+                    if (cell == null || cell.isBlank()) {
+                        cell = "-";
+                    }
+                    colWidths[i] = Math.max(colWidths[i], fm.stringWidth(cell));
+                }
+            }
+            for (pws.editor.semantics.Configuration cfg : cfgList) {
+                for (int i = 0; i < machineIds.size(); i++) {
+                    String cell = cfg.getStateName(machineIds.get(i));
+                    if (cell == null || cell.isBlank()) {
+                        cell = "-";
+                    }
+                    colWidths[i] = Math.max(colWidths[i], fm.stringWidth(cell));
+                }
+            }
+            for (int i = 0; i < colWidths.length; i++) {
+                tableWidth += colWidths[i];
+                if (i < colWidths.length - 1) {
+                    tableWidth += colGap;
+                }
+            }
+            startX = Math.max(padding, (getWidth() - tableWidth) / 2);
+        }
+
+        // Precompute coverage/deadlock sets for drawing and status.
+        Set<String> coveredCfgStrs = new HashSet<>();
+        if (pwsMachine != null && asm != null && state.getStateSemantics() != null) {
+            for (machinery.TransitionInterface ti2 : pwsMachine.getTransitions()) {
+                if (ti2 instanceof pws.PWSTransition pt2 && pt2.getSource() == state && pt2.isEnabled()) {
+                    smalgebra.SMProposition guardProp = pt2.getGuardProposition();
+                    Semantics guardSem = guardProp.toSemantics(asm)
+                                        .AND(state.getStateSemantics());
+                    for (Object c : guardSem.getConfigurations()) {
+                        coveredCfgStrs.add(c.toString());
+                    }
+                }
+            }
+        }
+        Set<String> deadlockCfgStrs = new HashSet<>();
+        Set<pws.editor.semantics.Configuration> deadlocks = state.getDeadlockConfigurations();
+        if (deadlocks != null) {
+            for (pws.editor.semantics.Configuration dc : deadlocks) {
+                deadlockCfgStrs.add(dc.toString());
+            }
+        }
+        Set<smalgebra.BasicStateProposition> coveredGuards = new HashSet<>();
+        if (pwsMachine != null) {
+            for (machinery.TransitionInterface ti : pwsMachine.getTransitions()) {
+                if (ti instanceof pws.PWSTransition pt) {
+                    if (pt.isEnabled() && !pt.isTriggerable() && pt.getSource() == state
+                            && pt.getGuardProposition() instanceof smalgebra.BasicStateProposition) {
+                        coveredGuards.add((smalgebra.BasicStateProposition) pt.getGuardProposition());
+                    }
+                }
+            }
+        }
+
+        List<String> statusIssues = new ArrayList<>();
+        if (!state.isPseudoState() &&
+            (state.getStateSemantics() == null || state.getStateSemantics().getConfigurations().isEmpty())) {
+            statusIssues.add("State is unreachable (no configurations).");
+        }
+        if (!anyConstraint && constraintsSem != null && state.getStateSemantics() != null) {
+            for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
+                if (cfgObj instanceof pws.editor.semantics.Configuration cfg) {
+                    if (!cfg.implies(constraintsSem)) {
+                        statusIssues.add("Some configurations violate constraints.");
+                        break;
+                    }
+                }
+            }
+        }
+        boolean hasOrphan = false;
+        boolean hasUncovered = false;
+        Semantics ssCheck = state.getStateSemantics();
+        if (state.getReactiveSemantics() != null) {
+            for (ExitZone ez : state.getReactiveSemantics()) {
+                if (ez.isOrphanSource(asm)) {
+                    hasOrphan = true;
+                    continue;
+                }
+                boolean isInternal = false;
+                if (ssCheck != null && asm != null && ez.getTarget() != null) {
+                    Semantics targetAndSem = ez.getTarget().toSemantics(asm).AND(ssCheck);
+                    isInternal = !targetAndSem.ISEMPTY();
+                }
+                if (!isInternal && !coveredGuards.contains(ez.getTarget())) {
+                    hasUncovered = true;
+                }
+            }
+        }
+        if (hasUncovered) {
+            statusIssues.add("Some exit zones are not covered by autonomous transitions.");
+        }
+        if (hasOrphan) {
+            statusIssues.add("Orphan exit zones — no matching source state.");
+        }
+        for (String deadlockStr : deadlockCfgStrs) {
+            if (!coveredCfgStrs.contains(deadlockStr)) {
+                statusIssues.add("True deadlock configurations exist.");
+                break;
+            }
+        }
+
+        boolean allOk = statusIssues.isEmpty();
+        Color borderColor = allOk ? new Color(0, 140, 0) : new Color(180, 0, 0);
+
+        int bandHeight = lineHeight + 4;
+        int bandX = BORDER_THICKNESS;
+        int bandY = BORDER_THICKNESS;
+        int bandW = getWidth() - BORDER_THICKNESS * 2;
+        g2d.setColor(borderColor);
+        g2d.fillRoundRect(bandX, bandY, bandW, bandHeight, CORNER_RADIUS, CORNER_RADIUS);
+        g2d.setColor(Color.WHITE);
+        String stateName = state.getName() != null ? state.getName() : "";
+        int nameWidth = fm.stringWidth(stateName);
+        int nameX = Math.max(bandX + 4, (getWidth() - nameWidth) / 2);
+        int nameY = bandY + (bandHeight - lineHeight) / 2 + fm.getAscent();
+        g2d.drawString(stateName, nameX, nameY);
+        String headerTip = allOk
+                ? "Green: state is well-formed (constraints satisfied, exit zones covered, no true deadlocks)."
+                : "Red: " + (statusIssues.isEmpty() ? "state has issues." : String.join("; ", statusIssues));
+        headerHitArea = new HitArea(
+                new Rectangle(nameX, nameY - fm.getAscent(), Math.max(1, nameWidth), fm.getHeight()),
+                headerTip);
+
+        y = bandY + bandHeight + padding;
+        g2d.setFont(getNormalFont());
+        g2d.setColor(Color.BLACK);
         
         // Draw subtle section label for constraints
         y += smallLineHeight;
@@ -446,62 +769,52 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         g2d.setColor(new Color(150, 150, 150));
         g2d.drawString("constraints", padding, y);
         
-        // 1) Constraint semantics (blue, centered)
-        g2d.setFont(getNormalFont());
+        // 1) Constraint semantics: stacked matrix (one configuration per row)
+        if (!machineIds.isEmpty() && colWidths != null) {
+            y += smallLineHeight;
+            g2d.setFont(smallFont);
+            g2d.setColor(new Color(130, 130, 130));
+            int headerX = startX;
+            for (int i = 0; i < machineIds.size(); i++) {
+                String header = machineIds.get(i);
+                int hw = fmSmall.stringWidth(header);
+                g2d.drawString(header, headerX + (colWidths[i] - hw) / 2, y);
+                headerX += colWidths[i] + colGap;
+            }
+            g2d.setFont(getNormalFont());
+        }
+
         y += lineHeight;
-        String constraintSem;
-        String raw = state.getRawConstraintText();
-        if (state.isPseudoState()) {
-            // Pseudostate always shows "ANY"
-            constraintSem = "ANY";
-        } else if (raw != null && !raw.isBlank()) {
-            if ("ANY".equalsIgnoreCase(raw.trim())) {
-                constraintSem = "ANY";
-            } else {
-            // Show the user-entered compact constraints as (line1), (line2), ...
-            String[] lines = raw.split("\\r?\\n");
-            StringJoiner sjRaw = new StringJoiner(", ");
-            for (String line : lines) {
-                String s = line.trim();
-                if (!s.startsWith("(")) s = "(" + s;
-                if (!s.endsWith(")")) s = s + ")";
-                sjRaw.add(s);
-            }
-            constraintSem = sjRaw.toString();
-            }
-        } else {
-            // Build a parenthesized OR‑joined constraint string
-            Semantics cs = state.getConstraintsSemantics();
-            if (cs == null) {
-                constraintSem = "";
-            } else {
-                Collection<?> configs = cs.getConfigurations();
-                if (configs.size() <= 1) {
-                    // Single or none: show directly
-                    constraintSem = configs.isEmpty()
-                        ? ""
-                        : configs.iterator().next().toString();
-                } else {
-                    // Multiple: wrap each in parentheses and join with OR
-                    // Join multiple configurations with spaces, each wrapped in parentheses
-                    StringJoiner sj = new StringJoiner(" ");
-                    for (Object cfg : configs) {
-                        String s = cfg.toString();
-                        if (!s.startsWith("(") || !s.endsWith(")")) {
-                            s = "(" + s + ")";
-                        }
-                        sj.add(s);
+        if (constraintCfgList.isEmpty()) {
+            // Keep an empty line for layout consistency.
+        }
+        for (pws.editor.semantics.Configuration cfg : constraintCfgList) {
+            g2d.setColor(new Color(0, 70, 180)); // Darker blue for better contrast
+            int rowWidth = tableWidth;
+            int rowStart = startX;
+            if (!machineIds.isEmpty() && colWidths != null) {
+                int cellX = startX;
+                for (int i = 0; i < machineIds.size(); i++) {
+                    String cell = cfg.getStateName(machineIds.get(i));
+                    if (cell == null || cell.isBlank()) {
+                        cell = "-";
                     }
-                    constraintSem = sj.toString();
+                    int cw = fm.stringWidth(cell);
+                    g2d.drawString(cell, cellX + (colWidths[i] - cw) / 2, y);
+                    cellX += colWidths[i] + colGap;
                 }
+            } else {
+                String display = cfg.getBasicStatePropositions().isEmpty() ? "ANY" : cfg.toString();
+                int sw = fm.stringWidth(display);
+                rowWidth = sw;
+                rowStart = (getWidth() - sw) / 2;
+                g2d.drawString(display, rowStart, y);
             }
+            y += lineHeight;
         }
-        if (constraintSem.isBlank()) {
-            constraintSem = "ANY";
+        if (!constraintCfgList.isEmpty()) {
+            y -= lineHeight;
         }
-        g2d.setColor(new Color(0, 70, 180)); // Darker blue for better contrast
-        int w1 = fm.stringWidth(constraintSem);
-        g2d.drawString(constraintSem, (getWidth() - w1) / 2, y);
         
         // Draw separator line
         y += 3;
@@ -515,129 +828,108 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         g2d.drawString("configs", padding, y);
         g2d.setFont(getNormalFont());
 
-        // 2) Actual state semantics: each configuration green if in constraints, red otherwise
-        y += lineHeight;
-        Semantics constraintsSem = state.getConstraintsSemantics();
-        Set<?> stateConfigs = state.getStateSemantics() == null
-                ? Collections.emptySet()
-                : state.getStateSemantics().getConfigurations();
-        String rawConstraint = state.getRawConstraintText();
-        boolean hasRaw = rawConstraint != null && !rawConstraint.isBlank();
-        boolean rawAny = hasRaw && "ANY".equalsIgnoreCase(rawConstraint.trim());
-        boolean hasCs = constraintsSem != null && !constraintsSem.getConfigurations().isEmpty();
-        boolean anyConstraint = state.isPseudoState() || rawAny || (!hasRaw && !hasCs);
-        List<pws.editor.semantics.Configuration> cfgList = new ArrayList<>();
-        // Compute which state configurations are covered by at least one outgoing guard
-        // Note: disabled transitions do not contribute to coverage
-        PWSStateMachine pwsMachine = ((PWSStateMachinePanel) getParent()).getStateMachine();
-        Assembly asm = pwsMachine.getAssembly();
-        Set<String> coveredCfgStrs = new HashSet<>();
-        for (machinery.TransitionInterface ti2 : pwsMachine.getTransitions()) {
-            if (ti2 instanceof pws.PWSTransition pt2 && pt2.getSource() == state && pt2.isEnabled()) {
-                // guard proposition must hold under the state's current semantics
-                smalgebra.SMProposition guardProp = pt2.getGuardProposition();
-                Semantics guardSem = guardProp.toSemantics(asm)
-                                    .AND(state.getStateSemantics());
-                for (Object c : guardSem.getConfigurations()) {
-                    coveredCfgStrs.add(c.toString());
-                }
-            }
-        }
-        for (Object cfg : stateConfigs) {
-            if (cfg instanceof pws.editor.semantics.Configuration c) {
-                cfgList.add(c);
-            } else if (cfg != null) {
-                // ignore unexpected config type for drawing
-            }
-        }
-        // Use cached deadlock configurations (computed during semantics recalculation, not at paint time)
-        Set<String> deadlockCfgStrs = new HashSet<>();
-        Set<pws.editor.semantics.Configuration> deadlocks = state.getDeadlockConfigurations();
-        if (deadlocks != null) {
-            for (pws.editor.semantics.Configuration dc : deadlocks) {
-                deadlockCfgStrs.add(dc.toString());
-            }
-        }
-        int totalWidth = 0;
-        for (pws.editor.semantics.Configuration cfg : cfgList) {
-            String s = cfg.toString();
-            totalWidth += fm.stringWidth(s) + fm.charWidth(' ');
-        }
-        int x = (getWidth() - totalWidth) / 2;
-        configHitAreas.clear();
-        for (pws.editor.semantics.Configuration cfg : cfgList) {
-            String s = cfg.toString();
+        // 2) Actual state semantics: one configuration per line, stacked as a compact matrix
 
-            // Special case: empty configuration "()" means no component machines configured
-            boolean isEmptyConfig = s.equals("()");
-            
-            // Determine status for color and underline:
-            // - isDeadlock: configuration cannot evolve internally (is in deadlockConfigurations)
-            // - isCovered: configuration is covered by at least one outgoing transition guard
+        configHitAreas.clear();
+        if (!machineIds.isEmpty() && colWidths != null) {
+            // Header row: machine ids
+            y += smallLineHeight;
+            g2d.setFont(smallFont);
+            g2d.setColor(new Color(130, 130, 130));
+            int headerX = startX;
+            for (int i = 0; i < machineIds.size(); i++) {
+                String header = machineIds.get(i);
+                int hw = fmSmall.stringWidth(header);
+                g2d.drawString(header, headerX + (colWidths[i] - hw) / 2, y);
+                headerX += colWidths[i] + colGap;
+            }
+            g2d.setFont(getNormalFont());
+        }
+
+        y += lineHeight;
+        if (cfgList.isEmpty()) {
+            // Keep an empty line for layout consistency.
+        }
+        for (pws.editor.semantics.Configuration cfg : cfgList) {
+            String s = cfg.toString();
+            boolean isEmptyConfig = cfg.getBasicStatePropositions().isEmpty();
             boolean isDeadlock = deadlockCfgStrs.contains(s);
             boolean isCovered = coveredCfgStrs.contains(s);
-            boolean canEvolve = !isDeadlock && !isEmptyConfig; // Empty config can't evolve (nothing to evolve)
+            boolean canEvolve = !isDeadlock && !isEmptyConfig;
             boolean satisfiesConstraint = anyConstraint;
-            if (!satisfiesConstraint && constraintsSem != null && stateConfigs != null) {
-                // Rebuild configuration object from stateConfigs for implication check
-                for (Object cfgObj : stateConfigs) {
-                    if (cfgObj instanceof pws.editor.semantics.Configuration cfgCheck && cfgCheck.toString().equals(s)) {
-                        satisfiesConstraint = cfgCheck.implies(constraintsSem);
-                        break;
-                    }
-                }
+            if (!satisfiesConstraint && constraintsSem != null) {
+                satisfiesConstraint = cfg.implies(constraintsSem);
             }
             boolean isTrueDeadlock = isDeadlock && !isCovered;
             java.util.List<String> componentDeadlocks = findComponentDeadlocks(cfg, asm);
             boolean hasComponentDeadlock = !componentDeadlocks.isEmpty();
-            
-            // Color logic:
-            // - Gray: Empty config (no component machines) - neutral/informational
-            // - Green: Satisfies constraints
-            // - Red: Violates constraints
+
             if (isEmptyConfig) {
-                g2d.setColor(new Color(100, 100, 100)); // Gray for empty config
+                g2d.setColor(new Color(100, 100, 100));
             } else {
                 g2d.setColor(satisfiesConstraint ? Color.GREEN.darker() : Color.RED);
             }
-            g2d.drawString(s, x, y);
-            
-            // Underline logic:
-            // - Green underline: can evolve internally
-            // - Red underline: true deadlock (internally stuck and not covered)
-            // - Yellow underline: component deadlock in configuration
-            // - No underline for empty config or covered-but-stuck
-            int sw = fm.stringWidth(s);
-            if (isTrueDeadlock) {
-                g2d.setColor(Color.RED);
-                g2d.drawLine(x, y + 1, x + sw, y + 1);
-            } else if (hasComponentDeadlock) {
-                g2d.setColor(PARTIAL_DEADLOCK_COLOR);
-                g2d.drawLine(x, y + 1, x + sw, y + 1);
-            } else if (canEvolve) {
-                g2d.setColor(Color.GREEN.darker());
-                g2d.drawLine(x, y + 1, x + sw, y + 1);
+
+            int rowWidth = tableWidth;
+            int rowStart = startX;
+            if (!machineIds.isEmpty() && colWidths != null) {
+                int cellX = startX;
+                for (int i = 0; i < machineIds.size(); i++) {
+                    String cell = cfg.getStateName(machineIds.get(i));
+                    if (cell == null || cell.isBlank()) {
+                        cell = "-";
+                    }
+                    int cw = fm.stringWidth(cell);
+                    g2d.drawString(cell, cellX + (colWidths[i] - cw) / 2, y);
+                    cellX += colWidths[i] + colGap;
+                }
+            } else {
+                int sw = fm.stringWidth(s);
+                rowWidth = sw;
+                rowStart = (getWidth() - sw) / 2;
+                g2d.drawString(s, rowStart, y);
             }
-            if (sw > 0) {
-                StringBuilder tip = new StringBuilder();
-                if (isEmptyConfig) {
-                    tip.append("No component machines configured.");
-                } else if (isTrueDeadlock) {
-                    tip.append("True deadlock: cannot evolve internally and not covered by any transition.");
+
+            if (rowWidth > 0) {
+                if (isTrueDeadlock) {
+                    g2d.setColor(Color.RED);
+                    g2d.drawLine(rowStart, y + 1, rowStart + rowWidth, y + 1);
+                } else if (hasComponentDeadlock) {
+                    g2d.setColor(PARTIAL_DEADLOCK_COLOR);
+                    g2d.drawLine(rowStart, y + 1, rowStart + rowWidth, y + 1);
                 } else if (canEvolve) {
-                    tip.append("Can evolve internally.");
-                } else {
-                    tip.append("Internally stuck but covered by an outgoing transition.");
+                    g2d.setColor(Color.GREEN.darker());
+                    g2d.drawLine(rowStart, y + 1, rowStart + rowWidth, y + 1);
                 }
-                if (!componentDeadlocks.isEmpty()) {
-                    if (tip.length() > 0) tip.append(" ");
-                    tip.append("Component deadlock: ").append(String.join(", ", componentDeadlocks)).append(".");
+            }
+
+            StringBuilder tip = new StringBuilder();
+            if (isEmptyConfig) {
+                tip.append("No component machines configured.");
+            } else if (isTrueDeadlock) {
+                tip.append("True deadlock: cannot evolve internally and not covered by any transition.");
+            } else if (canEvolve) {
+                tip.append("Can evolve internally.");
+                String evolutionHint = buildEvolutionHint(cfg, state, asm);
+                if (evolutionHint != null && !evolutionHint.isBlank()) {
+                    tip.append(" ").append(evolutionHint);
                 }
-                configHitAreas.add(new ConfigHitArea(
-                        new Rectangle(x, y - fm.getAscent(), sw, fm.getHeight()),
+            } else {
+                tip.append("Internally stuck but covered by an outgoing transition.");
+            }
+            if (!componentDeadlocks.isEmpty()) {
+                if (tip.length() > 0) tip.append(" ");
+                tip.append("Component deadlock: ").append(String.join(", ", componentDeadlocks)).append(".");
+            }
+            if (rowWidth > 0) {
+                configHitAreas.add(new HitArea(
+                        new Rectangle(rowStart, y - fm.getAscent(), rowWidth, fm.getHeight()),
                         tip.toString()));
             }
-            x += fm.stringWidth(s) + fm.charWidth(' ');
+            y += lineHeight;
+        }
+        if (!cfgList.isEmpty()) {
+            y -= lineHeight;
         }
         
         // Draw separator line before exit zones
@@ -662,50 +954,12 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             int[] ys = { iconY + iconH, iconY + iconH, iconY };
             g2d.fillPolygon(xs, ys, 3);
         }
-        // Legend line for exit zone colors (inline with dashboard)
-        y += smallLineHeight;
-        int legendX = padding;
-        g2d.setColor(new Color(150, 150, 150));
-        g2d.drawString("legend: ", legendX, y);
-        legendX += fmSmall.stringWidth("legend: ");
-        g2d.setColor(Color.GREEN.darker());
-        g2d.drawString("covered", legendX, y);
-        legendX += fmSmall.stringWidth("covered");
-        g2d.setColor(new Color(150, 150, 150));
-        g2d.drawString(" / ", legendX, y);
-        legendX += fmSmall.stringWidth(" / ");
-        Color provisionalBlue = new Color(0, 70, 180);
-        g2d.setColor(provisionalBlue);
-        g2d.drawString("provisional", legendX, y);
-        legendX += fmSmall.stringWidth("provisional");
-        g2d.setColor(new Color(150, 150, 150));
-        g2d.drawString(" / ", legendX, y);
-        legendX += fmSmall.stringWidth(" / ");
-        g2d.setColor(new Color(180, 0, 0));
-        g2d.drawString("uncovered", legendX, y);
-        legendX += fmSmall.stringWidth("uncovered");
-        g2d.setColor(new Color(150, 150, 150));
-        g2d.drawString(" / ", legendX, y);
-        legendX += fmSmall.stringWidth(" / ");
-        g2d.setColor(new Color(120, 120, 120));
-        g2d.drawString("internal", legendX, y);
         g2d.setFont(getNormalFont());
 
-        // 3) Reactive exit zones: centered, comma-separated, colored by origin and coverage
+        // 3) Reactive exit zones: stacked lines, colored by origin and coverage
         y += lineHeight;
+        exitZoneHitAreas.clear();
         try {
-            // Determine covered guards for coloring
-            // Note: disabled transitions do not contribute to coverage
-            Set<smalgebra.BasicStateProposition> covered = new HashSet<>();
-            for (machinery.TransitionInterface ti : pwsMachine.getTransitions()) {
-                if (ti instanceof pws.PWSTransition) {
-                    pws.PWSTransition pt = (pws.PWSTransition) ti;
-                    if (pt.isEnabled() && !pt.isTriggerable() && pt.getSource() == state
-                            && pt.getGuardProposition() instanceof smalgebra.BasicStateProposition) {
-                        covered.add((smalgebra.BasicStateProposition) pt.getGuardProposition());
-                    }
-                }
-            }
             // Get CS-only and SS-only sets for later detailed analysis (used in extended dashboard)
             Set<ExitZone> csOnly = state.getCsOnlyExitZones();
             Set<ExitZone> ssOnly = state.getSsOnlyExitZones();
@@ -720,13 +974,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 }
             }
             List<String> zoneLabels = buildExitZoneLabels(zones);
-            // Compute total width of comma-separated exit-zone list
-            int exitTotalWidth = measureCommaSeparatedWidth(fm, zoneLabels);
-            int exitX = (getWidth() - exitTotalWidth) / 2;
-            // Draw each exit-zone with comma separators
-            // Simplified color logic: 
-            // - Green if covered by an autonomous PWS transition
-            // - Red if not covered
+            // Draw each exit-zone on its own line, centered.
             Font baseFont = g2d.getFont();
             for (int i = 0; i < zones.size(); i++) {
                 ExitZone ez = zones.get(i);
@@ -737,7 +985,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                     Semantics targetAndSem = ez.getTarget().toSemantics(asm).AND(ss);
                     isInternal = !targetAndSem.ISEMPTY();
                 }
-                boolean isCovered = !isOrphan && !isInternal && covered.contains(ez.getTarget());
+                boolean isCovered = !isOrphan && !isInternal && coveredGuards.contains(ez.getTarget());
                 boolean isCsOnly = csOnly != null && csOnly.contains(ez);
                 Color ezColor;
                 if (isCsOnly) {
@@ -750,71 +998,30 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 }
                 g2d.setColor(ezColor);
                 g2d.setFont(baseFont);
+                int txtWidth = fm.stringWidth(txt);
+                int exitX = (getWidth() - txtWidth) / 2;
                 g2d.drawString(txt, exitX, y);
-                exitX += g2d.getFontMetrics().stringWidth(txt);
-                if (i < zones.size() - 1) {
-                    String sep = ", ";
-                    g2d.setColor(Color.BLACK);
-                    g2d.drawString(sep, exitX, y);
-                    exitX += fm.stringWidth(sep);
+                String status;
+                if (isCsOnly) {
+                    status = "Provisional (constraints only).";
+                } else if (isOrphan) {
+                    status = "Orphan (no matching source state).";
+                } else if (isInternal) {
+                    status = "Internal (reachable within current state semantics).";
+                } else if (isCovered) {
+                    status = "Covered by an autonomous transition.";
+                } else {
+                    status = "Uncovered by autonomous transitions.";
                 }
+                exitZoneHitAreas.add(new HitArea(
+                        new Rectangle(exitX, y - fm.getAscent(), txtWidth, fm.getHeight()),
+                        "Exit zone " + txt + " - " + status));
+                y += lineHeight;
             }
-            // After drawing all semantics, adjust border color:
-            boolean allOk = true;
-            
-            // 0) Check for empty state semantics (unreachable state)
-            // A state with no configurations cannot be reached, which is a problem
-            // Exception: pseudo-state always has ANY semantics
-            if (!state.isPseudoState() && 
-                (state.getStateSemantics() == null || state.getStateSemantics().getConfigurations().isEmpty())) {
-                allOk = false;
+            if (!zones.isEmpty()) {
+                y -= lineHeight;
             }
-            
-            // 1) Check actual semantics vs. constraints
-            if (!anyConstraint && constraintsSem != null && state.getStateSemantics() != null) {
-                for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
-                    if (cfgObj instanceof pws.editor.semantics.Configuration cfg) {
-                        if (!cfg.implies(constraintsSem)) {
-                            allOk = false;
-                            break;
-                        }
-                    }
-                }
-            }
-            // 2) Check reactive exit-zones coverage
-            if (allOk) {
-                Semantics ssCheck = state.getStateSemantics();
-                Assembly asmCheck = asm;
-                for (ExitZone ez : state.getReactiveSemantics()) {
-                    if (ez.isOrphanSource(asmCheck)) {
-                        allOk = false;
-                        break;
-                    }
-                    boolean isInternal = false;
-                    if (ssCheck != null && asmCheck != null && ez.getTarget() != null) {
-                        Semantics targetAndSem = ez.getTarget().toSemantics(asmCheck).AND(ssCheck);
-                        isInternal = !targetAndSem.ISEMPTY();
-                    }
-                    if (!isInternal && !covered.contains(ez.getTarget())) {
-                        allOk = false;
-                        break;
-                    }
-                }
-            }
-            // 3) Check for true deadlock configurations 
-            // (configurations that cannot reach others AND are not covered by any transition)
-            if (allOk) {
-                for (String deadlockStr : deadlockCfgStrs) {
-                    if (!coveredCfgStrs.contains(deadlockStr)) {
-                        // This is a true deadlock - no way out
-                        allOk = false;
-                        break;
-                    }
-                }
-            }
-            // Set the border based on overall OK status
-            Color borderColor = allOk ? new Color(0, 140, 0) : new Color(180, 0, 0);
-            
+            // Draw border based on overall status.
             // Draw custom rounded border with thicker line
             g2d.setColor(borderColor);
             g2d.setStroke(new BasicStroke(BORDER_THICKNESS));
@@ -1039,9 +1246,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             Semantics cs = state.getConstraintsSemantics();
             constraintSem = (cs == null) ? "" : cs.toString();
         }
-        String actualSem = (state.getStateSemantics() == null)
-            ? ""
-            : state.getStateSemantics().toString();
+        if (constraintSem == null || constraintSem.isBlank()) {
+            constraintSem = "ANY";
+        }
         List<ExitZone> zones = (state.getReactiveSemantics() == null)
             ? Collections.emptyList()
             : new ArrayList<>(state.getReactiveSemantics());
@@ -1055,19 +1262,83 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
         List<String> zoneLabels = buildExitZoneLabels(zones);
 
-        String[] lines = new String[] { constraintSem, actualSem };
         FontMetrics fm = getFontMetrics(getNormalFont());
         FontMetrics fmSmall = getFontMetrics(getSmallFont());
-        int maxWidth = 0;
-        for (String line : lines) {
-            maxWidth = Math.max(maxWidth, fm.stringWidth(line));
+        int exitMaxWidth = 0;
+        for (String label : zoneLabels) {
+            if (label == null) continue;
+            exitMaxWidth = Math.max(exitMaxWidth, fm.stringWidth(label));
         }
-        int exitTotalWidth = measureCommaSeparatedWidth(fm, zoneLabels);
-        maxWidth = Math.max(maxWidth, exitTotalWidth);
+        int exitRows = Math.max(1, zoneLabels.size());
+
+        Assembly asm = (assembly != null) ? assembly : (panel != null ? panel.getStateMachine().getAssembly() : null);
+        List<pws.editor.semantics.Configuration> constraintCfgList = buildConstraintConfigurations(state, asm);
+        int maxWidth = fm.stringWidth(constraintSem);
+
+        int matrixWidth = 0;
+        int colGap = 10;
+        List<pws.editor.semantics.Configuration> cfgList = new ArrayList<>();
+        if (state.getStateSemantics() != null) {
+            for (Object cfg : state.getStateSemantics().getConfigurations()) {
+                if (cfg instanceof pws.editor.semantics.Configuration c) {
+                    cfgList.add(c);
+                }
+            }
+        }
+        List<String> machineIds = new ArrayList<>();
+        if (asm != null && asm.getStateMachines() != null) {
+            machineIds.addAll(asm.getStateMachines().keySet());
+        }
+        if (!machineIds.isEmpty()) {
+            int[] colWidths = new int[machineIds.size()];
+            for (int i = 0; i < machineIds.size(); i++) {
+                int headerWidth = fmSmall.stringWidth(machineIds.get(i));
+                int dashWidth = fm.stringWidth("-");
+                colWidths[i] = Math.max(headerWidth, dashWidth);
+            }
+            for (pws.editor.semantics.Configuration cfg : constraintCfgList) {
+                for (int i = 0; i < machineIds.size(); i++) {
+                    String cell = cfg.getStateName(machineIds.get(i));
+                    if (cell == null || cell.isBlank()) {
+                        cell = "-";
+                    }
+                    colWidths[i] = Math.max(colWidths[i], fm.stringWidth(cell));
+                }
+            }
+            for (pws.editor.semantics.Configuration cfg : cfgList) {
+                for (int i = 0; i < machineIds.size(); i++) {
+                    String cell = cfg.getStateName(machineIds.get(i));
+                    if (cell == null || cell.isBlank()) {
+                        cell = "-";
+                    }
+                    colWidths[i] = Math.max(colWidths[i], fm.stringWidth(cell));
+                }
+            }
+            for (int i = 0; i < colWidths.length; i++) {
+                matrixWidth += colWidths[i];
+                if (i < colWidths.length - 1) {
+                    matrixWidth += colGap;
+                }
+            }
+        } else {
+            for (pws.editor.semantics.Configuration cfg : constraintCfgList) {
+                matrixWidth = Math.max(matrixWidth, fm.stringWidth(cfg.toString()));
+            }
+            for (pws.editor.semantics.Configuration cfg : cfgList) {
+                matrixWidth = Math.max(matrixWidth, fm.stringWidth(cfg.toString()));
+            }
+            if (matrixWidth == 0) {
+                matrixWidth = fm.stringWidth(constraintSem);
+            }
+        }
+        maxWidth = Math.max(maxWidth, matrixWidth);
+        maxWidth = Math.max(maxWidth, exitMaxWidth);
         // Account for section labels width
+        String stateName = state.getName() != null ? state.getName() : "";
+        maxWidth = Math.max(maxWidth, fm.stringWidth(stateName) + 24);
+        maxWidth = Math.max(maxWidth, fmSmall.stringWidth("constraints") + 20);
         maxWidth = Math.max(maxWidth, fmSmall.stringWidth("exit zones") + 20);
-        // Account for exit zones legend width
-        maxWidth = Math.max(maxWidth, fmSmall.stringWidth("legend: covered / provisional / uncovered / internal") + 20);
+        maxWidth = Math.max(maxWidth, fmSmall.stringWidth("configs") + 20);
         
         // Match the exact y-positions used in paintComponent:
         // padding=6, then for each section: smallLineHeight + lineHeight + separator(~4)
@@ -1075,13 +1346,19 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         int lineHeight = fm.getHeight();
         int smallLineHeight = fmSmall.getHeight();
         
-        // Section 1: constraints label + content
-        // Section 2: separator + configs label + content  
+        int constraintRows = Math.max(1, constraintCfgList.size());
+        int cfgRows = Math.max(1, cfgList.size());
+        int headerHeight = machineIds.isEmpty() ? 0 : smallLineHeight;
+        int bandHeight = lineHeight + 4;
+
+        // Section 1: header band + constraints label + header + rows
+        // Section 2: separator + configs label + header + rows
         // Section 3: separator + exit zones label + content
         int totalHeight = padding +
-                          smallLineHeight + lineHeight +  // constraints section
-                          4 + smallLineHeight + lineHeight +  // configs section (with separator)
-                          4 + smallLineHeight + smallLineHeight + lineHeight +  // exit zones section (label + legend + content)
+                          bandHeight + padding +  // header band
+                          smallLineHeight + headerHeight + (constraintRows * lineHeight) +  // constraints section
+                          4 + smallLineHeight + headerHeight + (cfgRows * lineHeight) +  // configs section (with separator)
+                          4 + smallLineHeight + (exitRows * lineHeight) +  // exit zones section (label + content)
                           padding;
         
         // Add padding for borders

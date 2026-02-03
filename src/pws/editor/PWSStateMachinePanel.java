@@ -92,6 +92,14 @@ public class PWSStateMachinePanel extends StateMachinePanel {
      */
     public void setShowStateAnnotations(boolean show) {
         this.showStateAnnotations = show;
+        for (StateInterface si : stateMachine.getStates()) {
+            if (!(si instanceof PWSState pwsState)) continue;
+            StateSemanticsAnnotation annot = pwsState.getAnnotation();
+            if (annot == null) continue;
+            boolean shouldShow = show && pwsState.isAnnotationVisible() && !pwsState.isPseudoState();
+            annot.setVisible(shouldShow);
+        }
+        revalidate();
         repaint();
     }
 
@@ -1678,13 +1686,14 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                             annot.setBounds(annotCenterX - 60, annotCenterY - 15, 120, 30);
                             pwsState.setAnnotation(annot);
                             add(annot);
+                            annot.setVisible(showStateAnnotations);
                             java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
                             if (win instanceof pws.editor.PWSEditor) {
                                 ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
                             }
                             System.out.println("Created new Annotation for " + pwsState.getName());
                         } else {
-                            pwsState.getAnnotation().setVisible(true);
+                            pwsState.getAnnotation().setVisible(showStateAnnotations);
                             java.awt.Container win2 = javax.swing.SwingUtilities.getWindowAncestor(this);
                             if (win2 instanceof pws.editor.PWSEditor) {
                                 ((pws.editor.PWSEditor) win2).scheduleSemanticsRecalculation();

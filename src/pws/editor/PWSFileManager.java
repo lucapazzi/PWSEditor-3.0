@@ -98,11 +98,9 @@ public class PWSFileManager {
                         }
                         editor.syncViewMenuSelections();
 
-                        // Ensure dashboards are visible and restored
+                        // Ensure dashboards are restored respecting the View menu state
                         try {
-                            panel.setShowStateAnnotations(true);
-                            panel.restoreVisibleStateAnnotations();
-                            panel.repaint();
+                            editor.applyDashboardVisibility();
                         } catch (Exception ignore) {}
 
                         // Recalculate semantics after loading to ensure all computed fields are up-to-date
