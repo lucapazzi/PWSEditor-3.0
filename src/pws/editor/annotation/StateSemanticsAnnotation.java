@@ -32,6 +32,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     private static final int MINIMIZED_SIZE = 16;
     private static final Color PARTIAL_DEADLOCK_COLOR = new Color(200, 160, 0);
     private final java.util.List<HitArea> configHitAreas = new ArrayList<>();
+    private final java.util.List<HitArea> constraintHitAreas = new ArrayList<>();
     private final java.util.List<HitArea> exitZoneHitAreas = new ArrayList<>();
     private HitArea headerHitArea = null;
     private boolean csOnlyWarningActive = false;
@@ -99,6 +100,11 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         Point p = e.getPoint();
         if (headerHitArea != null && headerHitArea.bounds != null && headerHitArea.bounds.contains(p)) {
             return headerHitArea.tooltip;
+        }
+        for (HitArea area : constraintHitAreas) {
+            if (area != null && area.bounds != null && area.bounds.contains(p)) {
+                return area.tooltip;
+            }
         }
         for (HitArea area : exitZoneHitAreas) {
             if (area != null && area.bounds != null && area.bounds.contains(p)) {
@@ -766,12 +772,14 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         y = bandY + bandHeight + padding;
         g2d.setFont(getNormalFont());
         g2d.setColor(Color.BLACK);
+        constraintHitAreas.clear();
         
         // Draw subtle section label for constraints
         y += smallLineHeight;
         g2d.setFont(smallFont);
         g2d.setColor(new Color(150, 150, 150));
         g2d.drawString("constraints", padding, y);
+        int constraintsSectionTop = y - fmSmall.getAscent();
         
         // 1) Constraint semantics: stacked matrix (one configuration per row)
         if (!machineIds.isEmpty() && colWidths != null) {
@@ -819,6 +827,17 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         if (!constraintCfgList.isEmpty()) {
             y -= lineHeight;
         }
+        int constraintsSectionBottom = y + fm.getDescent();
+        int constraintsRegionX = tableWidth > 0 ? startX : padding;
+        int constraintsRegionW = tableWidth > 0 ? tableWidth : Math.max(1, getWidth() - padding * 2);
+        String constraintsTip = anyConstraint
+                ? "Constraints: ANY (no user-supplied constraints)."
+                : "User supplied constraints.";
+        constraintHitAreas.add(new HitArea(
+                new Rectangle(constraintsRegionX, constraintsSectionTop,
+                        Math.max(1, constraintsRegionW),
+                        Math.max(1, constraintsSectionBottom - constraintsSectionTop)),
+                constraintsTip));
         
         // Draw separator line
         y += 3;
@@ -924,6 +943,14 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             if (!componentDeadlocks.isEmpty()) {
                 if (tip.length() > 0) tip.append(" ");
                 tip.append("Component deadlock: ").append(String.join(", ", componentDeadlocks)).append(".");
+            }
+            if (tip.length() > 0) tip.append(" ");
+            if (anyConstraint) {
+                tip.append("Constraints: ANY (always satisfied).");
+            } else if (satisfiesConstraint) {
+                tip.append("Satisfies constraints.");
+            } else {
+                tip.append("Violates constraints.");
             }
             if (rowWidth > 0) {
                 configHitAreas.add(new HitArea(

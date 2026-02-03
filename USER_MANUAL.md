@@ -137,15 +137,20 @@ The pseudo-state is automatically created and appears as a **small filled circle
 
 ## Assembly Initial Configurations Dashboard
 
-In the **Assembly** tab (right panel), the **Initial Configurations Dashboard** shows three rows:
+In the **Assembly** tab (right panel), the **Initial Configurations Dashboard** now focuses on the **closure** only:
 
-1. **Initial configs**: the set of configurations generated from each machine’s initial state(s).
-2. **Exit zones**: the autonomous exit zones derived from those initial configurations.
-3. **Closure**: the transitive closure obtained by repeatedly applying exit zones until
-   no new configurations appear.
+- **Closure**: the transitive closure obtained by repeatedly applying exit zones until
+  no new configurations appear, rendered as a table (same layout as state dashboards).
 
-The dashboard uses the same visual style as state dashboards and refreshes automatically
-whenever the assembly or any component machine changes (including enabling/disabling transitions).
+Each row is color-coded:
+- **Green**: covered by at least one **enabled initial transition** guard.
+- **Red**: not covered by any enabled initial transition guard.
+
+**Hover** a row to see a tooltip explaining the coverage status.
+
+The panel refreshes automatically whenever the assembly or any component machine changes
+(including enabling/disabling transitions). Disabled **initial transitions** are ignored when
+computing initial configurations and coverage.
 
 #### Pseudo-State Aliases
 
@@ -703,6 +708,8 @@ The border color of the state dashboard indicates the overall health of the stat
 | **Red border** | Has issues — one or more problems need attention |
 
 The state name is shown in a colored band at the top of the dashboard; the band color matches the border. Hover the name to see a concise explanation of the status.
+
+**Configuration tooltips** also report whether the configuration **satisfies constraints** (or if constraints are **ANY**).
 
 **Red border triggers** (any of these conditions):
 - **Unreachable state**: Empty state semantics (no configurations) — the state cannot be reached

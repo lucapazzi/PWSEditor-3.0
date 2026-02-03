@@ -1303,10 +1303,10 @@ public class PWSEditor extends JFrame {
                     StateSemanticsAnnotation.isShowExitZoneMachineIds()
                 );
                 Semantics closure = computeExitZoneClosure(pwsMachine, init);
-                initialConfigsPanel.setClosure(closure);
+                initialConfigsPanel.setClosure(closure, pwsMachine);
             } else {
                 initialConfigsPanel.setExitZones(null, StateSemanticsAnnotation.isShowExitZoneMachineIds());
-                initialConfigsPanel.setClosure(null);
+                initialConfigsPanel.setClosure(null, null);
             }
         } catch (Exception ex) {
             initialConfigsPanel.setPlaceholder("Initial configurations unavailable.");

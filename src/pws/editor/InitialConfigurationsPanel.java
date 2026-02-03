@@ -1,20 +1,23 @@
 package pws.editor;
 
+import assembly.Assembly;
+import machinery.TransitionInterface;
+import pws.PWSStateMachine;
+import pws.PWSTransition;
+import pws.editor.semantics.Configuration;
 import pws.editor.semantics.ExitZone;
 import pws.editor.semantics.Semantics;
 import smalgebra.BasicStateProposition;
 
 import javax.swing.*;
 import javax.swing.border.AbstractBorder;
-import javax.swing.text.SimpleAttributeSet;
-import javax.swing.text.StyleConstants;
-import javax.swing.text.StyledDocument;
 import java.awt.*;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
-import java.util.StringJoiner;
+import java.util.Map;
 import java.util.Set;
 
 /** Simple panel that renders initial configurations for the current assembly. */
@@ -22,25 +25,20 @@ public class InitialConfigurationsPanel extends JPanel {
     private static final Color PLACEHOLDER_COLOR = new Color(120, 120, 120);
     private static final Color SECTION_COLOR = new Color(150, 150, 150);
     private static final Color TEXT_GREEN = Color.GREEN.darker();
+    private static final Color TEXT_RED = new Color(180, 0, 0);
     private static final Color BORDER_COLOR = new Color(180, 180, 180);
     private static final String EXIT_ZONE_ARROW = "→";
-    private final JTextPane configsArea;
-    private final JTextPane exitZonesArea;
-    private final JTextPane closureArea;
+    private final ClosureTable closureTable;
 
     public InitialConfigurationsPanel() {
         setLayout(new BorderLayout());
         setBackground(Color.WHITE);
         setBorder(new RoundedLineBorder(BORDER_COLOR, 8, 1));
 
-        configsArea = createTextPane();
-        exitZonesArea = createTextPane();
-        closureArea = createTextPane();
-        JPanel content = new JPanel(new GridLayout(3, 1));
+        closureTable = new ClosureTable();
+        JPanel content = new JPanel(new GridLayout(1, 1));
         content.setOpaque(false);
-        content.add(buildRow("initial configs", configsArea, false));
-        content.add(buildRow("exit zones", exitZonesArea, true));
-        content.add(buildRow("closure", closureArea, true));
+        content.add(buildRow("closure", closureTable, false));
         add(content, BorderLayout.CENTER);
 
         setPlaceholder("No controller loaded.");
@@ -63,16 +61,7 @@ public class InitialConfigurationsPanel extends JPanel {
         return getBaseFont().deriveFont(Font.ITALIC, size);
     }
 
-    private JTextPane createTextPane() {
-        JTextPane pane = new JTextPane();
-        pane.setEditable(false);
-        pane.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
-        pane.setBackground(Color.WHITE);
-        pane.setFont(getNormalFont());
-        return pane;
-    }
-
-    private JPanel buildRow(String labelText, JTextPane area, boolean topSeparator) {
+    private JPanel buildRow(String labelText, JComponent area, boolean topSeparator) {
         JPanel row = new JPanel(new BorderLayout());
         row.setOpaque(false);
         if (topSeparator) {
@@ -93,105 +82,28 @@ public class InitialConfigurationsPanel extends JPanel {
     }
 
     public void setSemantics(Semantics semantics) {
-        if (semantics == null) {
-            setConfigsPlaceholder("No initial configurations.");
-            return;
-        }
-        Collection<?> configs = semantics.getConfigurations();
-        if (configs == null || configs.isEmpty()) {
-            setConfigsPlaceholder("No initial configurations.");
-            return;
-        }
-        StringJoiner joiner = new StringJoiner(" ");
-        for (Object cfg : configs) {
-            if (cfg != null) {
-                joiner.add(cfg.toString());
-            }
-        }
-        String text = joiner.toString().trim();
-        if (text.isEmpty()) {
-            setConfigsPlaceholder("No initial configurations.");
-            return;
-        }
-        setText(configsArea, text, false);
+        // Initial configs no longer displayed in this panel.
     }
 
     public void setExitZones(Set<ExitZone> zones, boolean showMachineIds) {
-        if (zones == null || zones.isEmpty()) {
-            setExitZonesPlaceholder("No exit zones.");
-            return;
-        }
-        List<String> labels = new ArrayList<>(zones.size());
-        for (ExitZone ez : zones) {
-            labels.add(formatExitZoneLabel(ez, showMachineIds));
-        }
-        Collections.sort(labels);
-        StringJoiner joiner = new StringJoiner(", ");
-        for (String label : labels) {
-            if (label != null && !label.isBlank()) {
-                joiner.add(label);
-            }
-        }
-        String text = joiner.toString().trim();
-        if (text.isEmpty()) {
-            setExitZonesPlaceholder("No exit zones.");
-            return;
-        }
-        setText(exitZonesArea, text, false);
+        // Exit zones no longer displayed in this panel.
     }
 
-    public void setClosure(Semantics semantics) {
+    public void setClosure(Semantics semantics, PWSStateMachine machine) {
         if (semantics == null) {
-            setClosurePlaceholder("No closure configurations.");
+            closureTable.setPlaceholder("No closure configurations.");
             return;
         }
-        Collection<?> configs = semantics.getConfigurations();
-        if (configs == null || configs.isEmpty()) {
-            setClosurePlaceholder("No closure configurations.");
-            return;
+        List<String> machineIds = new ArrayList<>();
+        Assembly assembly = (machine != null) ? machine.getAssembly() : null;
+        if (assembly != null && assembly.getStateMachines() != null) {
+            machineIds.addAll(assembly.getStateMachines().keySet());
         }
-        StringJoiner joiner = new StringJoiner(" ");
-        for (Object cfg : configs) {
-            if (cfg != null) {
-                joiner.add(cfg.toString());
-            }
-        }
-        String text = joiner.toString().trim();
-        if (text.isEmpty()) {
-            setClosurePlaceholder("No closure configurations.");
-            return;
-        }
-        setText(closureArea, text, false);
+        closureTable.setSemantics(semantics, machineIds, machine);
     }
 
     public void setPlaceholder(String text) {
-        setText(configsArea, text, true);
-        setText(exitZonesArea, text, true);
-        setText(closureArea, text, true);
-    }
-
-    private void setConfigsPlaceholder(String text) {
-        setText(configsArea, text, true);
-    }
-
-    private void setExitZonesPlaceholder(String text) {
-        setText(exitZonesArea, text, true);
-    }
-
-    private void setClosurePlaceholder(String text) {
-        setText(closureArea, text, true);
-    }
-
-    private void setText(JTextPane area, String text, boolean placeholder) {
-        Color color = placeholder ? PLACEHOLDER_COLOR : TEXT_GREEN;
-        String value = text != null ? text : "";
-        area.setText(value);
-        StyledDocument doc = area.getStyledDocument();
-        SimpleAttributeSet attrs = new SimpleAttributeSet();
-        StyleConstants.setAlignment(attrs, StyleConstants.ALIGN_CENTER);
-        StyleConstants.setForeground(attrs, color);
-        doc.setParagraphAttributes(0, doc.getLength(), attrs, true);
-        area.setCaretPosition(0);
+        closureTable.setPlaceholder(text);
     }
 
     private String formatExitZoneLabel(ExitZone ez, boolean showMachineIds) {
@@ -230,6 +142,243 @@ public class InitialConfigurationsPanel extends JPanel {
             return machineId + ":" + stateName;
         }
         return prop.getStateName() != null ? prop.getStateName() : "?";
+    }
+
+    private final class ClosureTable extends JComponent {
+        private static final int TABLE_PADDING_X = 8;
+        private static final int TABLE_PADDING_Y = 6;
+        private static final int COL_GAP = 10;
+        private static final int ROW_GAP = 4;
+
+        private List<Configuration> configs = Collections.emptyList();
+        private List<String> machineIds = Collections.emptyList();
+        private Map<Configuration, Boolean> coverageMap = Collections.emptyMap();
+        private final List<HitArea> hitAreas = new ArrayList<>();
+        private String placeholderText = "No closure configurations.";
+        private boolean showPlaceholder = true;
+
+        private ClosureTable() {
+            setOpaque(true);
+            setBackground(Color.WHITE);
+            ToolTipManager.sharedInstance().registerComponent(this);
+            setToolTipText(" ");
+        }
+
+        private void setSemantics(Semantics semantics, List<String> machineIds, PWSStateMachine machine) {
+            if (semantics == null || semantics.getConfigurations() == null || semantics.getConfigurations().isEmpty()) {
+                setPlaceholder("No closure configurations.");
+                return;
+            }
+            List<Configuration> list = new ArrayList<>();
+            for (Object cfg : semantics.getConfigurations()) {
+                if (cfg instanceof Configuration c) {
+                    list.add(c);
+                }
+            }
+            this.configs = list;
+            this.machineIds = (machineIds != null) ? new ArrayList<>(machineIds) : Collections.emptyList();
+            this.coverageMap = computeCoverage(list, machine);
+            this.showPlaceholder = list.isEmpty();
+            revalidate();
+            repaint();
+        }
+
+        private void setPlaceholder(String text) {
+            this.placeholderText = text != null ? text : "";
+            this.showPlaceholder = true;
+            this.coverageMap = Collections.emptyMap();
+            revalidate();
+            repaint();
+        }
+
+        @Override
+        public String getToolTipText(MouseEvent event) {
+            if (hitAreas.isEmpty()) return null;
+            Point p = event.getPoint();
+            for (HitArea area : hitAreas) {
+                if (area.bounds.contains(p)) {
+                    return area.tooltip;
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            FontMetrics fm = getFontMetrics(getNormalFont());
+            FontMetrics fmSmall = getFontMetrics(getSmallFont());
+            if (showPlaceholder || configs.isEmpty()) {
+                int w = fm.stringWidth(placeholderText) + TABLE_PADDING_X * 2;
+                int h = fm.getHeight() + TABLE_PADDING_Y * 2;
+                return new Dimension(Math.max(80, w), Math.max(30, h));
+            }
+            int[] colWidths = computeColWidths(fm, fmSmall);
+            int tableWidth = computeTableWidth(colWidths);
+            int headerHeight = machineIds.isEmpty() ? 0 : fmSmall.getHeight();
+            int rowsHeight = configs.size() * (fm.getHeight() + ROW_GAP);
+            int height = TABLE_PADDING_Y * 2 + headerHeight + rowsHeight;
+            return new Dimension(Math.max(80, tableWidth + TABLE_PADDING_X * 2), Math.max(30, height));
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2d = (Graphics2D) g;
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2d.setColor(getBackground());
+            g2d.fillRect(0, 0, getWidth(), getHeight());
+            hitAreas.clear();
+
+            FontMetrics fm = g2d.getFontMetrics(getNormalFont());
+            FontMetrics fmSmall = g2d.getFontMetrics(getSmallFont());
+            if (showPlaceholder || configs.isEmpty()) {
+                g2d.setFont(getNormalFont());
+                g2d.setColor(PLACEHOLDER_COLOR);
+                String text = placeholderText != null ? placeholderText : "";
+                int sw = fm.stringWidth(text);
+                int x = Math.max(TABLE_PADDING_X, (getWidth() - sw) / 2);
+                int y = Math.max(TABLE_PADDING_Y + fm.getAscent(), (getHeight() + fm.getAscent()) / 2);
+                g2d.drawString(text, x, y);
+                return;
+            }
+
+            int[] colWidths = computeColWidths(fm, fmSmall);
+            int tableWidth = computeTableWidth(colWidths);
+            int startX = Math.max(TABLE_PADDING_X, (getWidth() - tableWidth) / 2);
+            int y = TABLE_PADDING_Y;
+
+            if (!machineIds.isEmpty()) {
+                g2d.setFont(getSmallFont());
+                g2d.setColor(SECTION_COLOR);
+                int headerX = startX;
+                int baseline = y + fmSmall.getAscent();
+                for (int i = 0; i < machineIds.size(); i++) {
+                    String header = machineIds.get(i);
+                    int hw = fmSmall.stringWidth(header);
+                    g2d.drawString(header, headerX + (colWidths[i] - hw) / 2, baseline);
+                    headerX += colWidths[i] + COL_GAP;
+                }
+                y += fmSmall.getHeight() + ROW_GAP;
+            }
+
+            g2d.setFont(getNormalFont());
+            for (Configuration cfg : configs) {
+                int cellX = startX;
+                int baseline = y + fm.getAscent();
+                boolean covered = coverageMap.getOrDefault(cfg, false);
+                g2d.setColor(covered ? TEXT_GREEN : TEXT_RED);
+                int rowStart = startX;
+                int rowWidth = tableWidth;
+                if (!machineIds.isEmpty()) {
+                    for (int i = 0; i < machineIds.size(); i++) {
+                        String cell = cfg.getStateName(machineIds.get(i));
+                        if (cell == null || cell.isBlank()) {
+                            cell = "-";
+                        }
+                        int cw = fm.stringWidth(cell);
+                        g2d.drawString(cell, cellX + (colWidths[i] - cw) / 2, baseline);
+                        cellX += colWidths[i] + COL_GAP;
+                    }
+                } else {
+                    String text = cfg.toString();
+                    int sw = fm.stringWidth(text);
+                    rowStart = Math.max(TABLE_PADDING_X, (getWidth() - sw) / 2);
+                    rowWidth = sw;
+                    g2d.drawString(text, rowStart, baseline);
+                }
+                String tip = covered
+                        ? "Covered by an initial transition guard."
+                        : "Not covered by any initial transition guard.";
+                if (rowWidth > 0) {
+                    hitAreas.add(new HitArea(
+                        new Rectangle(rowStart, baseline - fm.getAscent(), rowWidth, fm.getHeight()),
+                        tip));
+                }
+                y += fm.getHeight() + ROW_GAP;
+            }
+        }
+
+        private int[] computeColWidths(FontMetrics fm, FontMetrics fmSmall) {
+            if (machineIds.isEmpty()) {
+                return new int[0];
+            }
+            int[] colWidths = new int[machineIds.size()];
+            for (int i = 0; i < machineIds.size(); i++) {
+                int headerWidth = fmSmall.stringWidth(machineIds.get(i));
+                int dashWidth = fm.stringWidth("-");
+                colWidths[i] = Math.max(headerWidth, dashWidth);
+            }
+            for (Configuration cfg : configs) {
+                for (int i = 0; i < machineIds.size(); i++) {
+                    String cell = cfg.getStateName(machineIds.get(i));
+                    if (cell == null || cell.isBlank()) {
+                        cell = "-";
+                    }
+                    colWidths[i] = Math.max(colWidths[i], fm.stringWidth(cell));
+                }
+            }
+            return colWidths;
+        }
+
+        private int computeTableWidth(int[] colWidths) {
+            if (colWidths.length == 0) return 0;
+            int width = 0;
+            for (int i = 0; i < colWidths.length; i++) {
+                width += colWidths[i];
+                if (i < colWidths.length - 1) {
+                    width += COL_GAP;
+                }
+            }
+            return width;
+        }
+
+        private Map<Configuration, Boolean> computeCoverage(List<Configuration> configs, PWSStateMachine machine) {
+            Map<Configuration, Boolean> result = new HashMap<>();
+            if (configs == null || configs.isEmpty()) {
+                return result;
+            }
+            if (machine == null || machine.getAssembly() == null) {
+                for (Configuration cfg : configs) {
+                    result.put(cfg, false);
+                }
+                return result;
+            }
+            Assembly asm = machine.getAssembly();
+            List<PWSTransition> initialTransitions = new ArrayList<>();
+            for (TransitionInterface ti : machine.getTransitions()) {
+                if (ti instanceof PWSTransition pt && pt.isEnabled() && pt.isInitialTransition()) {
+                    initialTransitions.add(pt);
+                }
+            }
+            for (Configuration cfg : configs) {
+                boolean covered = false;
+                for (PWSTransition pt : initialTransitions) {
+                    if (pt.getGuardProposition() == null) {
+                        covered = true;
+                        break;
+                    }
+                    try {
+                        if (pt.getGuardProposition().evaluateConfiguration(cfg, asm)) {
+                            covered = true;
+                            break;
+                        }
+                    } catch (Exception ignore) {
+                    }
+                }
+                result.put(cfg, covered);
+            }
+            return result;
+        }
+    }
+
+    private static final class HitArea {
+        private final Rectangle bounds;
+        private final String tooltip;
+
+        private HitArea(Rectangle bounds, String tooltip) {
+            this.bounds = bounds;
+            this.tooltip = tooltip;
+        }
     }
 
     private static final class RoundedLineBorder extends AbstractBorder {
