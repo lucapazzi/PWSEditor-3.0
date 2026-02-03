@@ -216,6 +216,7 @@ public final class JsonModelSerializer {
                 if (constraints != null) sMap.put("constraints", constraints);
                 String raw = ps.getRawConstraintText();
                 if (raw != null) sMap.put("rawConstraintText", raw);
+                if (ps.isFailState()) sMap.put("failState", true);
             }
             stateList.add(sMap);
         }
@@ -333,6 +334,10 @@ public final class JsonModelSerializer {
             int x = getInt(sMap, "x", 20);
             int y = getInt(sMap, "y", 20);
             PWSState state = new PWSState(sName, new Point(x, y), assembly);
+            boolean failState = getBoolean(sMap, "failState", false);
+            if (failState && !"PseudoState".equals(sName)) {
+                state.setFailState(true);
+            }
 
             Map<String, Object> constraints = asMap(sMap.get("constraints"), null);
             String raw = getString(sMap, "rawConstraintText", null);

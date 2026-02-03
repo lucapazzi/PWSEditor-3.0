@@ -28,6 +28,8 @@ public class PWSState extends State {
     private HashSet<ExitZone> csOnlyExitZones = new HashSet<>();
     // Exit zones from State Semantics only (drawn red)
     private HashSet<ExitZone> ssOnlyExitZones = new HashSet<>();
+    // Fail state flag (no exit-zone coverage required)
+    private boolean failState = false;
     // Stores the raw constraint text entered by the user
     private String rawConstraintText;
     // Cached deadlock configurations (computed during semantics recalculation)
@@ -117,6 +119,19 @@ public class PWSState extends State {
         this.annotationMinimized = minimized;
         if (annotation != null) {
             annotation.setMinimized(minimized);
+        }
+    }
+
+    /** Returns whether this state is marked as a fail state. */
+    public boolean isFailState() {
+        return failState;
+    }
+
+    /** Sets whether this state is marked as a fail state. */
+    public void setFailState(boolean failState) {
+        this.failState = failState;
+        if (annotation != null) {
+            annotation.repaint();
         }
     }
 

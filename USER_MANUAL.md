@@ -124,6 +124,7 @@ There is no menu item for adding states; use the right-click context menu on the
 1. **Double-click** the state to rename it
 2. **Right-click** the state to see options:
    - **Show Dashboard / Hide Dashboard**
+   - **Fail state**: Marks the state as a fail-safe/incongruence. Fail states are drawn with a thicker **dashed yellow** border and do **not** require exit-zone coverage.
    - **Delete**: Remove the state
 
 To edit constraint semantics, right-click the state's dashboard and choose **Edit Constraints Semantics**.
@@ -926,6 +927,7 @@ The dashboard uses a four-color scheme for exit zones:
 | **Blue** | **Provisional** exit zone (CS-only; derived from constraints only) |
 | **Red** | Exit zone is uncovered or orphan (no matching source state) ✗ |
 | **Gray** | Internal exit zone (target already in semantics) — not selectable for autonomous guards |
+| **Amber** | Coverage not required (fail state) |
 
 Internal exit zones (gray) represent autonomous component evolution that stays within the current state's semantics. They are **not selectable** as guards for autonomous PWS transitions. Provisional (blue) exit zones **are selectable** and indicate constraints-only boundaries.
 
@@ -1100,6 +1102,8 @@ Orphan actions are shown in **red** on the diagram.
 #### Uncovered Exit Zones
 Lists exit zones that have no covering autonomous transition. Each exit zone should ideally be handled by an autonomous transition with a matching guard.
 
+**Fail states:** Exit zones in fail states are **excluded** from this section because coverage is not required.
+
 **How to Fix:** Add autonomous transitions with guards matching the listed exit zones.
 
 #### Orphan Exit Zones
@@ -1139,6 +1143,7 @@ The report correlates with visual indicators on the diagram:
 - **Uncovered exit zones**: No visual indicator on transitions, but shown in state dashboards
 - **Orphan exit zones**: Shown in red in state dashboards and listed in the report
 - **Unreachable states**: Red dashboard with "State is unreachable (no configurations)"
+- **Dashed yellow state border**: Fail state — exit-zone coverage is not required
 
 Use the report to get a comprehensive overview, then use the diagram to locate and fix individual issues.
 

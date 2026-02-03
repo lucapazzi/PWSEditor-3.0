@@ -1404,6 +1404,7 @@ public class PWSEditor extends JFrame {
 
         JLabel title = new JLabel("PWSEditor", SwingConstants.CENTER);
         title.setAlignmentX(Component.CENTER_ALIGNMENT);
+
         title.setFont(title.getFont().deriveFont(Font.BOLD, 26f));
 
         JLabel license = new JLabel(

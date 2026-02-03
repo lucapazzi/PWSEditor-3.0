@@ -560,6 +560,7 @@ public class ControllerReportDialog extends JDialog {
         
         for (StateInterface si : stateMachine.getStates()) {
             if (!(si instanceof PWSState ps) || ps.isPseudoState()) continue;
+            if (ps.isFailState()) continue;
             
             HashSet<ExitZone> reactive = ps.getReactiveSemantics();
             if (reactive == null || reactive.isEmpty()) continue;
@@ -885,11 +886,23 @@ public class ControllerReportDialog extends JDialog {
         appendText("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", STYLE_GRAY);
         appendText("OVERALL STATUS\n", STYLE_SECTION);
         appendText("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n", STYLE_GRAY);
-        
+
         if (totalProblems == 0) {
+            boolean hasFailStates = false;
+            for (StateInterface si : stateMachine.getStates()) {
+                if (si instanceof PWSState ps && !ps.isPseudoState() && ps.isFailState()) {
+                    hasFailStates = true;
+                    break;
+                }
+            }
             appendText("  ✓ CONTROLLER IS WELL-FORMED\n\n", STYLE_GREEN);
             appendText("    All guards are properly configured.\n", STYLE_GREEN);
-            appendText("    All exit zones are covered and none are orphan.\n", STYLE_GREEN);
+            if (hasFailStates) {
+                appendText("    Exit-zone coverage is satisfied for non-fail states.\n", STYLE_GREEN);
+                appendText("    Fail states do not require exit-zone coverage.\n", STYLE_GREEN);
+            } else {
+                appendText("    All exit zones are covered and none are orphan.\n", STYLE_GREEN);
+            }
             appendText("    All configurations satisfy constraints.\n", STYLE_GREEN);
             appendText("    No true deadlock configurations.\n", STYLE_GREEN);
             appendText("    No unreachable states.\n\n", STYLE_GREEN);

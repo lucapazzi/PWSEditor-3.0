@@ -45,6 +45,8 @@ import java.awt.Stroke;
 public class PWSStateMachinePanel extends StateMachinePanel {
     /** Whether to render state‐semantics annotations at all */
     private boolean showStateAnnotations = false;
+    private static final Color FAIL_STATE_BORDER_COLOR = new Color(204, 170, 0);
+    private static final float[] FAIL_STATE_DASH = new float[] {6f, 4f};
     
     // Fields for self-loop endpoint dragging
     private TransitionInterface selectedSelfLoopTransition = null;
@@ -303,6 +305,70 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 }
             }
         }
+    }
+
+    @Override
+    protected void drawStates(Graphics g) {
+        Graphics2D g2d = (Graphics2D) g;
+        Stroke oldStroke = g2d.getStroke();
+        Stroke normalStroke = new BasicStroke(stateBorderThickness);
+        float failThickness = Math.max(2.0f, stateBorderThickness + 1.5f);
+        Stroke failStroke = new BasicStroke(
+            failThickness,
+            BasicStroke.CAP_ROUND,
+            BasicStroke.JOIN_ROUND,
+            10.0f,
+            FAIL_STATE_DASH,
+            0.0f
+        );
+        List<StateInterface> states = stateMachine.getStates();
+        for (StateInterface state : states) {
+            Point pos = ((machinery.State) state).getPosition();
+            int x = pos.x;
+            int y = pos.y;
+            if (state.getName().equals("PseudoState")) {
+                g2d.setColor(Color.BLACK);
+                g2d.fillOval(x, y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+                g2d.setColor(Color.BLACK);
+                g2d.setStroke(normalStroke);
+                g2d.drawOval(x, y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+            } else {
+                g2d.setColor(Color.WHITE);
+                g2d.fillOval(x, y, DIAMETER, DIAMETER);
+                boolean isSelected = (state == selectedState || state == transitionSourceState);
+                boolean isFailState = (state instanceof PWSState ps) && ps.isFailState();
+                if (isFailState) {
+                    g2d.setStroke(failStroke);
+                    g2d.setColor(FAIL_STATE_BORDER_COLOR);
+                    g2d.drawOval(x, y, DIAMETER, DIAMETER);
+                    if (isSelected) {
+                        g2d.setStroke(normalStroke);
+                        g2d.setColor(Color.RED);
+                        g2d.drawOval(x - 2, y - 2, DIAMETER + 4, DIAMETER + 4);
+                    }
+                } else {
+                    g2d.setStroke(normalStroke);
+                    g2d.setColor(isSelected ? Color.RED : Color.BLACK);
+                    g2d.drawOval(x, y, DIAMETER, DIAMETER);
+                }
+                String name = state.getName();
+                FontMetrics fm = g2d.getFontMetrics();
+                int textWidth = fm.stringWidth(name);
+                int textHeight = fm.getHeight();
+                int textX = x + (DIAMETER - textWidth) / 2;
+                int textY = y + (DIAMETER - textHeight) / 2 + fm.getAscent();
+                g2d.setColor(isSelected ? Color.RED : Color.BLACK);
+                g2d.drawString(name, textX, textY);
+            }
+        }
+        for (Point aliasPos : pseudoStateAliases) {
+            g2d.setColor(Color.BLACK);
+            g2d.fillOval(aliasPos.x, aliasPos.y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+            g2d.setColor(Color.BLACK);
+            g2d.setStroke(normalStroke);
+            g2d.drawOval(aliasPos.x, aliasPos.y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+        }
+        g2d.setStroke(oldStroke);
     }
 
     /**
@@ -1708,6 +1774,22 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     repaint();
                 });
                 popup.add(toggleAnnot);
+
+                if (!pwsState.isPseudoState()) {
+                    JCheckBoxMenuItem failItem = new JCheckBoxMenuItem("Fail state", pwsState.isFailState());
+                    failItem.addActionListener(ae -> {
+                        pwsState.setFailState(failItem.isSelected());
+                        if (pwsState.getAnnotation() != null) {
+                            pwsState.getAnnotation().repaint();
+                        }
+                        java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                        if (w instanceof PWSEditor pe) {
+                            pe.markDocumentDirty();
+                        }
+                        repaint();
+                    });
+                    popup.add(failItem);
+                }
             }
 
             JMenuItem deleteItem = new JMenuItem("Delete State");

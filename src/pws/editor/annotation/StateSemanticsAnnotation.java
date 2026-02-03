@@ -707,6 +707,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
         boolean hasOrphan = false;
         boolean hasUncovered = false;
+        boolean coverageRequired = !state.isFailState();
         Semantics ssCheck = state.getStateSemantics();
         if (state.getReactiveSemantics() != null) {
             for (ExitZone ez : state.getReactiveSemantics()) {
@@ -719,12 +720,12 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                     Semantics targetAndSem = ez.getTarget().toSemantics(asm).AND(ssCheck);
                     isInternal = !targetAndSem.ISEMPTY();
                 }
-                if (!isInternal && !coveredGuards.contains(ez.getTarget())) {
+                if (coverageRequired && !isInternal && !coveredGuards.contains(ez.getTarget())) {
                     hasUncovered = true;
                 }
             }
         }
-        if (hasUncovered) {
+        if (coverageRequired && hasUncovered) {
             statusIssues.add("Some exit zones are not covered by autonomous transitions.");
         }
         if (hasOrphan) {
@@ -755,6 +756,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         String headerTip = allOk
                 ? "Green: state is well-formed (constraints satisfied, exit zones covered, no true deadlocks)."
                 : "Red: " + (statusIssues.isEmpty() ? "state has issues." : String.join("; ", statusIssues));
+        if (state.isFailState()) {
+            headerTip += " Fail state: exit-zone coverage not required.";
+        }
         headerHitArea = new HitArea(
                 new Rectangle(nameX, nameY - fm.getAscent(), Math.max(1, nameWidth), fm.getHeight()),
                 headerTip);
@@ -964,6 +968,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             Set<ExitZone> csOnly = state.getCsOnlyExitZones();
             Set<ExitZone> ssOnly = state.getSsOnlyExitZones();
             Semantics ss = state.getStateSemantics();
+            Color failCoverageColor = new Color(180, 140, 0);
             // Prepare list of exit-zones (SS first, then CS-only warnings)
             List<ExitZone> zones = new ArrayList<>(state.getReactiveSemantics());
             if (csOnly != null && !csOnly.isEmpty()) {
@@ -985,7 +990,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                     Semantics targetAndSem = ez.getTarget().toSemantics(asm).AND(ss);
                     isInternal = !targetAndSem.ISEMPTY();
                 }
-                boolean isCovered = !isOrphan && !isInternal && coveredGuards.contains(ez.getTarget());
+                boolean isCovered = coverageRequired && !isOrphan && !isInternal && coveredGuards.contains(ez.getTarget());
                 boolean isCsOnly = csOnly != null && csOnly.contains(ez);
                 Color ezColor;
                 if (isCsOnly) {
@@ -994,7 +999,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                     ezColor = isOrphan
                             ? new Color(180, 0, 0)
                             : (isInternal ? new Color(120, 120, 120)
-                                          : (isCovered ? Color.GREEN.darker() : new Color(180, 0, 0)));
+                                          : (coverageRequired
+                                              ? (isCovered ? Color.GREEN.darker() : new Color(180, 0, 0))
+                                              : failCoverageColor));
                 }
                 g2d.setColor(ezColor);
                 g2d.setFont(baseFont);
@@ -1008,6 +1015,8 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                     status = "Orphan (no matching source state).";
                 } else if (isInternal) {
                     status = "Internal (reachable within current state semantics).";
+                } else if (!coverageRequired) {
+                    status = "Coverage not required for fail state.";
                 } else if (isCovered) {
                     status = "Covered by an autonomous transition.";
                 } else {
@@ -1164,6 +1173,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 Assembly asmCheck = sm.getAssembly();
                 boolean hasOrphan = false;
                 boolean hasUncovered = false;
+                boolean coverageRequired = !state.isFailState();
                 for (ExitZone ez : state.getReactiveSemantics()) {
                     if (ez.isOrphanSource(asmCheck)) {
                         hasOrphan = true;
@@ -1174,11 +1184,11 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                         Semantics targetAndSem = ez.getTarget().toSemantics(asmCheck).AND(ssCheck);
                         isInternal = !targetAndSem.ISEMPTY();
                     }
-                    if (!isInternal && !coveredGuards.contains(ez.getTarget())) {
+                    if (coverageRequired && !isInternal && !coveredGuards.contains(ez.getTarget())) {
                         hasUncovered = true;
                     }
                 }
-                if (hasUncovered) {
+                if (coverageRequired && hasUncovered) {
                     issues.add("Some exit zones are not covered by autonomous transitions.");
                 }
                 if (hasOrphan) {
@@ -1273,7 +1283,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
 
         Assembly asm = (assembly != null) ? assembly : (panel != null ? panel.getStateMachine().getAssembly() : null);
         List<pws.editor.semantics.Configuration> constraintCfgList = buildConstraintConfigurations(state, asm);
-        int maxWidth = fm.stringWidth(constraintSem);
+        int maxWidth = 0;
 
         int matrixWidth = 0;
         int colGap = 10;

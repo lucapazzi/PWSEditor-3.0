@@ -347,10 +347,14 @@ public class ExtendedDashboardDialog extends JDialog {
         Set<ExitZone> reactiveZones = state.getReactiveSemantics();
         Set<ExitZone> csOnlyZones = state.getCsOnlyExitZones();
         Set<ExitZone> ssOnlyZones = state.getSsOnlyExitZones();
+        boolean coverageRequired = !state.isFailState();
+        if (!coverageRequired) {
+            appendText("  Note: fail state — exit-zone coverage is not required.\n\n", STYLE_ORANGE);
+        }
 
         // Compute covered exit zones
         Set<BasicStateProposition> coveredGuards = new HashSet<>();
-        if (stateMachine != null) {
+        if (coverageRequired && stateMachine != null) {
             for (TransitionInterface ti : stateMachine.getTransitions()) {
                 if (ti instanceof PWSTransition pt && pt.isEnabled() && !pt.isTriggerable() 
                         && pt.getSource() == state 
@@ -372,14 +376,22 @@ public class ExtendedDashboardDialog extends JDialog {
         appendText("  Legend: ", STYLE_GRAY);
         appendText("GRAY", STYLE_GRAY);
         appendText(" = internal (target already in semantics), ", STYLE_GRAY);
-        appendText("GREEN", STYLE_GREEN);
-        appendText(" = covered (handled by PWS transition), ", STYLE_GRAY);
-        appendText("RED", STYLE_RED);
-        appendText(" = uncovered or orphan (needs attention)\n\n", STYLE_GRAY);
+        if (coverageRequired) {
+            appendText("GREEN", STYLE_GREEN);
+            appendText(" = covered (handled by PWS transition), ", STYLE_GRAY);
+            appendText("RED", STYLE_RED);
+            appendText(" = uncovered or orphan (needs attention)\n\n", STYLE_GRAY);
+        } else {
+            appendText("ORANGE", STYLE_ORANGE);
+            appendText(" = coverage not required (fail state), ", STYLE_GRAY);
+            appendText("RED", STYLE_RED);
+            appendText(" = orphan (needs attention)\n\n", STYLE_GRAY);
+        }
 
         int internalCount = 0;
         int coveredCount = 0;
         int uncoveredCount = 0;
+        int notRequiredCount = 0;
 
         for (ExitZone ez : reactiveZones) {
             boolean isOrphan = ez.isOrphanSource(assembly);
@@ -388,7 +400,7 @@ public class ExtendedDashboardDialog extends JDialog {
                 Semantics targetAndSem = ez.getTarget().toSemantics(assembly).AND(ss);
                 isInternal = !targetAndSem.ISEMPTY();
             }
-            boolean isCovered = !isOrphan && !isInternal && coveredGuards.contains(ez.getTarget());
+            boolean isCovered = coverageRequired && !isOrphan && !isInternal && coveredGuards.contains(ez.getTarget());
             boolean isCsOnly = csOnlyZones != null && csOnlyZones.contains(ez);
             boolean isSsOnly = ssOnlyZones != null && ssOnlyZones.contains(ez);
             
@@ -407,6 +419,8 @@ public class ExtendedDashboardDialog extends JDialog {
                 appendText(ez.toString() + "\n", STYLE_RED);
             } else if (isInternal) {
                 appendText(ez.toString() + "\n", STYLE_GRAY);
+            } else if (!coverageRequired) {
+                appendText(ez.toString() + "\n", STYLE_ORANGE);
             } else {
                 appendText(ez.toString() + "\n", isCovered ? STYLE_GREEN : STYLE_RED);
             }
@@ -449,6 +463,8 @@ public class ExtendedDashboardDialog extends JDialog {
                 appendText("orphan exit zone — no matching source state\n", STYLE_RED);
             } else if (isInternal) {
                 appendText("internal (target already in semantics)\n", STYLE_GRAY);
+            } else if (!coverageRequired) {
+                appendText("coverage not required for fail state\n", STYLE_ORANGE);
             } else if (isCovered) {
                 appendText("covered by autonomous PWS transition\n", STYLE_GREEN);
             } else {
@@ -459,6 +475,10 @@ public class ExtendedDashboardDialog extends JDialog {
 
             if (isInternal) {
                 internalCount++;
+            } else if (isOrphan) {
+                uncoveredCount++;
+            } else if (!coverageRequired) {
+                notRequiredCount++;
             } else if (isCovered) {
                 coveredCount++;
             } else {
@@ -470,9 +490,17 @@ public class ExtendedDashboardDialog extends JDialog {
         appendText("  Summary: ", STYLE_BOLD);
         appendText(internalCount + " internal", STYLE_GRAY);
         appendText(", ", STYLE_NORMAL);
-        appendText(coveredCount + " covered", STYLE_GREEN);
-        appendText(", ", STYLE_NORMAL);
-        appendText(uncoveredCount + " uncovered", uncoveredCount > 0 ? STYLE_RED : STYLE_GREEN);
+        if (coverageRequired) {
+            appendText(coveredCount + " covered", STYLE_GREEN);
+            appendText(", ", STYLE_NORMAL);
+            appendText(uncoveredCount + " uncovered", uncoveredCount > 0 ? STYLE_RED : STYLE_GREEN);
+        } else {
+            appendText(notRequiredCount + " coverage not required", STYLE_ORANGE);
+            if (uncoveredCount > 0) {
+                appendText(", ", STYLE_NORMAL);
+                appendText(uncoveredCount + " orphan", STYLE_RED);
+            }
+        }
         appendText(" (total: " + reactiveZones.size() + ")\n\n", STYLE_GRAY);
     }
 
@@ -587,7 +615,11 @@ public class ExtendedDashboardDialog extends JDialog {
         if (issues.isEmpty()) {
             appendText("  ✓ STATE IS WELL-FORMED\n\n", STYLE_GREEN);
             appendText("    • All computed configurations satisfy constraints\n", STYLE_GREEN);
-            appendText("    • All exit zones are covered by autonomous transitions\n", STYLE_GREEN);
+            if (state.isFailState()) {
+                appendText("    • Fail state: exit-zone coverage not required\n", STYLE_ORANGE);
+            } else {
+                appendText("    • All exit zones are covered by autonomous transitions\n", STYLE_GREEN);
+            }
             appendText("    • No true deadlock configurations\n", STYLE_GREEN);
         } else {
             appendText("  ⚠ STATE HAS ISSUES\n\n", STYLE_RED);
