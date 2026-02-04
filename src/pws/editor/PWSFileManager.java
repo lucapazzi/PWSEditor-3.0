@@ -30,6 +30,7 @@ public class PWSFileManager {
         editor.setControllerEditorVisible(true);
         editor.rebuildUIForNewModel(model);
         editor.updateWindowTitle();
+        editor.initializeUndoHistory();
     }
 
     public void open() {
@@ -113,6 +114,7 @@ public class PWSFileManager {
                     // Loaded from disk, treat as not dirty
                     doc.setDirty(false);
                     editor.updateWindowTitle();
+                    editor.initializeUndoHistory();
                 } else {
                     JOptionPane.showMessageDialog(editor, "The selected file does not contain a valid model.");
                 }

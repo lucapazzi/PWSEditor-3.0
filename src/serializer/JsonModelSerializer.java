@@ -92,12 +92,69 @@ public final class JsonModelSerializer {
         public Integer mainDivider;
         public Integer rightDivider;
         public Integer assemblyDivider;
+        public Boolean showDashboards;
+        public Boolean showGrid;
+        public Boolean snapToGrid;
+        public Integer gridSize;
+        public Boolean editMode;
+        public String topCard;
     }
 
     public static void savePwsWorkspace(PWSStateMachine model,
                                         PWSStateMachinePanel.AnnotationData annotations,
                                         WorkspaceUI uiState,
                                         File file) throws IOException {
+        Map<String, Object> root = buildWorkspaceMap(model, annotations, uiState);
+        JsonIO.writeFile(file, root);
+    }
+
+    public static LoadedWorkspace loadPwsWorkspace(File file) throws IOException {
+        Object parsed = JsonIO.readFile(file);
+        Map<String, Object> root = asMap(parsed, "workspace");
+        return loadWorkspaceFromMap(root);
+    }
+
+    public static String savePwsWorkspaceToJson(PWSStateMachine model,
+                                                PWSStateMachinePanel.AnnotationData annotations,
+                                                WorkspaceUI uiState) {
+        Map<String, Object> root = buildWorkspaceMap(model, annotations, uiState);
+        return JsonIO.toJson(root, true);
+    }
+
+    public static LoadedWorkspace loadPwsWorkspaceFromJson(String json) throws IOException {
+        Object parsed = JsonIO.parse(json);
+        Map<String, Object> root = asMap(parsed, "workspace");
+        return loadWorkspaceFromMap(root);
+    }
+
+    public static String saveStateMachineToJson(StateMachine machine,
+                                                StateMachinePanel.AliasData annotations) {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("formatVersion", FORMAT_VERSION);
+        root.put("type", "state-machine");
+        root.put("machine", basicStateMachineToMap(machine));
+        if (annotations != null) {
+            root.put("annotations", aliasDataToMap(annotations));
+        }
+        return JsonIO.toJson(root, true);
+    }
+
+    public static LoadedStateMachine loadStateMachineFromJson(String json) throws IOException {
+        Object parsed = JsonIO.parse(json);
+        Map<String, Object> root = asMap(parsed, "state-machine");
+        Object machineObj = root.get("machine");
+        Map<String, Object> machineMap = (machineObj instanceof Map)
+                ? asMap(machineObj, "machine")
+                : root;
+        StateMachine machine = basicStateMachineFromMap(machineMap);
+        Map<String, Object> annMap = asMap(root.get("annotations"), "annotations");
+        StateMachinePanel.AliasData annotations = aliasDataFromMap(annMap);
+        return new LoadedStateMachine(machine, annotations);
+    }
+
+    private static Map<String, Object> buildWorkspaceMap(PWSStateMachine model,
+                                                         PWSStateMachinePanel.AnnotationData annotations,
+                                                         WorkspaceUI uiState) {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("formatVersion", FORMAT_VERSION);
         root.put("type", "pws-workspace");
@@ -109,12 +166,10 @@ public final class JsonModelSerializer {
         if (uiState != null) {
             root.put("ui", uiStateToMap(uiState));
         }
-        JsonIO.writeFile(file, root);
+        return root;
     }
 
-    public static LoadedWorkspace loadPwsWorkspace(File file) throws IOException {
-        Object parsed = JsonIO.readFile(file);
-        Map<String, Object> root = asMap(parsed, "workspace");
+    private static LoadedWorkspace loadWorkspaceFromMap(Map<String, Object> root) throws IOException {
         Map<String, Object> assemblyMap = asMap(root.get("assembly"), "assembly");
         String assemblyId = getString(assemblyMap, "id", "PWSEditorAssembly");
         Assembly assembly = new Assembly(assemblyId);
@@ -1097,6 +1152,12 @@ public final class JsonModelSerializer {
         if (ui.mainDivider != null) map.put("mainDivider", ui.mainDivider);
         if (ui.rightDivider != null) map.put("rightDivider", ui.rightDivider);
         if (ui.assemblyDivider != null) map.put("assemblyDivider", ui.assemblyDivider);
+        if (ui.showDashboards != null) map.put("showDashboards", ui.showDashboards);
+        if (ui.showGrid != null) map.put("showGrid", ui.showGrid);
+        if (ui.snapToGrid != null) map.put("snapToGrid", ui.snapToGrid);
+        if (ui.gridSize != null) map.put("gridSize", ui.gridSize);
+        if (ui.editMode != null) map.put("editMode", ui.editMode);
+        if (ui.topCard != null) map.put("topCard", ui.topCard);
         return map;
     }
 
@@ -1110,9 +1171,26 @@ public final class JsonModelSerializer {
         ui.mainDivider = getNullableInt(map, "mainDivider");
         ui.rightDivider = getNullableInt(map, "rightDivider");
         ui.assemblyDivider = getNullableInt(map, "assemblyDivider");
+        if (map != null && map.containsKey("showDashboards")) {
+            ui.showDashboards = getBoolean(map, "showDashboards", true);
+        }
+        if (map != null && map.containsKey("showGrid")) {
+            ui.showGrid = getBoolean(map, "showGrid", true);
+        }
+        if (map != null && map.containsKey("snapToGrid")) {
+            ui.snapToGrid = getBoolean(map, "snapToGrid", true);
+        }
+        ui.gridSize = getNullableInt(map, "gridSize");
+        if (map != null && map.containsKey("editMode")) {
+            ui.editMode = getBoolean(map, "editMode", true);
+        }
+        ui.topCard = getString(map, "topCard", null);
         if (ui.windowWidth == null && ui.windowHeight == null
                 && ui.mainDivider == null && ui.rightDivider == null
-                && ui.assemblyDivider == null) {
+                && ui.assemblyDivider == null
+                && ui.showDashboards == null && ui.showGrid == null
+                && ui.snapToGrid == null && ui.gridSize == null
+                && ui.editMode == null && ui.topCard == null) {
             return null;
         }
         return ui;

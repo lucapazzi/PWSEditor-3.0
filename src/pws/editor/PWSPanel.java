@@ -292,6 +292,28 @@ public class PWSPanel extends JPanel {
         }
     }
 
+    /** Programmatically select a machine by id and notify listeners. */
+    public void selectMachineById(String id) {
+        if (id == null || !assembly.getStateMachines().containsKey(id)) {
+            return;
+        }
+        int index = -1;
+        for (int i = 0; i < listModel.size(); i++) {
+            String label = listModel.get(i);
+            if (id.equals(parseMachineId(label))) {
+                index = i;
+                break;
+            }
+        }
+        if (index >= 0) {
+            machineList.setSelectedIndex(index);
+            machineList.ensureIndexIsVisible(index);
+        }
+        if (selectionListener != null) {
+            selectionListener.machineSelected(id);
+        }
+    }
+
     private void onAdd() {
         String id = JOptionPane.showInputDialog(this, "Enter a unique identifier:");
         if (id == null || id.trim().isEmpty()) return;

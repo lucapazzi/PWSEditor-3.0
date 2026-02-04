@@ -29,6 +29,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected int canvasDragAccumX = 0;
     protected int canvasDragAccumY = 0;
     private StateMachineEditor owningEditor = null;
+    protected boolean dragMoved = false;
 
     // Link mode fields
     protected boolean linkMode = false;
@@ -166,10 +167,10 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_W, 0), "moveUp");     // W = up
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_S, 0), "moveDown");   // S = down
 
-        am.put("moveLeft",  new AbstractAction() { public void actionPerformed(ActionEvent e){ translateAllStates(-1, 0); }});
-        am.put("moveRight", new AbstractAction() { public void actionPerformed(ActionEvent e){ translateAllStates( 1, 0); }});
-        am.put("moveUp",    new AbstractAction() { public void actionPerformed(ActionEvent e){ translateAllStates(0,-1); }});
-        am.put("moveDown",  new AbstractAction() { public void actionPerformed(ActionEvent e){ translateAllStates(0, 1); }});
+        am.put("moveLeft",  new AbstractAction() { public void actionPerformed(ActionEvent e){ translateAllStates(-1, 0); markOwningEditorDirty(); }});
+        am.put("moveRight", new AbstractAction() { public void actionPerformed(ActionEvent e){ translateAllStates( 1, 0); markOwningEditorDirty(); }});
+        am.put("moveUp",    new AbstractAction() { public void actionPerformed(ActionEvent e){ translateAllStates(0,-1); markOwningEditorDirty(); }});
+        am.put("moveDown",  new AbstractAction() { public void actionPerformed(ActionEvent e){ translateAllStates(0, 1); markOwningEditorDirty(); }});
     }
 
     public void setStateMachine(StateMachine sm) {
@@ -204,6 +205,17 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     /** Optional back-reference to the editor (for menu sync). */
     public void setOwningEditor(StateMachineEditor editor) {
         this.owningEditor = editor;
+    }
+
+    protected void markOwningEditorDirty() {
+        java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+        if (w instanceof pws.editor.PWSEditor pe) {
+            pe.markDocumentDirty();
+            return;
+        }
+        if (owningEditor != null) {
+            owningEditor.markDocumentDirty();
+        }
     }
 
     public void enableLinkMode() {
@@ -855,6 +867,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     @Override
     public void mousePressed(MouseEvent e) {
         Point p = e.getPoint();
+        dragMoved = false;
         // Ensure the panel gains focus so its arrow‑key bindings have priority
         if (!hasFocus()) {
             requestFocusInWindow();
@@ -924,7 +937,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 int r = PSEUDO_DIAMETER / 2;
                 Point center = new Point(pos.x + r, pos.y + r);
                 Point snappedCenter = snap(center);
-                pos.setLocation(snappedCenter.x - r, snappedCenter.y - r);
+                Point newPos = new Point(snappedCenter.x - r, snappedCenter.y - r);
+                if (!newPos.equals(pos)) {
+                    pos.setLocation(newPos);
+                    dragMoved = true;
+                }
             } else if (selectedState != null) {
                 State st = (State) selectedState;
                 Point pos = st.getPosition();
@@ -932,13 +949,21 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 int r = d / 2;
                 Point center = new Point(pos.x + r, pos.y + r);
                 Point snappedCenter = snap(center);
-                st.setPosition(new Point(snappedCenter.x - r, snappedCenter.y - r));
+                Point newPos = new Point(snappedCenter.x - r, snappedCenter.y - r);
+                if (!newPos.equals(pos)) {
+                    st.setPosition(newPos);
+                    dragMoved = true;
+                }
             }
             if (selectedTransitionForControl != null) {
                 Transition tr = (Transition) selectedTransitionForControl;
                 Point cp = tr.getControlPoint();
                 if (cp != null) {
-                    tr.setControlPoint(snap(cp));
+                    Point snapped = snap(cp);
+                    if (!snapped.equals(cp)) {
+                        tr.setControlPoint(snapped);
+                        dragMoved = true;
+                    }
                 }
             }
         }
@@ -953,11 +978,16 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         canvasDragAccumX = 0;
         canvasDragAccumY = 0;
         repaint();
+        if (dragMoved) {
+            markOwningEditorDirty();
+        }
+        dragMoved = false;
     }
 
     @Override
     public void mouseDragged(MouseEvent e) {
         if (canvasDragActive && canvasDragLast != null) {
+            dragMoved = true;
             panCanvasTo(e.getPoint());
             return;
         }
@@ -965,6 +995,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             Point newPoint = e.getPoint();
             Point newControlPoint = new Point(newPoint.x - controlDragOffset.x, newPoint.y - controlDragOffset.y);
             ((Transition) selectedTransitionForControl).setControlPoint(newControlPoint);
+            dragMoved = true;
             repaint();
         } else if (selectedPseudoAliasIndex >= 0 && dragOffset != null) {
             Point newPoint = e.getPoint();
@@ -979,6 +1010,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             }
             Point aliasPos = pseudoStateAliases.get(selectedPseudoAliasIndex);
             aliasPos.setLocation(rawX, rawY);
+            dragMoved = true;
             repaint();
         } else if (selectedState != null && dragOffset != null) {
             Point newPoint = e.getPoint();
@@ -1003,6 +1035,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             }
 
             st.setPosition(new Point(rawX, rawY));
+            dragMoved = true;
             repaint();
         }
 
@@ -1026,6 +1059,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
                 if (win instanceof pws.editor.PWSEditor pe) {
                     pe.renameAssemblyStateName(stateMachine, oldName, trimmed);
+                } else {
+                    markOwningEditorDirty();
                 }
             }
         }
@@ -1052,6 +1087,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                         if (win instanceof pws.editor.PWSEditor) {
                             ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
                         }
+                        markOwningEditorDirty();
                     // Debug: initial transition creation (commented out)
                     // System.out.println("Initial transition created: PseudoState -> " + clickedState.getName());
                 } else {
@@ -1111,6 +1147,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                     if (win instanceof pws.editor.PWSEditor) {
                         ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
                     }
+                    markOwningEditorDirty();
                     // Debug: transition creation in link mode (commented out)
                     // System.out.println("Link mode: Transition created from " +
                     //        transitionSourceState.getName() + " to " + clickedState.getName());
@@ -1156,6 +1193,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         JMenuItem addPseudoAliasItem = new JMenuItem("Create pseudostate alias");
         addPseudoAliasItem.addActionListener(ae -> {
             createPseudoAliasAt(e.getPoint());
+            markOwningEditorDirty();
         });
         popup.add(addPseudoAliasItem);
 
@@ -1197,6 +1235,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         if (win instanceof pws.editor.PWSEditor) {
             ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
         }
+        markOwningEditorDirty();
         repaint();
     }
 
@@ -1229,13 +1268,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 pws.editor.PWSEditor pwsEd = findOwningPWSEditor();
                 if (pwsEd != null) {
                     pwsEd.scheduleSemanticsRecalculation();
-                    if (pwsEd.getDocument() != null) {
-                        pwsEd.getDocument().setDirty(true);
-                    }
                 }
                 if (owningEditor != null) {
                     owningEditor.notifyModelChanged();
                 }
+                markOwningEditorDirty();
                 repaint();
             });
             popup.add(toggleEnableItem);
@@ -1249,9 +1286,6 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 pws.editor.PWSEditor pwsEd = findOwningPWSEditor();
                 if (pwsEd != null) {
                     pwsEd.scheduleSemanticsRecalculation();
-                    if (pwsEd.getDocument() != null) {
-                        pwsEd.getDocument().setDirty(true);
-                    }
                     // Also repaint the controller panel to reflect changes
                     if (pwsEd.getBaseEditor() != null) {
                         pwsEd.getBaseEditor().getStateMachinePanel().repaint();
@@ -1260,6 +1294,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 if (owningEditor != null) {
                     owningEditor.notifyModelChanged();
                 }
+                markOwningEditorDirty();
                 repaint();
             });
             popup.add(toggleEnableItem);
@@ -1340,6 +1375,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                         deletePrimaryPseudoAlias();
                     }
                     menuPseudoAliasIndex = -1;
+                    markOwningEditorDirty();
                     repaint();
                 });
                 popup.add(deleteAliasItem);
@@ -1378,6 +1414,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                         if (win instanceof pws.editor.PWSEditor) {
                             ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
                         }
+                        markOwningEditorDirty();
                         repaint();
                 }
             });
@@ -1429,6 +1466,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         if (win instanceof pws.editor.PWSEditor) {
             ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
         }
+        markOwningEditorDirty();
     }
 
 

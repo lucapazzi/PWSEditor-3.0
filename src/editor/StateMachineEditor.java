@@ -7,8 +7,15 @@ import serializer.JsonModelSerializer;
 // SVG export removed: not used when exporting PDFs
 
 import javax.swing.*;
+import javax.swing.event.MenuEvent;
+import javax.swing.event.MenuListener;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import java.io.*;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 /** Swing editor frame for a state machine and its canvas. */
 public class StateMachineEditor extends JFrame {
@@ -19,6 +26,14 @@ public class StateMachineEditor extends JFrame {
     private Runnable closeCallback = null;
     private Runnable modelChangedCallback = null;
     private JCheckBoxMenuItem editModeItem;
+    private JMenuItem undoItem;
+    private JMenuItem redoItem;
+    private static final int MAX_UNDO = 100;
+    private final Deque<String> undoStack = new ArrayDeque<>();
+    private final Deque<String> redoStack = new ArrayDeque<>();
+    private String currentSnapshot;
+    private boolean suppressDirtyNotifications = false;
+    private boolean undoRecordingSuspended = false;
 
     // Callback interface for close requests
     public void setCloseCallback(Runnable callback) {
@@ -60,6 +75,8 @@ public class StateMachineEditor extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(800, 600);
         setLocationRelativeTo(null);
+        installUndoRedoKeyBindings();
+        initializeUndoHistory();
     }
 
     protected JMenuBar createMenuBar() {
@@ -98,6 +115,7 @@ public class StateMachineEditor extends JFrame {
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
                             "Machine successfully loaded: " + loadedMachine.getName());
                     statePanel.repaint();
+                    initializeUndoHistory();
                 } catch (Exception ex) {
                     ex.printStackTrace();
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
@@ -178,6 +196,17 @@ public class StateMachineEditor extends JFrame {
         // Edit Menu
         JMenu editMenu = new JMenu("Edit");
 
+        int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        undoItem = new JMenuItem("Undo");
+        undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, menuMask));
+        undoItem.addActionListener(e -> performUndo());
+        editMenu.add(undoItem);
+
+        redoItem = new JMenuItem("Redo");
+        redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, menuMask | InputEvent.SHIFT_DOWN_MASK));
+        redoItem.addActionListener(e -> performRedo());
+        editMenu.add(redoItem);
+
         editMenu.addSeparator();
 
 // 3. Add transition
@@ -205,6 +234,23 @@ public class StateMachineEditor extends JFrame {
         editModeItem = new JCheckBoxMenuItem("Edit mode", true);
         editModeItem.addActionListener(e -> setEditModeEnabled(editModeItem.isSelected()));
         editMenu.add(editModeItem);
+
+        editMenu.addMenuListener(new MenuListener() {
+            @Override
+            public void menuSelected(MenuEvent e) {
+                updateUndoRedoMenuItems();
+            }
+
+            @Override
+            public void menuDeselected(MenuEvent e) {
+            }
+
+            @Override
+            public void menuCanceled(MenuEvent e) {
+            }
+        });
+
+        updateUndoRedoMenuItems();
 
         menuBar.add(editMenu);
         // View menu (grid and snapping)
@@ -239,6 +285,170 @@ public class StateMachineEditor extends JFrame {
         return menuBar;
     }
 
+    private void updateUndoRedoMenuItems() {
+        if (undoItem == null || redoItem == null) {
+            return;
+        }
+        pws.editor.PWSEditor pe = findOwningPWSEditor();
+        boolean canUndo = pe != null ? pe.canUndo() : !undoStack.isEmpty();
+        boolean canRedo = pe != null ? pe.canRedo() : !redoStack.isEmpty();
+        undoItem.setEnabled(canUndo);
+        redoItem.setEnabled(canRedo);
+    }
+
+    private pws.editor.PWSEditor findOwningPWSEditor() {
+        if (statePanel == null) {
+            return null;
+        }
+        java.awt.Window w = SwingUtilities.getWindowAncestor(statePanel);
+        if (w instanceof pws.editor.PWSEditor pe) {
+            return pe;
+        }
+        return null;
+    }
+
+    private void initializeUndoHistory() {
+        undoStack.clear();
+        redoStack.clear();
+        currentSnapshot = captureSnapshot();
+        updateUndoRedoMenuItems();
+    }
+
+    public void markDocumentDirty() {
+        if (suppressDirtyNotifications || undoRecordingSuspended) {
+            return;
+        }
+        if (findOwningPWSEditor() != null) {
+            return;
+        }
+        String snap = captureSnapshot();
+        if (snap == null) {
+            return;
+        }
+        if (currentSnapshot != null && currentSnapshot.equals(snap)) {
+            return;
+        }
+        if (currentSnapshot != null) {
+            undoStack.push(currentSnapshot);
+            while (undoStack.size() > MAX_UNDO) {
+                undoStack.removeLast();
+            }
+        }
+        currentSnapshot = snap;
+        redoStack.clear();
+        updateUndoRedoMenuItems();
+    }
+
+    private String captureSnapshot() {
+        if (stateMachine == null) {
+            return null;
+        }
+        try {
+            StateMachinePanel.AliasData aliasData = (statePanel != null)
+                    ? statePanel.exportAliasData()
+                    : null;
+            return JsonModelSerializer.saveStateMachineToJson(stateMachine, aliasData);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private void applySnapshot(String json) {
+        if (json == null) return;
+        boolean prevSuppress = suppressDirtyNotifications;
+        suppressDirtyNotifications = true;
+        undoRecordingSuspended = true;
+        try {
+            JsonModelSerializer.LoadedStateMachine loaded = JsonModelSerializer.loadStateMachineFromJson(json);
+            if (loaded == null || loaded.getModel() == null) {
+                return;
+            }
+            StateMachine loadedMachine = loaded.getModel();
+            stateMachine.setStates(loadedMachine.getStates());
+            stateMachine.setTransitions(loadedMachine.getTransitions());
+            stateMachine.setEvents(loadedMachine.getEvents());
+            stateMachine.setName(loadedMachine.getName());
+            stateMachine.setPseudoState(loadedMachine.getPseudoState());
+            if (statePanel != null) {
+                statePanel.importAliasData(loaded.getAnnotations());
+                statePanel.revalidate();
+                statePanel.repaint();
+            }
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this,
+                    "Undo/redo failed: " + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+        } finally {
+            suppressDirtyNotifications = prevSuppress;
+            undoRecordingSuspended = false;
+        }
+    }
+
+    private void performUndo() {
+        pws.editor.PWSEditor pe = findOwningPWSEditor();
+        if (pe != null) {
+            pe.performUndo();
+            return;
+        }
+        undo();
+    }
+
+    private void performRedo() {
+        pws.editor.PWSEditor pe = findOwningPWSEditor();
+        if (pe != null) {
+            pe.performRedo();
+            return;
+        }
+        redo();
+    }
+
+    private void undo() {
+        if (undoStack.isEmpty()) return;
+        if (currentSnapshot != null) {
+            redoStack.push(currentSnapshot);
+        }
+        String target = undoStack.pop();
+        applySnapshot(target);
+        currentSnapshot = target;
+        updateUndoRedoMenuItems();
+    }
+
+    private void redo() {
+        if (redoStack.isEmpty()) return;
+        if (currentSnapshot != null) {
+            undoStack.push(currentSnapshot);
+            while (undoStack.size() > MAX_UNDO) {
+                undoStack.removeLast();
+            }
+        }
+        String target = redoStack.pop();
+        applySnapshot(target);
+        currentSnapshot = target;
+        updateUndoRedoMenuItems();
+    }
+
+    private void installUndoRedoKeyBindings() {
+        JRootPane root = getRootPane();
+        if (root == null) return;
+        int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        InputMap im = root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap am = root.getActionMap();
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_Y, menuMask), "redo");
+        am.put("redo", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                performRedo();
+            }
+        });
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_Z, menuMask), "undo");
+        am.put("undo", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                performUndo();
+            }
+        });
+    }
+
     private StateInterface findStateByName(String name) {
         for (StateInterface s : stateMachine.getStates()) {
             if (s.getName().equalsIgnoreCase(name)) {
@@ -265,6 +475,9 @@ public class StateMachineEditor extends JFrame {
     public void setStateMachine(PWSStateMachine stateMachine) {
         this.stateMachine = stateMachine;
         if (this.statePanel != null) this.statePanel.setStateMachine(stateMachine);
+        if (findOwningPWSEditor() == null) {
+            initializeUndoHistory();
+        }
     }
 
     // Generic binder for machinery.StateMachine instances so external callers can swap the edited machine.
@@ -274,6 +487,9 @@ public class StateMachineEditor extends JFrame {
         if (this.statePanel != null) {
             this.statePanel.revalidate();
             this.statePanel.repaint();
+        }
+        if (findOwningPWSEditor() == null) {
+            initializeUndoHistory();
         }
     }
 }

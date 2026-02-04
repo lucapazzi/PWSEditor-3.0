@@ -21,6 +21,7 @@ public class MachineLibraryPanel extends JPanel {
     private final DefaultListModel<String> listModel = new DefaultListModel<>();
     private final JList<String> list;
     private Runnable beforeSaveLibrary = null;
+    private Runnable libraryChangedCallback = null;
 
     /** Listener for library selection and lifecycle events. */
     public interface LibrarySelectionListener {
@@ -165,6 +166,11 @@ public class MachineLibraryPanel extends JPanel {
         this.beforeSaveLibrary = r;
     }
 
+    /** Sets a callback invoked after the library contents change. */
+    public void setLibraryChangedCallback(Runnable r) {
+        this.libraryChangedCallback = r;
+    }
+
     /**
      * Refreshes the list of machines from the library.
      */
@@ -173,6 +179,30 @@ public class MachineLibraryPanel extends JPanel {
         MachineLibrary lib = assembly.getMachineLibrary();
         for (String name : lib.getNames()) {
             listModel.addElement(name != null ? name : "(null)");
+        }
+    }
+
+    /** Programmatically select a library machine by key and notify listeners. */
+    public void selectLibraryKey(String key) {
+        if (key == null) return;
+        MachineLibrary lib = assembly.getMachineLibrary();
+        StateMachine machine = lib.get(key);
+        if (machine == null) return;
+        String name = machine.getName();
+        if (name == null) name = "(null)";
+        int index = -1;
+        for (int i = 0; i < listModel.size(); i++) {
+            if (name.equals(listModel.get(i))) {
+                index = i;
+                break;
+            }
+        }
+        if (index >= 0) {
+            list.setSelectedIndex(index);
+            list.ensureIndexIsVisible(index);
+        }
+        if (listener != null) {
+            listener.librarySelected(key);
         }
     }
 
@@ -214,6 +244,7 @@ public class MachineLibraryPanel extends JPanel {
         StateMachine m = new StateMachine(name);
         String key = assembly.getMachineLibrary().addMachine(m);
         refreshList();
+        if (libraryChangedCallback != null) libraryChangedCallback.run();
         // auto-select and notify listener so the embedded editor can open it
         if (listener != null) listener.librarySelected(key);
     }
@@ -239,6 +270,7 @@ public class MachineLibraryPanel extends JPanel {
             if (sm != null) {
                 String key = assembly.getMachineLibrary().addMachine(sm, aliasData);
                 refreshList();
+                if (libraryChangedCallback != null) libraryChangedCallback.run();
                 if (listener != null) listener.libraryLoaded(key);
             } else {
                 JOptionPane.showMessageDialog(this, "File does not contain a StateMachine.", "Error", JOptionPane.ERROR_MESSAGE);
@@ -272,6 +304,7 @@ public class MachineLibraryPanel extends JPanel {
                     if (firstKey != null) listener.libraryLoaded(firstKey);
                 }
                 JOptionPane.showMessageDialog(this, "Library loaded successfully.");
+                if (libraryChangedCallback != null) libraryChangedCallback.run();
             }
         } catch (IOException | IllegalArgumentException ex) {
             JOptionPane.showMessageDialog(this, "Error loading library: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
@@ -321,6 +354,7 @@ public class MachineLibraryPanel extends JPanel {
 
         assembly.getMachineLibrary().remove(key);
         refreshList();
+        if (libraryChangedCallback != null) libraryChangedCallback.run();
         if (listener != null) listener.libraryRemoved(key);
     }
 
@@ -337,6 +371,7 @@ public class MachineLibraryPanel extends JPanel {
             JOptionPane.showMessageDialog(this, "Name already in use or error renaming", "Error", JOptionPane.ERROR_MESSAGE);
         }
         refreshList();
+        if (ok && libraryChangedCallback != null) libraryChangedCallback.run();
         if (ok && listener != null) listener.libraryRenamed(key);
     }
 }

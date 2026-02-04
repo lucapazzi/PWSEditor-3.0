@@ -13,6 +13,8 @@ import pws.editor.semantics.Semantics;
 import serializer.JsonModelSerializer;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.logging.Logger;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
@@ -24,6 +26,8 @@ import javax.swing.ActionMap;
 import javax.swing.KeyStroke;
 import javax.swing.AbstractAction;
 import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.InputEvent;
 import java.awt.*;
 import java.io.*;
 
@@ -49,6 +53,7 @@ public class PWSEditor extends JFrame {
     private String embeddedMachineId = null;
     private CardLayout topCardsLayout;      // CardLayout for assembly/library switch
     private JPanel topSwitchPanel;          // Panel containing assembly/library cards
+    private JToggleButton btnAssembly; // Assembly toggle button reference
     private JToggleButton btnLibraryToggle; // Library toggle button reference
     private JSplitPane mainSplitPane;
     private JSplitPane rightSplitPane;
@@ -74,6 +79,14 @@ public class PWSEditor extends JFrame {
     private LTLChecksDialog ltlChecksDialog;
     // Track current semantics recalculation worker for debouncing
     private SwingWorker<Void, Void> currentSemanticsWorker = null;
+    private JMenuItem undoItem;
+    private JMenuItem redoItem;
+    private final Deque<EditorSnapshot> undoStack = new ArrayDeque<>();
+    private final Deque<EditorSnapshot> redoStack = new ArrayDeque<>();
+    private EditorSnapshot currentSnapshot = null;
+    private boolean undoRecordingSuspended = false;
+    private boolean suppressDirtyNotifications = false;
+    private static final int MAX_UNDO = 100;
 
     // The main PWSEditor window uses a fixed title, e.g. "PWSEditor"
     /**
@@ -99,6 +112,7 @@ public class PWSEditor extends JFrame {
         this.fileManager = new PWSFileManager(this);
         this.currentDocument = null;
         updateWindowTitle();
+        initializeUndoHistory();
     }
 
     // Helper stream that can append objects to an existing object stream
@@ -110,6 +124,14 @@ public class PWSEditor extends JFrame {
         @Override
         protected void writeStreamHeader() throws IOException {
             // Do not write a header when appending
+        }
+    }
+
+    private static class EditorSnapshot {
+        private final String json;
+
+        private EditorSnapshot(String json) {
+            this.json = json;
         }
     }
     private void initComponents() {
@@ -188,6 +210,10 @@ public class PWSEditor extends JFrame {
         // Create a split view: Assembly | Library
         this.libraryPanel = new MachineLibraryPanel(pwsStateMachine.getAssembly());
         this.libraryPanel.setBeforeSaveLibrary(() -> syncEmbeddedLibraryAliasData());
+        this.libraryPanel.setLibraryChangedCallback(() -> {
+            markDocumentDirty();
+            scheduleSemanticsRecalculation();
+        });
 
         JPanel assemblyWrapper = new JPanel(new BorderLayout());
         JLabel rightHeader = new JLabel("Assembly", SwingConstants.CENTER);
@@ -231,7 +257,7 @@ public class PWSEditor extends JFrame {
         // small toolbar to switch between Assembly and Library views
         JToolBar tb = new JToolBar();
         tb.setFloatable(false);
-        JToggleButton btnAssembly = new JToggleButton("Assembly");
+        btnAssembly = new JToggleButton("Assembly");
         btnLibraryToggle = new JToggleButton("Library");
         ButtonGroup bg = new ButtonGroup();
         bg.add(btnAssembly); bg.add(btnLibraryToggle);
@@ -241,8 +267,14 @@ public class PWSEditor extends JFrame {
         }
         tb.add(btnAssembly); tb.add(btnLibraryToggle);
 
-        btnAssembly.addActionListener(a -> topCardsLayout.show(topSwitchPanel, "assembly"));
-        btnLibraryToggle.addActionListener(a -> topCardsLayout.show(topSwitchPanel, "library"));
+        btnAssembly.addActionListener(a -> {
+            topCardsLayout.show(topSwitchPanel, "assembly");
+            markDocumentDirty();
+        });
+        btnLibraryToggle.addActionListener(a -> {
+            topCardsLayout.show(topSwitchPanel, "library");
+            markDocumentDirty();
+        });
         if (!controllerEditorVisible) {
             btnAssembly.setEnabled(false);
             topCardsLayout.show(topSwitchPanel, "library");
@@ -375,6 +407,7 @@ public class PWSEditor extends JFrame {
                     });
                 }
                 // Recompute semantics since assembly changes affect configurations/exit zones
+                markDocumentDirty();
                 SwingUtilities.invokeLater(() -> scheduleSemanticsRecalculation());
             }
 
@@ -392,6 +425,7 @@ public class PWSEditor extends JFrame {
                     }
                 });
                 // Detach/clone changes the assembly mapping, so refresh semantics/initial configs
+                markDocumentDirty();
                 SwingUtilities.invokeLater(() -> scheduleSemanticsRecalculation());
             }
 
@@ -405,6 +439,7 @@ public class PWSEditor extends JFrame {
                     // Trigger semantics recalculation since assembly identifiers affect guards/actions
                     scheduleSemanticsRecalculation();
                 });
+                markDocumentDirty();
             }
 
             @Override
@@ -413,6 +448,7 @@ public class PWSEditor extends JFrame {
                 SwingUtilities.invokeLater(() -> {
                     scheduleSemanticsRecalculation();
                 });
+                markDocumentDirty();
             }
         });
         }
@@ -537,6 +573,7 @@ public class PWSEditor extends JFrame {
         });
 
         refreshInitialConfigurationsPanel();
+        installUndoRedoKeyBindings();
     }
 
     private JMenuBar createMenuBar() {
@@ -740,6 +777,17 @@ public class PWSEditor extends JFrame {
         // --- Edit Menu (existing items) ---
         JMenu editMenu = new JMenu("Edit");
 
+        int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        undoItem = new JMenuItem("Undo");
+        undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, menuMask));
+        undoItem.addActionListener(e -> undo());
+        editMenu.add(undoItem);
+
+        redoItem = new JMenuItem("Redo");
+        redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, menuMask | InputEvent.SHIFT_DOWN_MASK));
+        redoItem.addActionListener(e -> redo());
+        editMenu.add(redoItem);
+
         editMenu.addSeparator();
 
 //        JMenuItem addTransitionItem = new JMenuItem("Add Transition");
@@ -817,6 +865,7 @@ public class PWSEditor extends JFrame {
                 (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
             panel.setShowGrid(showGridItem.isSelected());
             panel.repaint();
+            markDocumentDirty();
         });
         viewMenu.add(showGridItem);
 
@@ -826,6 +875,7 @@ public class PWSEditor extends JFrame {
             PWSStateMachinePanel panel =
                 (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
             panel.setSnapToGrid(snapToGridItem.isSelected());
+            markDocumentDirty();
         });
         viewMenu.add(snapToGridItem);
 
@@ -841,6 +891,7 @@ public class PWSEditor extends JFrame {
                     if (size > 0) {
                         panel.setGridSize(size);
                         panel.repaint();
+                        markDocumentDirty();
                     }
                 } catch (NumberFormatException ex) {
                     JOptionPane.showMessageDialog(this, "Invalid number", "Error", JOptionPane.ERROR_MESSAGE);
@@ -862,6 +913,7 @@ public class PWSEditor extends JFrame {
                     (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
                 panel.setStateDiameter(size);
                 panel.repaint();
+                markDocumentDirty();
             });
             sizeGroup.add(item);
             stateSizeMenu.add(item);
@@ -893,6 +945,7 @@ public class PWSEditor extends JFrame {
                     (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
                 panel.setStateBorderThickness(thickness);
                 panel.repaint();
+                markDocumentDirty();
             });
             borderGroup.add(item);
             stateBorderMenu.add(item);
@@ -924,6 +977,7 @@ public class PWSEditor extends JFrame {
                     (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
                 panel.setStateFontSize(size);
                 panel.repaint();
+                markDocumentDirty();
             });
             fontGroup.add(item);
             stateFontMenu.add(item);
@@ -962,6 +1016,7 @@ public class PWSEditor extends JFrame {
 
         // Ensure menu items reflect initial state
         updateMenuItemsEnabledState();
+        updateUndoRedoMenuItems();
 
         menuBar.add(viewMenu);
         return menuBar;
@@ -1013,6 +1068,7 @@ public class PWSEditor extends JFrame {
         if (ctrl) {
             syncViewMenuSelections();
         }
+        updateUndoRedoMenuItems();
     }
 
     public void syncViewMenuSelections() {
@@ -1020,6 +1076,19 @@ public class PWSEditor extends JFrame {
         PWSStateMachinePanel panel =
             (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
         if (panel == null) return;
+
+        if (editModeItem != null) {
+            editModeItem.setSelected(panel.isEditMode());
+        }
+        if (showGridItem != null) {
+            showGridItem.setSelected(panel.isShowGrid());
+        }
+        if (snapToGridItem != null) {
+            snapToGridItem.setSelected(panel.isSnapToGrid());
+        }
+        if (showExitZoneMachineIdsItem != null) {
+            showExitZoneMachineIdsItem.setSelected(StateSemanticsAnnotation.isShowExitZoneMachineIds());
+        }
 
         if (stateSizeMenu != null) {
             int[] sizes = new int[] {40, 50, 60};
@@ -1077,11 +1146,19 @@ public class PWSEditor extends JFrame {
 
     /** Keeps the Edit mode menu item and panel in sync. */
     public void setEditModeEnabled(boolean enabled) {
+        boolean changed = false;
+        if (baseEditor != null && baseEditor.getStateMachinePanel() != null) {
+            changed = baseEditor.getStateMachinePanel().isEditMode() != enabled;
+            baseEditor.getStateMachinePanel().setEditMode(enabled);
+        }
         if (editModeItem != null) {
+            if (editModeItem.isSelected() != enabled) {
+                changed = true;
+            }
             editModeItem.setSelected(enabled);
         }
-        if (baseEditor != null) {
-            baseEditor.getStateMachinePanel().setEditMode(enabled);
+        if (changed) {
+            markDocumentDirty();
         }
     }
 
@@ -1267,10 +1344,191 @@ public class PWSEditor extends JFrame {
     }
 
     public void markDocumentDirty() {
+        if (suppressDirtyNotifications) {
+            return;
+        }
         if (this.currentDocument != null) {
             this.currentDocument.setDirty(true);
             updateWindowTitle();
         }
+        recordUndoSnapshot();
+    }
+
+    public void initializeUndoHistory() {
+        undoStack.clear();
+        redoStack.clear();
+        currentSnapshot = captureSnapshot();
+        updateUndoRedoMenuItems();
+    }
+
+    private void recordUndoSnapshot() {
+        if (undoRecordingSuspended) return;
+        EditorSnapshot snapshot = captureSnapshot();
+        if (snapshot == null) return;
+        if (currentSnapshot != null && currentSnapshot.json.equals(snapshot.json)) {
+            return;
+        }
+        if (currentSnapshot != null) {
+            undoStack.push(currentSnapshot);
+            while (undoStack.size() > MAX_UNDO) {
+                undoStack.removeLast();
+            }
+        }
+        currentSnapshot = snapshot;
+        redoStack.clear();
+        updateUndoRedoMenuItems();
+    }
+
+    private EditorSnapshot captureSnapshot() {
+        if (pwsStateMachine == null) return null;
+        try {
+            syncEmbeddedLibraryAliasData();
+            PWSStateMachinePanel.AnnotationData annotations = null;
+            if (baseEditor != null && baseEditor.getStateMachinePanel() instanceof PWSStateMachinePanel p) {
+                annotations = p.exportAnnotations();
+            }
+            JsonModelSerializer.WorkspaceUI uiState = getWorkspaceUIState();
+            String json = JsonModelSerializer.savePwsWorkspaceToJson(pwsStateMachine, annotations, uiState);
+            return new EditorSnapshot(json);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private void updateUndoRedoMenuItems() {
+        if (undoItem != null) undoItem.setEnabled(!undoStack.isEmpty());
+        if (redoItem != null) redoItem.setEnabled(!redoStack.isEmpty());
+    }
+
+    public void performUndo() {
+        undo();
+    }
+
+    public void performRedo() {
+        redo();
+    }
+
+    public boolean canUndo() {
+        return !undoStack.isEmpty();
+    }
+
+    public boolean canRedo() {
+        return !redoStack.isEmpty();
+    }
+
+    private void undo() {
+        if (undoStack.isEmpty()) return;
+        if (currentSnapshot != null) {
+            redoStack.push(currentSnapshot);
+        }
+        EditorSnapshot target = undoStack.pop();
+        applySnapshot(target);
+        currentSnapshot = target;
+        updateUndoRedoMenuItems();
+    }
+
+    private void redo() {
+        if (redoStack.isEmpty()) return;
+        if (currentSnapshot != null) {
+            undoStack.push(currentSnapshot);
+            while (undoStack.size() > MAX_UNDO) {
+                undoStack.removeLast();
+            }
+        }
+        EditorSnapshot target = redoStack.pop();
+        applySnapshot(target);
+        currentSnapshot = target;
+        updateUndoRedoMenuItems();
+    }
+
+    private void applySnapshot(EditorSnapshot snapshot) {
+        if (snapshot == null) return;
+        undoRecordingSuspended = true;
+        boolean prevSuppress = suppressDirtyNotifications;
+        suppressDirtyNotifications = true;
+        String restoreEmbeddedId = embeddedMachineId;
+        embeddedEditor = null;
+        embeddedMachineId = null;
+        try {
+            if (currentSemanticsWorker != null && !currentSemanticsWorker.isDone()) {
+                currentSemanticsWorker.cancel(false);
+            }
+            JsonModelSerializer.LoadedWorkspace loaded = JsonModelSerializer.loadPwsWorkspaceFromJson(snapshot.json);
+            if (loaded == null || loaded.getModel() == null) return;
+            PWSStateMachine model = loaded.getModel();
+            File file = (currentDocument != null) ? currentDocument.getFile() : null;
+            PWSDocument doc = new PWSDocument(model, model.getAssembly().getMachineLibrary());
+            doc.setFile(file);
+            doc.setDirty(false);
+            setDocument(doc);
+            setControllerEditorVisible(true);
+            rebuildUIForNewModel(model);
+            try {
+                applyWorkspaceUIState(loaded.getUiState());
+                if (baseEditor != null && baseEditor.getStateMachinePanel() instanceof PWSStateMachinePanel panel) {
+                    if (loaded.getAnnotations() != null) {
+                        panel.importAnnotations(loaded.getAnnotations());
+                    }
+                }
+                syncViewMenuSelections();
+                applyDashboardVisibility();
+                refreshInitialConfigurationsPanel();
+                restoreEmbeddedEditorSelection(restoreEmbeddedId);
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this,
+                        "Warning: UI state could not be fully restored: " + ex.getMessage(),
+                        "Warning", JOptionPane.WARNING_MESSAGE);
+            }
+            scheduleSemanticsRecalculation();
+            if (currentDocument != null) {
+                currentDocument.setDirty(true);
+                updateWindowTitle();
+            }
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this,
+                    "Undo/redo failed: " + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+        } finally {
+            suppressDirtyNotifications = prevSuppress;
+            undoRecordingSuspended = false;
+        }
+    }
+
+    private void restoreEmbeddedEditorSelection(String embeddedId) {
+        if (embeddedId == null) return;
+        if (embeddedId.startsWith("lib:")) {
+            String key = embeddedId.substring(4);
+            if (btnLibraryToggle != null && topCardsLayout != null && topSwitchPanel != null) {
+                btnLibraryToggle.setSelected(true);
+                topCardsLayout.show(topSwitchPanel, "library");
+            }
+            if (libraryPanel != null) {
+                libraryPanel.selectLibraryKey(key);
+            }
+        } else {
+            if (btnAssembly != null && topCardsLayout != null && topSwitchPanel != null) {
+                btnAssembly.setSelected(true);
+                topCardsLayout.show(topSwitchPanel, "assembly");
+            }
+            if (assemblyPanel != null) {
+                assemblyPanel.selectMachineById(embeddedId);
+            }
+        }
+    }
+
+    private void installUndoRedoKeyBindings() {
+        JRootPane root = getRootPane();
+        if (root == null) return;
+        int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        InputMap im = root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap am = root.getActionMap();
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_Y, menuMask), "redo");
+        am.put("redo", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                redo();
+            }
+        });
     }
 
     public void onAssemblyOrderChanged() {
@@ -1370,23 +1628,68 @@ public class PWSEditor extends JFrame {
         ui.mainDivider = (mainSplitPane != null) ? mainSplitPane.getDividerLocation() : null;
         ui.rightDivider = (rightSplitPane != null) ? rightSplitPane.getDividerLocation() : null;
         ui.assemblyDivider = (assemblySplitPane != null) ? assemblySplitPane.getDividerLocation() : null;
+        if (showStateAnn != null) ui.showDashboards = showStateAnn.isSelected();
+        if (showGridItem != null) ui.showGrid = showGridItem.isSelected();
+        if (snapToGridItem != null) ui.snapToGrid = snapToGridItem.isSelected();
+        if (editModeItem != null) ui.editMode = editModeItem.isSelected();
+        if (btnLibraryToggle != null) {
+            ui.topCard = btnLibraryToggle.isSelected() ? "library" : "assembly";
+        }
+        if (baseEditor != null && baseEditor.getStateMachinePanel() instanceof PWSStateMachinePanel panel) {
+            ui.gridSize = panel.getGridSize();
+        }
         return ui;
     }
 
     public void applyWorkspaceUIState(JsonModelSerializer.WorkspaceUI ui) {
         if (ui == null) return;
-        if (ui.windowWidth != null && ui.windowHeight != null
-                && ui.windowWidth > 0 && ui.windowHeight > 0) {
-            setSize(ui.windowWidth, ui.windowHeight);
-        }
-        if (mainSplitPane != null && ui.mainDivider != null && ui.mainDivider > 0) {
-            mainSplitPane.setDividerLocation(ui.mainDivider);
-        }
-        if (rightSplitPane != null && ui.rightDivider != null && ui.rightDivider > 0) {
-            rightSplitPane.setDividerLocation(ui.rightDivider);
-        }
-        if (assemblySplitPane != null && ui.assemblyDivider != null && ui.assemblyDivider > 0) {
-            assemblySplitPane.setDividerLocation(ui.assemblyDivider);
+        boolean prevSuppress = suppressDirtyNotifications;
+        suppressDirtyNotifications = true;
+        try {
+            if (ui.windowWidth != null && ui.windowHeight != null
+                    && ui.windowWidth > 0 && ui.windowHeight > 0) {
+                setSize(ui.windowWidth, ui.windowHeight);
+            }
+            if (mainSplitPane != null && ui.mainDivider != null && ui.mainDivider > 0) {
+                mainSplitPane.setDividerLocation(ui.mainDivider);
+            }
+            if (rightSplitPane != null && ui.rightDivider != null && ui.rightDivider > 0) {
+                rightSplitPane.setDividerLocation(ui.rightDivider);
+            }
+            if (assemblySplitPane != null && ui.assemblyDivider != null && ui.assemblyDivider > 0) {
+                assemblySplitPane.setDividerLocation(ui.assemblyDivider);
+            }
+            if (ui.topCard != null && topCardsLayout != null && topSwitchPanel != null) {
+                if ("library".equalsIgnoreCase(ui.topCard)) {
+                    if (btnLibraryToggle != null) btnLibraryToggle.setSelected(true);
+                    topCardsLayout.show(topSwitchPanel, "library");
+                } else if ("assembly".equalsIgnoreCase(ui.topCard)) {
+                    if (btnLibraryToggle != null) btnLibraryToggle.setSelected(false);
+                    topCardsLayout.show(topSwitchPanel, "assembly");
+                }
+            }
+            if (ui.showDashboards != null && showStateAnn != null) {
+                showStateAnn.setSelected(ui.showDashboards);
+                applyDashboardVisibility();
+            }
+            if (ui.editMode != null) {
+                setEditModeEnabled(ui.editMode);
+            }
+            if (baseEditor != null && baseEditor.getStateMachinePanel() instanceof PWSStateMachinePanel panel) {
+                if (ui.showGrid != null) {
+                    if (showGridItem != null) showGridItem.setSelected(ui.showGrid);
+                    panel.setShowGrid(ui.showGrid);
+                }
+                if (ui.snapToGrid != null) {
+                    if (snapToGridItem != null) snapToGridItem.setSelected(ui.snapToGrid);
+                    panel.setSnapToGrid(ui.snapToGrid);
+                }
+                if (ui.gridSize != null && ui.gridSize > 0) {
+                    panel.setGridSize(ui.gridSize);
+                }
+            }
+        } finally {
+            suppressDirtyNotifications = prevSuppress;
         }
     }
 

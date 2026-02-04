@@ -724,6 +724,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     @Override
     public void mousePressed(MouseEvent e) {
         Point p = e.getPoint();
+        dragMoved = false;
 
         // Check if left-click is near a transition control handle for bending.
         if (e.getButton() == MouseEvent.BUTTON1) {
@@ -847,6 +848,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             return;
         }
         if (canvasDragActive && canvasDragLast != null) {
+            dragMoved = true;
             panCanvasTo(e.getPoint());
             return;
         }
@@ -870,6 +872,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             } else if (draggingSelfLoopEnd) {
                 trans.setSelfLoopEndAngle(angleDegrees);
             }
+            dragMoved = true;
             repaint();
         } else if (selectedTransitionForControl != null && controlDragOffset != null) {
             Point newPoint = e.getPoint();
@@ -878,6 +881,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 newControlPoint = snap(newControlPoint);
             }
             ((Transition) selectedTransitionForControl).setControlPoint(newControlPoint);
+            dragMoved = true;
             repaint();
         } else if (selectedPseudoAliasIndex >= 0 && dragOffset != null) {
             Point newPoint = e.getPoint();
@@ -892,6 +896,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             }
             Point aliasPos = pseudoStateAliases.get(selectedPseudoAliasIndex);
             aliasPos.setLocation(rawX, rawY);
+            dragMoved = true;
             repaint();
         } else if (selectedState != null && dragOffset != null) {
             Point newPoint = e.getPoint();
@@ -916,6 +921,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             }
 
             st.setPosition(new Point(rawX, rawY));
+            dragMoved = true;
             repaint();
         }
     }
@@ -980,7 +986,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 int r = PSEUDO_DIAMETER / 2;
                 Point center = new Point(pos.x + r, pos.y + r);
                 Point snappedCenter = snap(center);
-                pos.setLocation(snappedCenter.x - r, snappedCenter.y - r);
+                Point newPos = new Point(snappedCenter.x - r, snappedCenter.y - r);
+                if (!newPos.equals(pos)) {
+                    pos.setLocation(newPos);
+                    dragMoved = true;
+                }
             } else if (selectedState != null) {
                 machinery.State st = (machinery.State) selectedState;
                 java.awt.Point pos = st.getPosition();
@@ -994,9 +1004,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 Point snappedCenter = snap(center);
                 // new top-left position
                 Point newPos = new Point(snappedCenter.x - r, snappedCenter.y - r);
-                st.setPosition(newPos);
-                java.awt.Window w = SwingUtilities.getWindowAncestor(this);
-                if (w instanceof PWSEditor pe) pe.markDocumentDirty();
+                if (!newPos.equals(pos)) {
+                    st.setPosition(newPos);
+                    dragMoved = true;
+                }
             }
 
             // qui lasci invariato lo snap del control point:
@@ -1016,8 +1027,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         canvasDragAccumX = 0;
         canvasDragAccumY = 0;
         repaint();
-        java.awt.Window w = SwingUtilities.getWindowAncestor(this);
-        if (w instanceof PWSEditor pe) pe.markDocumentDirty();
+        if (dragMoved) {
+            java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+            if (w instanceof PWSEditor pe) pe.markDocumentDirty();
+        }
+        dragMoved = false;
     }
 
     @Override
@@ -1040,6 +1054,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
                 if (win instanceof pws.editor.PWSEditor) {
                     ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+                }
+                java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                if (w instanceof PWSEditor pe) {
+                    pe.markDocumentDirty();
                 }
             }
         }
@@ -1358,6 +1376,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         JMenuItem addPseudoAliasItem = new JMenuItem("Create pseudostate alias");
         addPseudoAliasItem.addActionListener(ae -> {
             createPseudoAliasAt(e.getPoint());
+            java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+            if (w instanceof PWSEditor pe) pe.markDocumentDirty();
         });
         popup.add(addPseudoAliasItem);
         
@@ -1609,6 +1629,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     revalidate();
                     repaint();
                 }
+                java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                if (w instanceof PWSEditor pe) pe.markDocumentDirty();
             });
             popup.add(actionItem);
 
@@ -1647,6 +1669,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     revalidate();
                     repaint();
                 }
+                java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                if (w instanceof PWSEditor pe) pe.markDocumentDirty();
             });
             popup.add(semItem);
         }
@@ -1709,6 +1733,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                         deletePrimaryPseudoAlias();
                     }
                     menuPseudoAliasIndex = -1;
+                    java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                    if (w instanceof PWSEditor pe) pe.markDocumentDirty();
                     revalidate();
                     repaint();
                 });
@@ -1772,6 +1798,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     }
                     revalidate();
                     repaint();
+                    java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+                    if (w instanceof PWSEditor pe) pe.markDocumentDirty();
                 });
                 popup.add(toggleAnnot);
 
