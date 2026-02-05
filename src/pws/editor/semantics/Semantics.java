@@ -348,7 +348,8 @@ public class Semantics implements Serializable {
      *       of transitions triggered by event E.</li>
      *   <li><b>Codomain:</b> For each configuration in the domain, replace {M:S} with {M:T}
      *       where T is the target state of the triggered transition.</li>
-     *   <li><b>Result:</b> Remove domain from this Semantics and unite with codomain.</li>
+     *   <li><b>Result:</b> Return the codomain only. Configurations where the event cannot
+     *       fire are discarded (strict event semantics).</li>
      * </ol>
      * <p>
      * If multiple transitions are triggered by the same event, all are processed.
@@ -377,8 +378,7 @@ public class Semantics implements Serializable {
                 "No transition triggered by event " + eventName + " found in machine " + machineId);
         }
 
-        // Accumulate domains and codomains for all applicable transitions
-        Semantics allDomains = Semantics.bottom(assembly);
+        // Accumulate codomains for all applicable transitions
         Semantics codomainUnion = Semantics.bottom(assembly);
 
         for (TransitionInterface ti : triggered) {
@@ -396,13 +396,9 @@ public class Semantics implements Serializable {
             if (!domain.ISEMPTY()) {
                 Semantics codomain = domain.computeCodomain(machineId, assembly, sourceState, targetState);
                 codomainUnion = codomainUnion.OR(codomain);
-                allDomains = allDomains.OR(domain);
             }
         }
-
-        // Remove domain, add codomain
-        Semantics remainder = this.AND(allDomains.NOT(assembly));
-        return remainder.OR(codomainUnion).clone();
+        return codomainUnion.clone();
     }
 
     /**

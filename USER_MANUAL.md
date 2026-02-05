@@ -230,6 +230,14 @@ Example: A transition labeled `button_pressed [isReady] / beep` fires when:
 2. The guard `isReady` evaluates to true
 3. The action `beep` is then emitted
 
+#### Action Semantics (Strict)
+
+When a transition fires and emits an action `m.event`, the controller applies that event to the component machine `m` as a **strict event occurrence**:
+- Only configurations where `event` is enabled in machine `m` are transferred to the target state.
+- Configurations where `event` cannot fire are **discarded** (they do not move to the target state).
+
+This models actions as concrete events that must occur. If you want to keep non-enabled configurations, you must model that explicitly (e.g., by splitting the transition with a guard or adding a parallel transition without the action).
+
 #### Autonomous Transitions
 
 An **autonomous transition** has **no trigger event** — it fires based purely on its guard condition. These transitions:
