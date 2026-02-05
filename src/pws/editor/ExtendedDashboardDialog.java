@@ -272,12 +272,14 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText(" text = satisfies constraints, ", STYLE_GRAY);
             appendText("RED", STYLE_RED);
             appendText(" text = violates constraints, ", STYLE_GRAY);
-            appendText("UNDERLINE", STYLE_GREEN_UNDERLINE);
+            appendText("GREEN underline", STYLE_GREEN_UNDERLINE);
             appendText(" = can evolve internally, ", STYLE_GRAY);
-            appendText("Component deadlock", STYLE_ORANGE);
-            appendText(" = listed below (yellow underline in dashboard), ", STYLE_GRAY);
-            appendText("NO UNDERLINE", STYLE_GRAY);
-            appendText(" = internally stuck (covered or true deadlock)\n", STYLE_GRAY);
+            appendText("YELLOW underline", STYLE_ORANGE);
+            appendText(" = component deadlock (listed below), ", STYLE_GRAY);
+            appendText("RED underline", STYLE_RED_UNDERLINE);
+            appendText(" = true deadlock, ", STYLE_GRAY);
+            appendText("NO underline", STYLE_GRAY);
+            appendText(" = internally stuck but covered by an outgoing transition\n", STYLE_GRAY);
             appendText("    Note: true deadlocks are explicitly labeled below and appear with a red underline in the dashboard.\n\n", STYLE_GRAY);
             
             for (Configuration cfg : ss.getConfigurations()) {
@@ -609,8 +611,8 @@ public class ExtendedDashboardDialog extends JDialog {
         appendText("└─────────────────────────────────────────────────────────────┘\n", STYLE_SUBHEADING);
 
         // Report status
-        java.util.List<String> issues = state.getAnnotation() instanceof StateSemanticsAnnotation ann
-                ? ann.getOverallStatusIssues()
+        java.util.List<String> issues = (state != null && stateMachine != null)
+                ? StateSemanticsAnnotation.computeStatusIssues(state, stateMachine)
                 : Collections.emptyList();
         if (issues.isEmpty()) {
             appendText("  ✓ STATE IS WELL-FORMED\n\n", STYLE_GREEN);

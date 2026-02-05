@@ -57,6 +57,10 @@ public class DraggableTriggerLabel extends JLabel {
                         setText("<html><b><u>" + input + "</u></b></html>");
                         revalidate();
                         repaint();
+                        Component comp = SwingUtilities.getAncestorOfClass(editor.StateMachinePanel.class, DraggableTriggerLabel.this);
+                        if (comp instanceof editor.StateMachinePanel panel) {
+                            panel.notifyTriggerEventChanged();
+                        }
                     }
                 }
             }

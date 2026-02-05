@@ -133,6 +133,17 @@ To edit constraint semantics, right-click the state's dashboard and choose **Edi
 
 The pseudo-state is automatically created and appears as a **small filled circle**. It is the anchor for **initial transitions** and represents the **assembly-closure baseline** used when computing initial semantics.
 
+### Component Machine States (Embedded Editor)
+
+When editing a **component machine** in the embedded editor (right-bottom panel), state diagnostics are shown directly on the state border:
+
+- **Unreachable state**: Red outer ring. A state is unreachable if there is no path from the pseudo-state via **enabled** transitions.
+- **Deadlock state**: Dashed yellow border (fail-state styling). A deadlock is a reachable state with **no enabled outgoing transitions**.
+- **Manually marked Fail state**: Dashed yellow border (same fail-state styling).
+
+Right-click a component state to toggle **Fail state** manually. This option is **disabled** for unreachable states (which are already treated as fail by unreachability).
+Manual component Fail states are saved with the model and restored on load.
+
 ---
 
 ## Assembly Initial Configurations Dashboard
@@ -200,6 +211,8 @@ Use **in-place editors** (floating text boxes) to directly modify:
 - **Guard labels**: Click the guard text and edit
 - **Action labels**: Click the action text and edit
 - **Semantics labels**: View computed semantics
+
+Renaming a trigger (double-click the trigger label) automatically recomputes semantics so the new trigger takes effect immediately.
 
 ### Understanding Transition Types
 
@@ -449,7 +462,15 @@ To share reusable machines across projects:
 2. Each dashboard appears as a floating box near its state and uses a compact layout:
    - A colored state-name band at the top (green/red) that matches the border; hover the name for a status explanation
    - **Constraints** and **configs** shown as a matrix (columns = assembly machine IDs in list order, rows = configurations, `-` means unspecified)
-   - **Exit zones** stacked one per line; hover each exit zone for coverage/origin details
+    - **Exit zones** stacked one per line; hover each exit zone for coverage/origin details
+
+### Component Fail States in Controller Semantics
+
+If a **component Fail state** appears inside a controller state’s semantics, the dashboard shows a **warning**:
+
+- **Warning: includes component fail states: m.FailState, ...**
+
+This is a warning only: it does **not** automatically mark the controller state as Fail. It highlights that the controller state admits configurations where a component is in a fail state.
 
 ### Dashboard Minimization
 
@@ -807,9 +828,11 @@ In component machine editors (assembly/library):
 
 | Visual | Meaning |
 |--------|---------|
-| **Red ring around a state** | Component deadlock state (no enabled outgoing transitions) |
-| **Red border around the machine panel** | At least one deadlock state exists in the component |
-| **Red * in Assembly/Library list** | The component contains at least one deadlock state |
+| **Red ring around a state** | Unreachable component state (no path from pseudo-state) |
+| **Dashed yellow border** | Component deadlock state or manually marked Fail state |
+| **Red border around the machine panel** | At least one deadlock or unreachable state exists in the component |
+| **Red * in Assembly/Library list** | The component contains at least one deadlock or unreachable state |
+| **Tooltip on unreachable state** | "Unreachable state (no path from the initial pseudostate)" |
 | **Tooltip on deadlock state** | "Deadlock state (no enabled outgoing transitions)" |
 | **Tooltip on yellow‑underlined config** | Lists the deadlocked component state(s) in that configuration |
 

@@ -334,6 +334,9 @@ public final class JsonModelSerializer {
                 sMap.put("x", p.x);
                 sMap.put("y", p.y);
             }
+            if (s instanceof State st && st.isFailState()) {
+                sMap.put("failState", true);
+            }
             stateList.add(sMap);
         }
         map.put("states", stateList);
@@ -479,6 +482,10 @@ public final class JsonModelSerializer {
             int x = getInt(sMap, "x", 20);
             int y = getInt(sMap, "y", 20);
             State state = new State(sName, new Point(x, y));
+            boolean failState = getBoolean(sMap, "failState", false);
+            if (failState && !"PseudoState".equals(sName)) {
+                state.setFailState(true);
+            }
             stateById.put(id, state);
             machine.addState(state);
         }

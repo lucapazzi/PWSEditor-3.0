@@ -138,9 +138,16 @@ public class Assembly implements AssemblyInterface {
         String assemblyId = this.getAssemblyId();
         Semantics semantics = new Semantics(assemblyId);
 
+        Map<String, StateMachine> machines = getStateMachines();
+        if (machines == null || machines.isEmpty()) {
+            // No component machines configured: treat as a single empty configuration.
+            semantics.addConfiguration(new Configuration(assemblyId));
+            return semantics;
+        }
+
         // For each state machine, collect propositions that represent initial states.
         List<List<BasicStateProposition>> machineInitialProps = new ArrayList<>();
-        for (Map.Entry<String, StateMachine> entry : getStateMachines().entrySet()) {
+        for (Map.Entry<String, StateMachine> entry : machines.entrySet()) {
             String machineId = entry.getKey();
             StateMachine machine = entry.getValue();
             List<BasicStateProposition> initialProps = new ArrayList<>();
@@ -151,12 +158,14 @@ public class Assembly implements AssemblyInterface {
                 }
             }
             // If initial states were found for the machine, add them to the list
-            if (!initialProps.isEmpty()) {
-                machineInitialProps.add(initialProps);
+            if (initialProps.isEmpty()) {
+                // A machine with no initial states yields no valid initial configurations.
+                return semantics;
             }
+            machineInitialProps.add(initialProps);
         }
 
-        // If no initial propositions are found in any machine,
+        // If no initial propositions are found in any machine (shouldn't happen with machines present),
         // return a Semantics containing an "empty" Configuration (interpretable as true).
         if (machineInitialProps.isEmpty()) {
             semantics.addConfiguration(new Configuration(assemblyId));

@@ -312,6 +312,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         Graphics2D g2d = (Graphics2D) g;
         Stroke oldStroke = g2d.getStroke();
         Stroke normalStroke = new BasicStroke(stateBorderThickness);
+        PWSStateMachine pwsMachine = (stateMachine instanceof PWSStateMachine pws) ? pws : null;
         float failThickness = Math.max(2.0f, stateBorderThickness + 1.5f);
         Stroke failStroke = new BasicStroke(
             failThickness,
@@ -337,6 +338,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 g2d.fillOval(x, y, DIAMETER, DIAMETER);
                 boolean isSelected = (state == selectedState || state == transitionSourceState);
                 boolean isFailState = (state instanceof PWSState ps) && ps.isFailState();
+                boolean hasDashboardIssues = false;
+                if (pwsMachine != null && state instanceof PWSState ps) {
+                    hasDashboardIssues = StateSemanticsAnnotation.hasStatusIssues(ps, pwsMachine);
+                }
                 if (isFailState) {
                     g2d.setStroke(failStroke);
                     g2d.setColor(FAIL_STATE_BORDER_COLOR);
@@ -350,6 +355,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     g2d.setStroke(normalStroke);
                     g2d.setColor(isSelected ? Color.RED : Color.BLACK);
                     g2d.drawOval(x, y, DIAMETER, DIAMETER);
+                }
+                if (hasDashboardIssues) {
+                    Stroke prev = g2d.getStroke();
+                    g2d.setStroke(new BasicStroke(Math.max(2.0f, stateBorderThickness + 1.0f)));
+                    g2d.setColor(Color.RED);
+                    g2d.drawOval(x - 2, y - 2, DIAMETER + 4, DIAMETER + 4);
+                    g2d.setStroke(prev);
                 }
                 String name = state.getName();
                 FontMetrics fm = g2d.getFontMetrics();

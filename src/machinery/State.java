@@ -11,6 +11,7 @@ public class State implements StateInterface {
     private List<TransitionInterface> incomingTransitions;
 
     private Point position;
+    private boolean failState = false;
 
     public State() {
         this.outgoingTransitions = new ArrayList<>();
@@ -67,5 +68,13 @@ public class State implements StateInterface {
     @Override
     public void setPosition(Point p) {
         this.position = p;
+    }
+
+    public boolean isFailState() {
+        return failState;
+    }
+
+    public void setFailState(boolean failState) {
+        this.failState = failState;
     }
 }

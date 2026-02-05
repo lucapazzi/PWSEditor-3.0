@@ -602,6 +602,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         PWSStateMachine pwsMachine = (panel != null) ? panel.getStateMachine()
                 : (getParent() instanceof PWSStateMachinePanel p ? p.getStateMachine() : null);
         Assembly asm = (pwsMachine != null) ? pwsMachine.getAssembly() : assembly;
+        List<String> componentFailStates = findComponentFailStatesInSemantics(state, asm);
 
         Semantics constraintsSem = state.getConstraintsSemantics();
         String rawConstraint = state.getRawConstraintText();
@@ -696,53 +697,8 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
         }
 
-        List<String> statusIssues = new ArrayList<>();
-        if (!state.isPseudoState() &&
-            (state.getStateSemantics() == null || state.getStateSemantics().getConfigurations().isEmpty())) {
-            statusIssues.add("State is unreachable (no configurations).");
-        }
-        if (!anyConstraint && constraintsSem != null && state.getStateSemantics() != null) {
-            for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
-                if (cfgObj instanceof pws.editor.semantics.Configuration cfg) {
-                    if (!cfg.implies(constraintsSem)) {
-                        statusIssues.add("Some configurations violate constraints.");
-                        break;
-                    }
-                }
-            }
-        }
-        boolean hasOrphan = false;
-        boolean hasUncovered = false;
+        List<String> statusIssues = computeStatusIssues(state, pwsMachine);
         boolean coverageRequired = !state.isFailState();
-        Semantics ssCheck = state.getStateSemantics();
-        if (state.getReactiveSemantics() != null) {
-            for (ExitZone ez : state.getReactiveSemantics()) {
-                if (ez.isOrphanSource(asm)) {
-                    hasOrphan = true;
-                    continue;
-                }
-                boolean isInternal = false;
-                if (ssCheck != null && asm != null && ez.getTarget() != null) {
-                    Semantics targetAndSem = ez.getTarget().toSemantics(asm).AND(ssCheck);
-                    isInternal = !targetAndSem.ISEMPTY();
-                }
-                if (coverageRequired && !isInternal && !coveredGuards.contains(ez.getTarget())) {
-                    hasUncovered = true;
-                }
-            }
-        }
-        if (coverageRequired && hasUncovered) {
-            statusIssues.add("Some exit zones are not covered by autonomous transitions.");
-        }
-        if (hasOrphan) {
-            statusIssues.add("Orphan exit zones — no matching source state.");
-        }
-        for (String deadlockStr : deadlockCfgStrs) {
-            if (!coveredCfgStrs.contains(deadlockStr)) {
-                statusIssues.add("True deadlock configurations exist.");
-                break;
-            }
-        }
 
         boolean allOk = statusIssues.isEmpty();
         Color borderColor = allOk ? new Color(0, 140, 0) : new Color(180, 0, 0);
@@ -764,6 +720,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 : "Red: " + (statusIssues.isEmpty() ? "state has issues." : String.join("; ", statusIssues));
         if (state.isFailState()) {
             headerTip += " Fail state: exit-zone coverage not required.";
+        }
+        if (!componentFailStates.isEmpty()) {
+            headerTip += " Warning: includes component fail states (" + String.join(", ", componentFailStates) + ").";
         }
         headerHitArea = new HitArea(
                 new Rectangle(nameX, nameY - fm.getAscent(), Math.max(1, nameWidth), fm.getHeight()),
@@ -962,6 +921,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         if (!cfgList.isEmpty()) {
             y -= lineHeight;
         }
+
+        if (!componentFailStates.isEmpty()) {
+            y += lineHeight;
+            g2d.setFont(smallFont);
+            g2d.setColor(new Color(180, 140, 0));
+            String warnText = "Warning: includes component fail states: " + String.join(", ", componentFailStates);
+            g2d.drawString(warnText, padding, y);
+            g2d.setFont(getNormalFont());
+        }
         
         // Draw separator line before exit zones
         y += 3;
@@ -1101,6 +1069,109 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         g2d.drawRoundRect(1, 1, size - 3, size - 3, radius, radius);
     }
 
+    /**
+     * Computes overall status issues for a state without requiring an annotation instance.
+     */
+    public static List<String> computeStatusIssues(PWSState state, PWSStateMachine sm) {
+        List<String> issues = new ArrayList<>();
+        if (state == null || sm == null) return issues;
+
+        Assembly asm = sm.getAssembly();
+        Semantics constraintsSem = state.getConstraintsSemantics();
+        String rawConstraint = state.getRawConstraintText();
+        boolean hasRaw = rawConstraint != null && !rawConstraint.isBlank();
+        boolean rawAny = hasRaw && "ANY".equalsIgnoreCase(rawConstraint.trim());
+        boolean hasCs = constraintsSem != null && !constraintsSem.getConfigurations().isEmpty();
+        boolean anyConstraint = state.isPseudoState() || rawAny || (!hasRaw && !hasCs);
+
+        Set<String> coveredCfgStrs = new HashSet<>();
+        if (asm != null && state.getStateSemantics() != null) {
+            for (machinery.TransitionInterface ti2 : sm.getTransitions()) {
+                if (ti2 instanceof pws.PWSTransition pt2 && pt2.getSource() == state && pt2.isEnabled()) {
+                    smalgebra.SMProposition guardProp = pt2.getGuardProposition();
+                    Semantics guardSem = guardProp.toSemantics(asm)
+                                        .AND(state.getStateSemantics());
+                    for (Object c : guardSem.getConfigurations()) {
+                        coveredCfgStrs.add(c.toString());
+                    }
+                }
+            }
+        }
+        Set<String> deadlockCfgStrs = new HashSet<>();
+        Set<pws.editor.semantics.Configuration> deadlocks = state.getDeadlockConfigurations();
+        if (deadlocks != null) {
+            for (pws.editor.semantics.Configuration dc : deadlocks) {
+                deadlockCfgStrs.add(dc.toString());
+            }
+        }
+        Set<smalgebra.BasicStateProposition> coveredGuards = new HashSet<>();
+        for (machinery.TransitionInterface ti : sm.getTransitions()) {
+            if (ti instanceof pws.PWSTransition pt) {
+                if (pt.isEnabled() && !pt.isTriggerable() && pt.getSource() == state
+                        && pt.getGuardProposition() instanceof smalgebra.BasicStateProposition) {
+                    coveredGuards.add((smalgebra.BasicStateProposition) pt.getGuardProposition());
+                }
+            }
+        }
+
+        if (!state.isPseudoState() &&
+            (state.getStateSemantics() == null || state.getStateSemantics().getConfigurations().isEmpty())) {
+            issues.add("State is unreachable (no configurations).");
+        }
+
+        if (!anyConstraint && constraintsSem != null && state.getStateSemantics() != null) {
+            for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
+                if (cfgObj instanceof pws.editor.semantics.Configuration cfg) {
+                    if (!cfg.implies(constraintsSem)) {
+                        issues.add("Some configurations violate constraints.");
+                        break;
+                    }
+                }
+            }
+        }
+
+        boolean hasOrphan = false;
+        boolean hasUncovered = false;
+        boolean coverageRequired = !state.isFailState();
+        Semantics ssCheck = state.getStateSemantics();
+        if (state.getReactiveSemantics() != null) {
+            for (ExitZone ez : state.getReactiveSemantics()) {
+                if (ez.isOrphanSource(asm)) {
+                    hasOrphan = true;
+                    continue;
+                }
+                boolean isInternal = false;
+                if (ssCheck != null && asm != null && ez.getTarget() != null) {
+                    Semantics targetAndSem = ez.getTarget().toSemantics(asm).AND(ssCheck);
+                    isInternal = !targetAndSem.ISEMPTY();
+                }
+                if (coverageRequired && !isInternal && !coveredGuards.contains(ez.getTarget())) {
+                    hasUncovered = true;
+                }
+            }
+        }
+        if (coverageRequired && hasUncovered) {
+            issues.add("Some exit zones are not covered by autonomous transitions.");
+        }
+        if (hasOrphan) {
+            issues.add("Orphan exit zones — no matching source state.");
+        }
+        for (String deadlockStr : deadlockCfgStrs) {
+            if (!coveredCfgStrs.contains(deadlockStr)) {
+                issues.add("True deadlock configurations exist.");
+                break;
+            }
+        }
+        return issues;
+    }
+
+    /**
+     * Returns whether the state has any issues (dashboard should be red).
+     */
+    public static boolean hasStatusIssues(PWSState state, PWSStateMachine sm) {
+        return !computeStatusIssues(state, sm).isEmpty();
+    }
+
     private java.util.List<String> findComponentDeadlocks(pws.editor.semantics.Configuration cfg, Assembly asm) {
         java.util.List<String> results = new ArrayList<>();
         if (cfg == null || asm == null) return results;
@@ -1133,6 +1204,47 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         return results;
     }
 
+    private List<String> findComponentFailStatesInSemantics(PWSState state, Assembly asm) {
+        if (state == null || asm == null || state.getStateSemantics() == null) {
+            return Collections.emptyList();
+        }
+        Map<String, machinery.StateMachine> machines = asm.getStateMachines();
+        if (machines == null || machines.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<String, java.util.Set<String>> failStatesByMachine = new HashMap<>();
+        for (Map.Entry<String, machinery.StateMachine> entry : machines.entrySet()) {
+            machinery.StateMachine machine = entry.getValue();
+            if (machine == null || machine.getStates() == null) continue;
+            java.util.Set<String> failNames = new HashSet<>();
+            for (machinery.StateInterface si : machine.getStates()) {
+                if (si instanceof machinery.State st && st.isFailState()) {
+                    if (!"PseudoState".equals(st.getName())) {
+                        failNames.add(st.getName());
+                    }
+                }
+            }
+            if (!failNames.isEmpty()) {
+                failStatesByMachine.put(entry.getKey(), failNames);
+            }
+        }
+        if (failStatesByMachine.isEmpty()) {
+            return Collections.emptyList();
+        }
+        java.util.Set<String> found = new LinkedHashSet<>();
+        for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
+            if (!(cfgObj instanceof pws.editor.semantics.Configuration cfg)) continue;
+            for (smalgebra.BasicStateProposition bsp : cfg.getBasicStatePropositions()) {
+                if (bsp == null) continue;
+                java.util.Set<String> failNames = failStatesByMachine.get(bsp.getMachineId());
+                if (failNames != null && failNames.contains(bsp.getStateName())) {
+                    found.add(bsp.getMachineId() + "." + bsp.getStateName());
+                }
+            }
+        }
+        return new ArrayList<>(found);
+    }
+
     private boolean isTransitionEnabled(machinery.TransitionInterface t) {
         if (t instanceof machinery.Transition trans) {
             return trans.isEnabled();
@@ -1149,10 +1261,8 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     }
 
     public List<String> getOverallStatusIssues() {
-        List<String> issues = new ArrayList<>();
-        if (content == null) return issues;
+        if (content == null) return new ArrayList<>();
 
-        PWSState state = content;
         try {
             PWSStateMachine sm = null;
             if (getParent() instanceof PWSStateMachinePanel p) {
@@ -1160,93 +1270,11 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             } else if (panel != null) {
                 sm = panel.getStateMachine();
             }
-            if (sm == null) return issues;
-
-            if (!state.isPseudoState() &&
-                (state.getStateSemantics() == null || state.getStateSemantics().getConfigurations().isEmpty())) {
-                issues.add("State is unreachable (no configurations).");
-            }
-
-            Set<smalgebra.BasicStateProposition> coveredGuards = new HashSet<>();
-            for (machinery.TransitionInterface ti : sm.getTransitions()) {
-                if (ti instanceof pws.PWSTransition pt) {
-                    if (pt.isEnabled() && !pt.isTriggerable() && pt.getSource() == state
-                            && pt.getGuardProposition() instanceof smalgebra.BasicStateProposition) {
-                        coveredGuards.add((smalgebra.BasicStateProposition) pt.getGuardProposition());
-                    }
-                }
-            }
-
-            String rawConstraint = state.getRawConstraintText();
-            boolean hasRaw = rawConstraint != null && !rawConstraint.isBlank();
-            boolean rawAny = hasRaw && "ANY".equalsIgnoreCase(rawConstraint.trim());
-            Semantics cs = state.getConstraintsSemantics();
-            boolean hasCs = cs != null && !cs.getConfigurations().isEmpty();
-            boolean anyConstraint = state.isPseudoState() || rawAny || (!hasRaw && !hasCs);
-            boolean hasExplicitConstraint = hasRaw || hasCs;
-            if (!anyConstraint && hasExplicitConstraint && cs != null && state.getStateSemantics() != null) {
-                for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
-                    if (cfgObj instanceof pws.editor.semantics.Configuration cfg) {
-                        if (!cfg.implies(cs)) {
-                            issues.add("Some configurations violate constraints.");
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (hasExplicitConstraint && state.getReactiveSemantics() != null) {
-                Semantics ssCheck = state.getStateSemantics();
-                Assembly asmCheck = sm.getAssembly();
-                boolean hasOrphan = false;
-                boolean hasUncovered = false;
-                boolean coverageRequired = !state.isFailState();
-                for (ExitZone ez : state.getReactiveSemantics()) {
-                    if (ez.isOrphanSource(asmCheck)) {
-                        hasOrphan = true;
-                        continue;
-                    }
-                    boolean isInternal = false;
-                    if (ssCheck != null && asmCheck != null && ez.getTarget() != null) {
-                        Semantics targetAndSem = ez.getTarget().toSemantics(asmCheck).AND(ssCheck);
-                        isInternal = !targetAndSem.ISEMPTY();
-                    }
-                    if (coverageRequired && !isInternal && !coveredGuards.contains(ez.getTarget())) {
-                        hasUncovered = true;
-                    }
-                }
-                if (coverageRequired && hasUncovered) {
-                    issues.add("Some exit zones are not covered by autonomous transitions.");
-                }
-                if (hasOrphan) {
-                    issues.add("Orphan exit zones — no matching source state.");
-                }
-            }
-
-            Set<pws.editor.semantics.Configuration> deadlocks = state.getDeadlockConfigurations();
-            if (hasExplicitConstraint && deadlocks != null && !deadlocks.isEmpty()) {
-                Assembly asm = sm.getAssembly();
-                Set<String> coveredCfgStrs = new HashSet<>();
-                for (machinery.TransitionInterface ti : sm.getTransitions()) {
-                    if (ti instanceof pws.PWSTransition pt && pt.getSource() == state && pt.isEnabled()) {
-                        smalgebra.SMProposition guardProp = pt.getGuardProposition();
-                        Semantics guardSem = guardProp.toSemantics(asm).AND(state.getStateSemantics());
-                        for (Object cfg : guardSem.getConfigurations()) {
-                            coveredCfgStrs.add(cfg.toString());
-                        }
-                    }
-                }
-                for (pws.editor.semantics.Configuration dc : deadlocks) {
-                    if (!coveredCfgStrs.contains(dc.toString())) {
-                        issues.add("True deadlock configurations exist.");
-                        break;
-                    }
-                }
-            }
+            if (sm == null) return new ArrayList<>();
+            return computeStatusIssues(content, sm);
         } catch (Exception e) {
-            // ignore and default to OK
+            return new ArrayList<>();
         }
-        return issues;
     }
 
     @Override
@@ -1299,8 +1327,14 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
         List<String> zoneLabels = buildExitZoneLabels(zones);
 
+        Assembly asm = (assembly != null) ? assembly : (panel != null ? panel.getStateMachine().getAssembly() : null);
+
         FontMetrics fm = getFontMetrics(getNormalFont());
         FontMetrics fmSmall = getFontMetrics(getSmallFont());
+        List<String> componentFailStates = findComponentFailStatesInSemantics(state, asm);
+        String componentFailWarning = componentFailStates.isEmpty()
+                ? ""
+                : "Warning: includes component fail states: " + String.join(", ", componentFailStates);
         int exitMaxWidth = 0;
         for (String label : zoneLabels) {
             if (label == null) continue;
@@ -1308,7 +1342,6 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
         int exitRows = Math.max(1, zoneLabels.size());
 
-        Assembly asm = (assembly != null) ? assembly : (panel != null ? panel.getStateMachine().getAssembly() : null);
         List<pws.editor.semantics.Configuration> constraintCfgList = buildConstraintConfigurations(state, asm);
         int maxWidth = 0;
 
@@ -1376,6 +1409,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         maxWidth = Math.max(maxWidth, fmSmall.stringWidth("constraints") + 20);
         maxWidth = Math.max(maxWidth, fmSmall.stringWidth("exit zones") + 20);
         maxWidth = Math.max(maxWidth, fmSmall.stringWidth("configs") + 20);
+        if (!componentFailWarning.isBlank()) {
+            maxWidth = Math.max(maxWidth, fmSmall.stringWidth(componentFailWarning) + 20);
+        }
         
         // Match the exact y-positions used in paintComponent:
         // padding=6, then for each section: smallLineHeight + lineHeight + separator(~4)
@@ -1391,10 +1427,12 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         // Section 1: header band + constraints label + header + rows
         // Section 2: separator + configs label + header + rows
         // Section 3: separator + exit zones label + content
+        int warningRows = componentFailWarning.isBlank() ? 0 : 1;
         int totalHeight = padding +
                           bandHeight + padding +  // header band
                           smallLineHeight + headerHeight + (constraintRows * lineHeight) +  // constraints section
                           4 + smallLineHeight + headerHeight + (cfgRows * lineHeight) +  // configs section (with separator)
+                          (warningRows * lineHeight) +
                           4 + smallLineHeight + (exitRows * lineHeight) +  // exit zones section (label + content)
                           padding;
         

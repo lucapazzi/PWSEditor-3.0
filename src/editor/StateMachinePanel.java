@@ -130,6 +130,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected int PSEUDO_RADIUS = PSEUDO_DIAMETER / 2;
     protected float stateBorderThickness = 1.0f;
     protected float stateFontSize = 12f;
+    private static final Color COMPONENT_FAIL_STATE_BORDER_COLOR = new Color(204, 170, 0);
+    private static final float[] COMPONENT_FAIL_STATE_DASH = new float[] {6f, 4f};
 
     // Map to hold trigger labels for transitions
     protected Map<TransitionInterface, DraggableTriggerLabel> triggerLabels = new HashMap<>();
@@ -216,6 +218,15 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         if (owningEditor != null) {
             owningEditor.markDocumentDirty();
         }
+    }
+
+    public void notifyTriggerEventChanged() {
+        markOwningEditorDirty();
+        java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+        if (w instanceof pws.editor.PWSEditor pe) {
+            pe.scheduleSemanticsRecalculation();
+        }
+        repaint();
     }
 
     public void enableLinkMode() {
@@ -365,7 +376,20 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected void drawStates(Graphics g) {
         Graphics2D g2d = (Graphics2D) g;
         Stroke oldStroke = g2d.getStroke();
-        g2d.setStroke(new BasicStroke(stateBorderThickness));
+        Stroke normalStroke = new BasicStroke(stateBorderThickness);
+        float failThickness = Math.max(2.0f, stateBorderThickness + 1.5f);
+        Stroke failStroke = new BasicStroke(
+            failThickness,
+            BasicStroke.CAP_ROUND,
+            BasicStroke.JOIN_ROUND,
+            10.0f,
+            COMPONENT_FAIL_STATE_DASH,
+            0.0f
+        );
+        g2d.setStroke(normalStroke);
+        java.util.Set<StateInterface> reachable = isComponentMachine()
+                ? getComponentReachableStates()
+                : java.util.Collections.emptySet();
         List<StateInterface> states = stateMachine.getStates();
         for (StateInterface state : states) {
             Point pos = ((State) state).getPosition();
@@ -379,16 +403,38 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             } else {
                 g2d.setColor(Color.WHITE);
                 g2d.fillOval(x, y, DIAMETER, DIAMETER);
-                if (state == selectedState || state == transitionSourceState) {
-                    g2d.setColor(Color.RED);
-                } else {
-                    g2d.setColor(Color.BLACK);
+                boolean isSelected = (state == selectedState || state == transitionSourceState);
+                boolean isUnreachable = isComponentMachine() && !reachable.contains(state);
+                boolean isDeadlock = false;
+                if (!isUnreachable && isComponentMachine()) {
+                    boolean hasEnabledOutgoing = false;
+                    for (TransitionInterface t : stateMachine.getTransitions()) {
+                        if (t != null && t.getSource() == state && isTransitionEnabled(t)) {
+                            hasEnabledOutgoing = true;
+                            break;
+                        }
+                    }
+                    isDeadlock = !hasEnabledOutgoing;
                 }
-                g2d.drawOval(x, y, DIAMETER, DIAMETER);
-                if (isComponentDeadlockState(state)) {
+                boolean isManualFail = isComponentFailState(state);
+                if (isDeadlock || isManualFail || isUnreachable) {
+                    g2d.setStroke(failStroke);
+                    g2d.setColor(COMPONENT_FAIL_STATE_BORDER_COLOR);
+                    g2d.drawOval(x, y, DIAMETER, DIAMETER);
+                    if (isSelected) {
+                        g2d.setStroke(normalStroke);
+                        g2d.setColor(Color.RED);
+                        g2d.drawOval(x - 2, y - 2, DIAMETER + 4, DIAMETER + 4);
+                    }
+                } else {
+                    g2d.setStroke(normalStroke);
+                    g2d.setColor(isSelected ? Color.RED : Color.BLACK);
+                    g2d.drawOval(x, y, DIAMETER, DIAMETER);
+                }
+                if (isUnreachable) {
                     Stroke prev = g2d.getStroke();
                     g2d.setStroke(new BasicStroke(2.0f));
-                    g2d.setColor(Color.RED);
+                    g2d.setColor(new Color(180, 0, 0));
                     g2d.drawOval(x - 2, y - 2, DIAMETER + 4, DIAMETER + 4);
                     g2d.setStroke(prev);
                 }
@@ -415,8 +461,14 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         if (!isComponentMachine()) return null;
         StateInterface state = getStateAt(e.getPoint());
         if (state == null) return null;
+        if (isComponentUnreachableState(state)) {
+            return "Unreachable state (no path from the initial pseudostate). This should be fixed.";
+        }
         if (isComponentDeadlockState(state)) {
-            return "Deadlock state (no enabled outgoing transitions)";
+            return "Deadlock state (no enabled outgoing transitions). Shown with fail-state styling.";
+        }
+        if (isComponentFailState(state)) {
+            return "Fail state (marked manually).";
         }
         return null;
     }
@@ -505,6 +557,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     private boolean isComponentDeadlockState(StateInterface state) {
         if (!isComponentMachine() || state == null) return false;
         if ("PseudoState".equals(state.getName())) return false;
+        if (isComponentUnreachableState(state)) return false;
         boolean hasEnabledOutgoing = false;
         for (TransitionInterface t : stateMachine.getTransitions()) {
             if (t != null && t.getSource() == state && isTransitionEnabled(t)) {
@@ -513,6 +566,48 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             }
         }
         return !hasEnabledOutgoing;
+    }
+
+    private boolean isComponentFailState(StateInterface state) {
+        if (!isComponentMachine() || state == null) return false;
+        if ("PseudoState".equals(state.getName())) return false;
+        if (state instanceof State s) {
+            return s.isFailState();
+        }
+        return false;
+    }
+
+    private boolean isComponentUnreachableState(StateInterface state) {
+        if (!isComponentMachine() || state == null) return false;
+        if ("PseudoState".equals(state.getName())) return false;
+        return !getComponentReachableStates().contains(state);
+    }
+
+    private java.util.Set<StateInterface> getComponentReachableStates() {
+        java.util.Set<StateInterface> reachable = new java.util.HashSet<>();
+        if (!isComponentMachine() || stateMachine == null) return reachable;
+        java.util.ArrayDeque<StateInterface> queue = new java.util.ArrayDeque<>();
+        for (StateInterface s : stateMachine.getInitialStates()) {
+            if (s != null && !"PseudoState".equals(s.getName()) && reachable.add(s)) {
+                queue.add(s);
+            }
+        }
+        while (!queue.isEmpty()) {
+            StateInterface current = queue.poll();
+            for (TransitionInterface t : stateMachine.getTransitions()) {
+                if (t == null || t.getSource() != current || !isTransitionEnabled(t)) {
+                    continue;
+                }
+                StateInterface target = t.getTarget();
+                if (target == null || "PseudoState".equals(target.getName())) {
+                    continue;
+                }
+                if (reachable.add(target)) {
+                    queue.add(target);
+                }
+            }
+        }
+        return reachable;
     }
 
     private boolean isTransitionEnabled(TransitionInterface t) {
@@ -1392,6 +1487,19 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 enableLinkModeWithSource(state);
             });
             popup.add(createTransItem);
+
+            if (state instanceof State st) {
+                JCheckBoxMenuItem failItem = new JCheckBoxMenuItem("Fail state", st.isFailState());
+                if (isComponentUnreachableState(state)) {
+                    failItem.setEnabled(false);
+                }
+                failItem.addActionListener(ae -> {
+                    st.setFailState(failItem.isSelected());
+                    markOwningEditorDirty();
+                    repaint();
+                });
+                popup.add(failItem);
+            }
 
             JMenuItem deleteItem = new JMenuItem("Delete State");
             deleteItem.addActionListener(ae -> {
