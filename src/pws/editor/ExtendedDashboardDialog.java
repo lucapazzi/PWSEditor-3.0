@@ -565,16 +565,10 @@ public class ExtendedDashboardDialog extends JDialog {
         // Get covered configurations
         Set<String> coveredCfgStrs = new HashSet<>();
         Semantics ss = state.getStateSemantics();
-        if (stateMachine != null && ss != null && assembly != null) {
-            for (TransitionInterface ti : stateMachine.getTransitions()) {
-                if (ti instanceof PWSTransition pt && pt.isEnabled() && pt.getSource() == state) {
-                    if (pt.getGuardProposition() != null) {
-                        for (Configuration cfg : ss.getConfigurations()) {
-                            if (pt.getGuardProposition().evaluateConfiguration(cfg, assembly)) {
-                                coveredCfgStrs.add(cfg.toString());
-                            }
-                        }
-                    }
+        if (stateMachine != null && ss != null) {
+            for (Configuration cfg : ss.getConfigurations()) {
+                if (!findCoveringTransitions(cfg).isEmpty()) {
+                    coveredCfgStrs.add(cfg.toString());
                 }
             }
         }
@@ -639,8 +633,7 @@ public class ExtendedDashboardDialog extends JDialog {
         }
         for (TransitionInterface ti : stateMachine.getTransitions()) {
             if (ti instanceof PWSTransition pt && pt.isEnabled() && pt.getSource() == state) {
-                if (pt.getGuardProposition() != null
-                        && pt.getGuardProposition().evaluateConfiguration(cfg, assembly)) {
+                if (stateMachine.transitionCoversConfiguration(pt, cfg)) {
                     covering.add(pt);
                 }
             }

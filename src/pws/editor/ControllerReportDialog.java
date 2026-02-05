@@ -779,14 +779,12 @@ public class ControllerReportDialog extends JDialog {
             
             // Check which deadlocks are covered by outgoing transitions
             Set<String> coveredCfgStrs = new HashSet<>();
-            for (TransitionInterface ti : stateMachine.getTransitions()) {
-                if (ti instanceof PWSTransition pt && pt.isEnabled() && pt.getSource() == ps) {
-                    SMProposition guard = pt.getGuardProposition();
-                    if (guard != null) {
-                        for (Configuration cfg : ss.getConfigurations()) {
-                            if (guard.evaluateConfiguration(cfg, assembly)) {
-                                coveredCfgStrs.add(cfg.toString());
-                            }
+            for (Configuration cfg : ss.getConfigurations()) {
+                for (TransitionInterface ti : stateMachine.getTransitions()) {
+                    if (ti instanceof PWSTransition pt && pt.isEnabled() && pt.getSource() == ps) {
+                        if (stateMachine.transitionCoversConfiguration(pt, cfg)) {
+                            coveredCfgStrs.add(cfg.toString());
+                            break;
                         }
                     }
                 }

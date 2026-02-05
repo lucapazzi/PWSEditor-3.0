@@ -353,16 +353,9 @@ public class InitialConfigurationsPanel extends JPanel {
             for (Configuration cfg : configs) {
                 boolean covered = false;
                 for (PWSTransition pt : initialTransitions) {
-                    if (pt.getGuardProposition() == null) {
+                    if (machine.transitionCoversConfiguration(pt, cfg)) {
                         covered = true;
                         break;
-                    }
-                    try {
-                        if (pt.getGuardProposition().evaluateConfiguration(cfg, asm)) {
-                            covered = true;
-                            break;
-                        }
-                    } catch (Exception ignore) {
                     }
                 }
                 result.put(cfg, covered);

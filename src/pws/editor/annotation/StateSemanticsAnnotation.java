@@ -665,19 +665,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
 
         // Precompute coverage/deadlock sets for drawing and status.
-        Set<String> coveredCfgStrs = new HashSet<>();
-        if (pwsMachine != null && asm != null && state.getStateSemantics() != null) {
-            for (machinery.TransitionInterface ti2 : pwsMachine.getTransitions()) {
-                if (ti2 instanceof pws.PWSTransition pt2 && pt2.getSource() == state && pt2.isEnabled()) {
-                    smalgebra.SMProposition guardProp = pt2.getGuardProposition();
-                    Semantics guardSem = guardProp.toSemantics(asm)
-                                        .AND(state.getStateSemantics());
-                    for (Object c : guardSem.getConfigurations()) {
-                        coveredCfgStrs.add(c.toString());
-                    }
-                }
-            }
-        }
+        Set<String> coveredCfgStrs = computeCoveredCfgStrs(state, pwsMachine);
         Set<String> deadlockCfgStrs = new HashSet<>();
         Set<pws.editor.semantics.Configuration> deadlocks = state.getDeadlockConfigurations();
         if (deadlocks != null) {
@@ -1084,19 +1072,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         boolean hasCs = constraintsSem != null && !constraintsSem.getConfigurations().isEmpty();
         boolean anyConstraint = state.isPseudoState() || rawAny || (!hasRaw && !hasCs);
 
-        Set<String> coveredCfgStrs = new HashSet<>();
-        if (asm != null && state.getStateSemantics() != null) {
-            for (machinery.TransitionInterface ti2 : sm.getTransitions()) {
-                if (ti2 instanceof pws.PWSTransition pt2 && pt2.getSource() == state && pt2.isEnabled()) {
-                    smalgebra.SMProposition guardProp = pt2.getGuardProposition();
-                    Semantics guardSem = guardProp.toSemantics(asm)
-                                        .AND(state.getStateSemantics());
-                    for (Object c : guardSem.getConfigurations()) {
-                        coveredCfgStrs.add(c.toString());
-                    }
-                }
-            }
-        }
+        Set<String> coveredCfgStrs = computeCoveredCfgStrs(state, sm);
         Set<String> deadlockCfgStrs = new HashSet<>();
         Set<pws.editor.semantics.Configuration> deadlocks = state.getDeadlockConfigurations();
         if (deadlocks != null) {
@@ -1170,6 +1146,27 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
      */
     public static boolean hasStatusIssues(PWSState state, PWSStateMachine sm) {
         return !computeStatusIssues(state, sm).isEmpty();
+    }
+
+    private static Set<String> computeCoveredCfgStrs(PWSState state, PWSStateMachine sm) {
+        Set<String> covered = new HashSet<>();
+        if (state == null || sm == null || state.getStateSemantics() == null) {
+            return covered;
+        }
+        for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
+            if (!(cfgObj instanceof pws.editor.semantics.Configuration cfg)) {
+                continue;
+            }
+            for (machinery.TransitionInterface ti : sm.getTransitions()) {
+                if (ti instanceof pws.PWSTransition pt && pt.isEnabled() && pt.getSource() == state) {
+                    if (sm.transitionCoversConfiguration(pt, cfg)) {
+                        covered.add(cfg.toString());
+                        break;
+                    }
+                }
+            }
+        }
+        return covered;
     }
 
     private java.util.List<String> findComponentDeadlocks(pws.editor.semantics.Configuration cfg, Assembly asm) {

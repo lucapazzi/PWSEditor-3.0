@@ -893,6 +893,44 @@ public class PWSStateMachine extends StateMachine {
     }
 
     /**
+     * Returns true if the given configuration can leave the source state via the
+     * provided transition under strict action semantics.
+     */
+    public boolean transitionCoversConfiguration(PWSTransition t, Configuration cfg) {
+        if (t == null || cfg == null || assembly == null) {
+            return false;
+        }
+        SMProposition guard = t.getGuardProposition();
+        if (guard != null) {
+            try {
+                if (!guard.evaluateConfiguration(cfg, assembly)) {
+                    return false;
+                }
+            } catch (Exception ex) {
+                return false;
+            }
+        }
+        Semantics current = cfg.toSemantics();
+        ActionList actions = t.getActionList();
+        if (actions != null) {
+            for (Action a : actions) {
+                if (a == null) {
+                    continue;
+                }
+                try {
+                    current = current.transformByMachineEvent(a.getMachineId(), a.getEvent(), assembly);
+                } catch (IllegalArgumentException ex) {
+                    return false;
+                }
+                if (current == null || current.ISEMPTY()) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
      * Computes the reactive exit-zones for this state machine given a base semantics.
      *
      * <p>The <b>base semantics</b> is typically associated with a PWSState and denotes its
