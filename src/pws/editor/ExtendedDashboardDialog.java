@@ -205,6 +205,7 @@ public class ExtendedDashboardDialog extends JDialog {
         if (raw != null && !raw.isBlank() && "ANY".equalsIgnoreCase(raw.trim())) {
             appendText("  Explicit constraint:\n", STYLE_GRAY);
             appendText("    ANY (all configurations allowed)\n\n", STYLE_BLUE);
+            appendText("  Note: new states are created with explicit ANY by default.\n\n", STYLE_GRAY);
             return;
         }
         if (raw != null && !raw.isBlank()) {
@@ -222,7 +223,7 @@ public class ExtendedDashboardDialog extends JDialog {
                 appendText("    " + cfg.toString() + "\n", STYLE_BLUE);
             }
         } else {
-            appendText("  No constraints defined (defaults to all configurations)\n", STYLE_GRAY);
+            appendText("  No explicit constraints found; treated as ANY (all configurations allowed)\n", STYLE_GRAY);
         }
         appendText("\n", STYLE_NORMAL);
     }
@@ -281,6 +282,9 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText("NO underline", STYLE_GRAY);
             appendText(" = internally stuck but covered by an outgoing transition\n", STYLE_GRAY);
             appendText("    Note: true deadlocks are explicitly labeled below and appear with a red underline in the dashboard.\n\n", STYLE_GRAY);
+            appendText("    UI note: guard/action label visibility on transitions does not affect this analysis.\n", STYLE_GRAY);
+            appendText("    Newly created triggered/initial transitions start with guard labels hidden.\n", STYLE_GRAY);
+            appendText("    Newly created initial transitions also start with action labels hidden.\n\n", STYLE_GRAY);
             
             for (Configuration cfg : ss.getConfigurations()) {
                 String cfgStr = cfg.toString();

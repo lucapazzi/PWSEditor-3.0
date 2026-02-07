@@ -33,7 +33,9 @@ computed semantics and reactive spaces.
 
 - **Editable guards and actions:**  
   Triggers, guards, and emissions can be edited via in-place annotation
-  widgets.
+  widgets. Newly created triggered/initial transitions start with guard labels
+  hidden (initial transitions also hide actions by default), and new states
+  start with `ANY` constraints.
 
 - **Separation of model and view:**  
   PWS statecharts and their visual layout can be saved, restored, and

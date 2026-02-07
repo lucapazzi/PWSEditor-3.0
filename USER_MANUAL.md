@@ -115,9 +115,10 @@ Edit the main controller state machine here. The canvas displays:
 1. **Right-click** on an empty area of the canvas (left panel)
 2. Select **"Add State"** from the context menu
 3. Click to place the state on the canvas
-4. Enter the state name in the dialog box
 
 There is no menu item for adding states; use the right-click context menu on the canvas.
+
+New states are created immediately with an auto-generated name (`S`, `S1`, `S2`, ...), and with constraint semantics set to **ANY** by default. There is no constraint editor or confirmation dialog during creation.
 
 ### Editing a State
 
@@ -212,6 +213,8 @@ Use **in-place editors** (floating text boxes) to directly modify:
 - **Action labels**: Click the action text and edit
 - **Semantics labels**: View computed semantics
 
+If guard/action labels are hidden, right-click the transition control handle and use **Show Guard** / **Show Action** first.
+
 Renaming a trigger (double-click the trigger label) automatically recomputes semantics so the new trigger takes effect immediately.
 
 ### Understanding Transition Types
@@ -288,6 +291,13 @@ The guard expression determines when a transition can fire. PWSEditor provides v
 - **Triggered transitions** (with an event): Default to **TRUE** guard — the transition fires whenever the event occurs
 - **Initial transitions** (from pseudo-state): Default to **TRUE** guard — fire at system startup (hidden **_init** trigger)
 - **Autonomous transitions** (no event, not from pseudo-state): Default to **FALSE** guard — this is a **placeholder** indicating you need to specify a meaningful guard
+
+#### Default Annotation Visibility for New Transitions
+
+- **Triggered transitions**: guard label starts **hidden**; action label starts **visible**
+- **Initial transitions**: guard label starts **hidden**; action label starts **hidden**
+- **Autonomous transitions**: guard label starts **visible** (and the guard toggle is not shown); action label starts **hidden**
+- **Transition semantics label**: starts **hidden** for all transition types
 
 When editing an autonomous transition guard:
 - If the source state has **exit zones** (including provisional CS-only ones), the guard menu lists those exit-zone propositions.
@@ -1339,7 +1349,13 @@ Each transition can have visible annotations:
 - **Action annotation**: Shows actions `{action1, action2}`
 - **Semantics annotation**: Shows computed transition semantics
 
-Toggle visibility via the transition's right-click menu. **Note:** For autonomous transitions, the guard toggle is not shown (guards remain visible by default).
+Toggle visibility via the transition's right-click menu.  
+Default visibility for newly created transitions:
+- Triggered: guard hidden, action visible, semantics hidden
+- Initial: guard hidden, action hidden, semantics hidden
+- Autonomous: guard visible, action hidden, semantics hidden
+
+**Note:** For autonomous transitions, the guard toggle is not shown (guards remain visible by default).
 
 ---
 
