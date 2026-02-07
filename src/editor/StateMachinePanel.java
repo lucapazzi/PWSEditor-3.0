@@ -405,19 +405,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 g2d.fillOval(x, y, DIAMETER, DIAMETER);
                 boolean isSelected = (state == selectedState || state == transitionSourceState);
                 boolean isUnreachable = isComponentMachine() && !reachable.contains(state);
-                boolean isDeadlock = false;
-                if (!isUnreachable && isComponentMachine()) {
-                    boolean hasEnabledOutgoing = false;
-                    for (TransitionInterface t : stateMachine.getTransitions()) {
-                        if (t != null && t.getSource() == state && isTransitionEnabled(t)) {
-                            hasEnabledOutgoing = true;
-                            break;
-                        }
-                    }
-                    isDeadlock = !hasEnabledOutgoing;
-                }
                 boolean isManualFail = isComponentFailState(state);
-                if (isDeadlock || isManualFail || isUnreachable) {
+                if (isManualFail) {
                     g2d.setStroke(failStroke);
                     g2d.setColor(COMPONENT_FAIL_STATE_BORDER_COLOR);
                     g2d.drawOval(x, y, DIAMETER, DIAMETER);
@@ -465,7 +454,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             return "Unreachable state (no path from the initial pseudostate). This should be fixed.";
         }
         if (isComponentDeadlockState(state)) {
-            return "Deadlock state (no enabled outgoing transitions). Shown with fail-state styling.";
+            return "Deadlock state (no enabled outgoing transitions).";
         }
         if (isComponentFailState(state)) {
             return "Fail state (marked manually).";
@@ -1490,9 +1479,6 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
 
             if (state instanceof State st) {
                 JCheckBoxMenuItem failItem = new JCheckBoxMenuItem("Fail state", st.isFailState());
-                if (isComponentUnreachableState(state)) {
-                    failItem.setEnabled(false);
-                }
                 failItem.addActionListener(ae -> {
                     st.setFailState(failItem.isSelected());
                     markOwningEditorDirty();

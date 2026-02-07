@@ -650,6 +650,17 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         g2d.drawString(attrTrigger.getIterator(), textX, textY);
     }
 
+    private boolean defaultGuardAnnotationVisible(PWSTransition transition) {
+        return transition != null && transition.isAutonomous();
+    }
+
+    private boolean defaultActionAnnotationVisible(PWSTransition transition) {
+        if (transition == null || transition.isInitialTransition()) {
+            return false;
+        }
+        return !transition.isAutonomous();
+    }
+
     /**
      * Draws separate annotations for a PWSTransition: guard, actions, and transition semantics.
      */
@@ -693,6 +704,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             guardAnnot.setContent(guardProp);
             pt.setGuardAnnotation(guardAnnot);
             add(guardAnnot);
+            guardAnnot.setVisible(defaultGuardAnnotationVisible(pt));
         } else {
             pt.getGuardAnnotation().setContent(guardProp);
         }
@@ -710,6 +722,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             actionAnnot.setBounds(actionX, actionY, 150, 20);
             pt.setActionAnnotation(actionAnnot);
             add(actionAnnot);
+            actionAnnot.setVisible(defaultActionAnnotationVisible(pt));
         } else {
             pt.getActionAnnotation().setContent(actions);
         }
@@ -1455,34 +1468,6 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
         PWSState newState = new PWSState(name, topLeft, pwsMachine.getAssembly());
         pwsMachine.addState(newState);
-
-        while (isAnyConstraints(newState)) {
-            ConstraintsEditorDialog dialog = new ConstraintsEditorDialog(newState, pwsMachine.getAssembly());
-            dialog.setVisible(true);
-            if (!isAnyConstraints(newState)) {
-                break;
-            }
-            Object[] options = { "Keep ANY", "Edit Constraints", "Remove State" };
-            int choice = JOptionPane.showOptionDialog(
-                    this,
-                    "Constraints are ANY (no exit zones will be derived).",
-                    "Constraints = ANY",
-                    JOptionPane.DEFAULT_OPTION,
-                    JOptionPane.WARNING_MESSAGE,
-                    null,
-                    options,
-                    options[0]
-            );
-            if (choice == 0) {
-                break; // Keep ANY
-            }
-            if (choice == 2 || choice == JOptionPane.CLOSED_OPTION) {
-                pwsMachine.getStates().remove(newState);
-                repaint();
-                return;
-            }
-            // choice == 1 -> edit again
-        }
         repaint();
         // mark document dirty and trigger semantics recalculation
         java.awt.Window w = SwingUtilities.getWindowAncestor(this);
@@ -1506,18 +1491,6 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             idx++;
         }
         return base + idx;
-    }
-
-    private boolean isAnyConstraints(PWSState state) {
-        if (state == null || state.isPseudoState()) {
-            return false;
-        }
-        String raw = state.getRawConstraintText();
-        if (raw != null && !raw.isBlank()) {
-            return "ANY".equalsIgnoreCase(raw.trim());
-        }
-        Semantics cs = state.getConstraintsSemantics();
-        return cs == null || cs.getConfigurations().isEmpty();
     }
 
     /**
