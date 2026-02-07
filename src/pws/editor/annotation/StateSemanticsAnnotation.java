@@ -429,6 +429,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         if (state.getSsOnlyExitZones() != null) {
             zones.addAll(state.getSsOnlyExitZones());
         }
+        if (state.getIncomingTransitionOverflowExitZones() != null) {
+            zones.addAll(state.getIncomingTransitionOverflowExitZones());
+        }
         for (ExitZone ez : zones) {
             if (ez == null) continue;
             if (transition != null && ez.getTransition() == transition) {
@@ -950,6 +953,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             // Get CS-only and SS-only sets for later detailed analysis (used in extended dashboard)
             Set<ExitZone> csOnly = state.getCsOnlyExitZones();
             Set<ExitZone> ssOnly = state.getSsOnlyExitZones();
+            Set<ExitZone> incomingOverflow = state.getIncomingTransitionOverflowExitZones();
             Semantics ss = state.getStateSemantics();
             Color failCoverageColor = new Color(180, 140, 0);
             // Prepare list of exit-zones (SS first, then CS-only warnings)
@@ -975,9 +979,21 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 }
                 boolean isCovered = coverageRequired && !isOrphan && !isInternal && coveredGuards.contains(ez.getTarget());
                 boolean isCsOnly = csOnly != null && csOnly.contains(ez);
+                boolean isIncomingOverflow = incomingOverflow != null && incomingOverflow.contains(ez);
+                if (isIncomingOverflow) {
+                    txt = "T|" + getExitZoneTargetKey(ez);
+                }
                 Color ezColor;
                 if (isCsOnly) {
                     ezColor = new Color(0, 70, 180);
+                } else if (isIncomingOverflow) {
+                    if (isOrphan) {
+                        ezColor = new Color(180, 0, 0);
+                    } else if (!coverageRequired) {
+                        ezColor = failCoverageColor;
+                    } else {
+                        ezColor = isCovered ? new Color(0, 120, 80) : new Color(140, 0, 120);
+                    }
                 } else {
                     ezColor = isOrphan
                             ? new Color(180, 0, 0)
@@ -994,6 +1010,8 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 String status;
                 if (isCsOnly) {
                     status = "Provisional (constraints only).";
+                } else if (isIncomingOverflow) {
+                    status = "Incoming-transition overflow marker.";
                 } else if (isOrphan) {
                     status = "Orphan (no matching source state).";
                 } else if (isInternal) {
@@ -1005,9 +1023,27 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 } else {
                     status = "Uncovered by autonomous transitions.";
                 }
+                String tooltip;
+                if (isIncomingOverflow) {
+                    String coverage;
+                    if (isOrphan) {
+                        coverage = "Coverage: orphan";
+                    } else if (!coverageRequired) {
+                        coverage = "Coverage: not required (fail state)";
+                    } else if (isCovered) {
+                        coverage = "Coverage: covered";
+                    } else {
+                        coverage = "Coverage: uncovered";
+                    }
+                    tooltip = "<html>Exit zone " + txt + "<br>"
+                            + buildIncomingOverflowOrigin(ez, state, pwsMachine, asm) + "<br>"
+                            + coverage + "</html>";
+                } else {
+                    tooltip = "Exit zone " + txt + " - " + status;
+                }
                 exitZoneHitAreas.add(new HitArea(
                         new Rectangle(exitX, y - fm.getAscent(), txtWidth, fm.getHeight()),
-                        "Exit zone " + txt + " - " + status));
+                        tooltip));
                 y += lineHeight;
             }
             if (!zones.isEmpty()) {
@@ -1169,6 +1205,67 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         return covered;
     }
 
+    private String buildIncomingOverflowOrigin(ExitZone ez, PWSState state, PWSStateMachine sm, Assembly asm) {
+        if (ez == null || ez.getTarget() == null || state == null || sm == null || asm == null) {
+            return "Incoming codomain overflow from: unknown";
+        }
+        Semantics cs = state.getConstraintsSemantics();
+        if (cs == null) {
+            return "Incoming codomain overflow from: unknown";
+        }
+        Semantics csComplement;
+        Semantics targetSem;
+        try {
+            csComplement = cs.NOT(asm);
+            targetSem = ez.getTarget().toSemantics(asm);
+        } catch (Exception ex) {
+            return "Incoming codomain overflow from: unknown";
+        }
+        if (targetSem == null || targetSem.ISEMPTY()) {
+            return "Incoming codomain overflow from: unknown";
+        }
+
+        List<String> producers = new ArrayList<>();
+        for (machinery.TransitionInterface ti : sm.getTransitions()) {
+            if (!(ti instanceof pws.PWSTransition pt) || !pt.isEnabled() || pt.getTarget() != state) {
+                continue;
+            }
+            if (!(pt.getSource() instanceof pws.PWSState srcState)) {
+                continue;
+            }
+            Semantics srcSem = srcState.getStateSemantics();
+            if (srcSem == null || srcSem.ISEMPTY()) {
+                continue;
+            }
+            Semantics contrib = sm.computeTransitionContribution(pt, srcSem);
+            if (contrib == null || contrib.ISEMPTY()) {
+                continue;
+            }
+            Semantics overflow = contrib.AND(csComplement);
+            if (overflow == null || overflow.ISEMPTY()) {
+                continue;
+            }
+            Semantics targetOverflow = overflow.AND(targetSem);
+            if (targetOverflow == null || targetOverflow.ISEMPTY()) {
+                continue;
+            }
+            String srcName = pt.getSource() != null ? pt.getSource().getName() : "?";
+            String tgtName = pt.getTarget() != null ? pt.getTarget().getName() : "?";
+            String actionText = (pt.getActionList() == null || pt.getActionList().isEmpty())
+                    ? "<no actions>"
+                    : pt.getActionList().toString();
+            producers.add(srcName + "->" + tgtName + " via " + actionText);
+        }
+        if (producers.isEmpty()) {
+            return "Incoming codomain overflow from: unknown";
+        }
+        String first = producers.get(0);
+        if (producers.size() == 1) {
+            return "Incoming codomain overflow from: " + first;
+        }
+        return "Incoming codomain overflow from: " + first + " (+" + (producers.size() - 1) + " more)";
+    }
+
     private java.util.List<String> findComponentDeadlocks(pws.editor.semantics.Configuration cfg, Assembly asm) {
         java.util.List<String> results = new ArrayList<>();
         if (cfg == null || asm == null) return results;
@@ -1323,6 +1420,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
         }
         List<String> zoneLabels = buildExitZoneLabels(zones);
+        Set<ExitZone> incomingOverflow = state.getIncomingTransitionOverflowExitZones();
 
         Assembly asm = (assembly != null) ? assembly : (panel != null ? panel.getStateMachine().getAssembly() : null);
 
@@ -1333,8 +1431,12 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 ? ""
                 : "Warning: includes component fail states: " + String.join(", ", componentFailStates);
         int exitMaxWidth = 0;
-        for (String label : zoneLabels) {
+        for (int i = 0; i < zoneLabels.size(); i++) {
+            String label = zoneLabels.get(i);
             if (label == null) continue;
+            if (incomingOverflow != null && i < zones.size() && incomingOverflow.contains(zones.get(i))) {
+                label = "T|" + getExitZoneTargetKey(zones.get(i));
+            }
             exitMaxWidth = Math.max(exitMaxWidth, fm.stringWidth(label));
         }
         int exitRows = Math.max(1, zoneLabels.size());

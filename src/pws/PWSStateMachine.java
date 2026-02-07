@@ -19,6 +19,7 @@ import smalgebra.SMProposition;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -108,6 +109,8 @@ public class PWSStateMachine extends StateMachine {
         // ----------------------------------------------------------------------
         for (StateInterface si : getStates()) {
             if (si instanceof PWSState ps && si != pseudoState) {
+                HashSet<ExitZone> incomingOverflow = findIncomingTransitionOverflowExitZones(ps);
+                ps.setIncomingTransitionOverflowExitZones(incomingOverflow);
                 HashSet<ExitZone> ssZones = new HashSet<>(this.findExitZones(ps.getStateSemantics()));
                 HashSet<ExitZone> csZones = new HashSet<>();
                 if (hasExplicitConstraints(ps)) {
@@ -124,8 +127,10 @@ public class PWSStateMachine extends StateMachine {
                 ssOnly.removeAll(csZones);
                 ps.setSsOnlyExitZones(ssOnly);
 
-                // Reactive semantics used for autonomous reasoning: SS-only
-                ps.setReactiveSemantics(ssZones);
+                // Merge classical SS-exit-zones with incoming transition overflow markers.
+                HashSet<ExitZone> combinedReactive = new HashSet<>(ssZones);
+                combinedReactive.addAll(incomingOverflow);
+                ps.setReactiveSemantics(combinedReactive);
             }
         }
 
@@ -186,6 +191,8 @@ public class PWSStateMachine extends StateMachine {
      */
     public void updateExitZonesForState(PWSState ps) {
         if (ps == null || ps == pseudoState) return;
+        HashSet<ExitZone> incomingOverflow = findIncomingTransitionOverflowExitZones(ps);
+        ps.setIncomingTransitionOverflowExitZones(incomingOverflow);
         
         HashSet<ExitZone> ssZones = new HashSet<>(this.findExitZones(ps.getStateSemantics()));
         HashSet<ExitZone> csZones = new HashSet<>();
@@ -203,8 +210,10 @@ public class PWSStateMachine extends StateMachine {
         ssOnly.removeAll(csZones);
         ps.setSsOnlyExitZones(ssOnly);
 
-        // Reactive semantics used for autonomous reasoning: SS-only
-        ps.setReactiveSemantics(ssZones);
+        // Keep transition-overflow markers visible when only exit-zones are refreshed.
+        HashSet<ExitZone> combinedReactive = new HashSet<>(ssZones);
+        combinedReactive.addAll(incomingOverflow);
+        ps.setReactiveSemantics(combinedReactive);
     }
 
     /**
@@ -247,6 +256,7 @@ public class PWSStateMachine extends StateMachine {
                 renameExitZones(ps.getReactiveSemantics(), oldId, newId);
                 renameExitZones(ps.getCsOnlyExitZones(), oldId, newId);
                 renameExitZones(ps.getSsOnlyExitZones(), oldId, newId);
+                renameExitZones(ps.getIncomingTransitionOverflowExitZones(), oldId, newId);
             }
         }
 
@@ -317,6 +327,7 @@ public class PWSStateMachine extends StateMachine {
                     renameExitZonesStateName(ps.getReactiveSemantics(), machineId, oldName, newName);
                     renameExitZonesStateName(ps.getCsOnlyExitZones(), machineId, oldName, newName);
                     renameExitZonesStateName(ps.getSsOnlyExitZones(), machineId, oldName, newName);
+                    renameExitZonesStateName(ps.getIncomingTransitionOverflowExitZones(), machineId, oldName, newName);
                 }
             }
 
@@ -675,6 +686,81 @@ public class PWSStateMachine extends StateMachine {
         }
         Semantics cs = ps.getConstraintsSemantics();
         return cs != null && !cs.getConfigurations().isEmpty();
+    }
+
+    private HashSet<ExitZone> findIncomingTransitionOverflowExitZones(PWSState targetState) {
+        HashSet<ExitZone> zones = new HashSet<>();
+        if (targetState == null || targetState.isPseudoState() || assembly == null) {
+            return zones;
+        }
+        if (!hasExplicitConstraints(targetState)) {
+            return zones;
+        }
+        Semantics cs = targetState.getConstraintsSemantics();
+        if (cs == null) {
+            return zones;
+        }
+        Semantics csComplement = cs.NOT(assembly);
+        for (TransitionInterface ti : getTransitions()) {
+            if (!(ti instanceof PWSTransition pt) || !pt.isEnabled() || pt.getTarget() != targetState) {
+                continue;
+            }
+            if (!(pt.getSource() instanceof PWSState srcState)) {
+                continue;
+            }
+            Semantics srcBase = srcState.getStateSemantics();
+            if (srcBase == null || srcBase.ISEMPTY()) {
+                continue;
+            }
+            Semantics contribution = computeTransitionContribution(pt, srcBase);
+            if (contribution == null || contribution.ISEMPTY()) {
+                continue;
+            }
+            Semantics overflow = contribution.AND(csComplement);
+            if (overflow.ISEMPTY()) {
+                continue;
+            }
+            zones.addAll(buildConstraintOverflowExitZones(overflow, cs));
+        }
+        return zones;
+    }
+
+    private Set<ExitZone> buildConstraintOverflowExitZones(Semantics overflow, Semantics cs) {
+        Set<ExitZone> zones = new HashSet<>();
+        if (overflow == null || overflow.ISEMPTY()) {
+            return zones;
+        }
+        for (Configuration cfg : overflow.getConfigurations()) {
+            Set<BasicStateProposition> candidates = new LinkedHashSet<>();
+            for (BasicStateProposition bsp : cfg.getBasicStatePropositions()) {
+                if (bsp == null) {
+                    continue;
+                }
+                try {
+                    Semantics bspSem = bsp.toSemantics(assembly);
+                    if (cs == null || bspSem.AND(cs).ISEMPTY()) {
+                        candidates.add(bsp);
+                    }
+                } catch (Exception ignore) {
+                    candidates.add(bsp);
+                }
+            }
+            // If overflow is only combinatorial, keep at least one marker proposition.
+            if (candidates.isEmpty()) {
+                candidates.addAll(cfg.getBasicStatePropositions());
+            }
+            for (BasicStateProposition bsp : candidates) {
+                if (bsp == null) {
+                    continue;
+                }
+                zones.add(new ExitZone(
+                        bsp.getMachineId(),
+                        null,
+                        new BasicStateProposition(bsp.getMachineId(), bsp.getStateName()),
+                        new BasicStateProposition(bsp.getMachineId(), bsp.getStateName())));
+            }
+        }
+        return zones;
     }
 
     private HashSet<ExitZone> findProvisionalExitZones(PWSState ps) {
