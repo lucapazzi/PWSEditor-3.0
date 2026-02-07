@@ -338,9 +338,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 g2d.fillOval(x, y, DIAMETER, DIAMETER);
                 boolean isSelected = (state == selectedState || state == transitionSourceState);
                 boolean isFailState = (state instanceof PWSState ps) && ps.isFailState();
-                boolean hasDashboardIssues = false;
+                Color dashboardIssueColor = null;
                 if (pwsMachine != null && state instanceof PWSState ps) {
-                    hasDashboardIssues = StateSemanticsAnnotation.hasStatusIssues(ps, pwsMachine);
+                    dashboardIssueColor = StateSemanticsAnnotation.getIssueHighlightColor(ps, pwsMachine);
                 }
                 if (isFailState) {
                     g2d.setStroke(failStroke);
@@ -356,10 +356,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     g2d.setColor(isSelected ? Color.RED : Color.BLACK);
                     g2d.drawOval(x, y, DIAMETER, DIAMETER);
                 }
-                if (hasDashboardIssues) {
+                if (dashboardIssueColor != null) {
                     Stroke prev = g2d.getStroke();
                     g2d.setStroke(new BasicStroke(Math.max(2.0f, stateBorderThickness + 1.0f)));
-                    g2d.setColor(Color.RED);
+                    g2d.setColor(dashboardIssueColor);
                     g2d.drawOval(x - 2, y - 2, DIAMETER + 4, DIAMETER + 4);
                     g2d.setStroke(prev);
                 }

@@ -646,15 +646,22 @@ public class PWSStateMachine extends StateMachine {
      * @return the transition’s contribution
      */
     public Semantics computeReactiveTransitionSemantics(PWSTransition t, Semantics base) {
+        PWSState src = (PWSState) t.getSource();
+        Semantics overflowByGuard = computeIncomingOverflowGuardContribution(src, t.getGuardProposition());
         if (t.getGuardProposition() instanceof TrueProposition) {
-            Semantics result = (base == null) ? Semantics.bottom(assembly.getAssemblyId()) : base.clone();
+            Semantics result = Semantics.bottom(assembly.getAssemblyId());
+            if (base != null) {
+                result = result.OR(base);
+            }
+            if (overflowByGuard != null && !overflowByGuard.ISEMPTY()) {
+                result = result.OR(overflowByGuard);
+            }
             for (Action a : t.getActionList()) {
                 result = result.transformByMachineEvent(a.getMachineId(), a.getEvent(), assembly);
             }
             return result;
         }
         Semantics result = Semantics.bottom(assembly.getAssemblyId());
-        PWSState src = (PWSState) t.getSource();
         // Compute exit zones on the fly from the current base semantics (SS only).
         // This avoids relying on cached reactiveSemantics that may be stale after load.
         HashSet<ExitZone> reactiveZones = new HashSet<>();
@@ -668,6 +675,9 @@ public class PWSStateMachine extends StateMachine {
                         ez.getStateMachineId(), ez.getTransition(), assembly);
                 result = result.OR(frag);
             }
+        }
+        if (overflowByGuard != null && !overflowByGuard.ISEMPTY()) {
+            result = result.OR(overflowByGuard);
         }
         for (Action a : t.getActionList()) {
             result = result.transformByMachineEvent(a.getMachineId(), a.getEvent(), assembly);
@@ -686,6 +696,71 @@ public class PWSStateMachine extends StateMachine {
         }
         Semantics cs = ps.getConstraintsSemantics();
         return cs != null && !cs.getConfigurations().isEmpty();
+    }
+
+    /**
+     * Computes the subset of incoming codomain overflow that matches a reactive guard.
+     *
+     * This lets autonomous transitions consume clipped incoming worlds (outside CS)
+     * when they explicitly guard on those propositions.
+     *
+     * To avoid recursive semantics expansion, only incoming triggerable/initial
+     * transitions are considered as overflow producers.
+     */
+    private Semantics computeIncomingOverflowGuardContribution(PWSState constrainedState, SMProposition guardProp) {
+        Semantics result = Semantics.bottom(assembly.getAssemblyId());
+        if (constrainedState == null || guardProp == null || assembly == null) {
+            return result;
+        }
+        if (!hasExplicitConstraints(constrainedState)) {
+            return result;
+        }
+        Semantics cs = constrainedState.getConstraintsSemantics();
+        if (cs == null) {
+            return result;
+        }
+        Semantics csComplement = cs.NOT(assembly);
+        Semantics guardSem = null;
+        if (!(guardProp instanceof TrueProposition)) {
+            try {
+                guardSem = guardProp.toSemantics(assembly);
+            } catch (Exception ex) {
+                return result;
+            }
+            if (guardSem == null || guardSem.ISEMPTY()) {
+                return result;
+            }
+        }
+
+        for (TransitionInterface ti : getTransitions()) {
+            if (!(ti instanceof PWSTransition pt) || !pt.isEnabled() || pt.getTarget() != constrainedState) {
+                continue;
+            }
+            if (!(pt.getSource() instanceof PWSState srcState)) {
+                continue;
+            }
+            // Limit to triggerable/initial producers to keep this evaluation acyclic.
+            if (!(pt.isTriggerable() || srcState.isPseudoState())) {
+                continue;
+            }
+            Semantics srcBase = srcState.getStateSemantics();
+            if (srcBase == null || srcBase.ISEMPTY()) {
+                continue;
+            }
+            Semantics contribution = computeTriggerableSemantics(pt, srcBase);
+            if (contribution == null || contribution.ISEMPTY()) {
+                continue;
+            }
+            Semantics overflow = contribution.AND(csComplement);
+            if (overflow == null || overflow.ISEMPTY()) {
+                continue;
+            }
+            Semantics matched = (guardProp instanceof TrueProposition) ? overflow : overflow.AND(guardSem);
+            if (matched != null && !matched.ISEMPTY()) {
+                result = result.OR(matched);
+            }
+        }
+        return result;
     }
 
     private HashSet<ExitZone> findIncomingTransitionOverflowExitZones(PWSState targetState) {

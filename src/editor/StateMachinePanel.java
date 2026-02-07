@@ -131,6 +131,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected float stateBorderThickness = 1.0f;
     protected float stateFontSize = 12f;
     private static final Color COMPONENT_FAIL_STATE_BORDER_COLOR = new Color(204, 170, 0);
+    private static final Color COMPONENT_DEADLOCK_BORDER_COLOR = new Color(180, 0, 0);
+    private static final Color COMPONENT_UNREACHABLE_BORDER_COLOR = new Color(204, 170, 0);
     private static final float[] COMPONENT_FAIL_STATE_DASH = new float[] {6f, 4f};
 
     // Map to hold trigger labels for transitions
@@ -378,6 +380,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         Stroke oldStroke = g2d.getStroke();
         Stroke normalStroke = new BasicStroke(stateBorderThickness);
         float failThickness = Math.max(2.0f, stateBorderThickness + 1.5f);
+        float deadlockThickness = Math.max(2.0f, stateBorderThickness + 1.0f);
         Stroke failStroke = new BasicStroke(
             failThickness,
             BasicStroke.CAP_ROUND,
@@ -386,6 +389,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             COMPONENT_FAIL_STATE_DASH,
             0.0f
         );
+        Stroke deadlockStroke = new BasicStroke(deadlockThickness);
         g2d.setStroke(normalStroke);
         java.util.Set<StateInterface> reachable = isComponentMachine()
                 ? getComponentReachableStates()
@@ -405,10 +409,30 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 g2d.fillOval(x, y, DIAMETER, DIAMETER);
                 boolean isSelected = (state == selectedState || state == transitionSourceState);
                 boolean isUnreachable = isComponentMachine() && !reachable.contains(state);
-                boolean isManualFail = isComponentFailState(state);
+                boolean isDeadlock = false;
+                if (!isUnreachable && isComponentMachine()) {
+                    boolean hasEnabledOutgoing = false;
+                    for (TransitionInterface t : stateMachine.getTransitions()) {
+                        if (t != null && t.getSource() == state && isTransitionEnabled(t)) {
+                            hasEnabledOutgoing = true;
+                            break;
+                        }
+                    }
+                    isDeadlock = !hasEnabledOutgoing;
+                }
+                boolean isManualFail = isComponentFailState(state) && !isUnreachable;
                 if (isManualFail) {
                     g2d.setStroke(failStroke);
                     g2d.setColor(COMPONENT_FAIL_STATE_BORDER_COLOR);
+                    g2d.drawOval(x, y, DIAMETER, DIAMETER);
+                    if (isSelected) {
+                        g2d.setStroke(normalStroke);
+                        g2d.setColor(Color.RED);
+                        g2d.drawOval(x - 2, y - 2, DIAMETER + 4, DIAMETER + 4);
+                    }
+                } else if (isDeadlock) {
+                    g2d.setStroke(deadlockStroke);
+                    g2d.setColor(COMPONENT_DEADLOCK_BORDER_COLOR);
                     g2d.drawOval(x, y, DIAMETER, DIAMETER);
                     if (isSelected) {
                         g2d.setStroke(normalStroke);
@@ -423,7 +447,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 if (isUnreachable) {
                     Stroke prev = g2d.getStroke();
                     g2d.setStroke(new BasicStroke(2.0f));
-                    g2d.setColor(new Color(180, 0, 0));
+                    g2d.setColor(COMPONENT_UNREACHABLE_BORDER_COLOR);
                     g2d.drawOval(x - 2, y - 2, DIAMETER + 4, DIAMETER + 4);
                     g2d.setStroke(prev);
                 }
@@ -1479,6 +1503,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
 
             if (state instanceof State st) {
                 JCheckBoxMenuItem failItem = new JCheckBoxMenuItem("Fail state", st.isFailState());
+                if (isComponentUnreachableState(state)) {
+                    failItem.setEnabled(false);
+                }
                 failItem.addActionListener(ae -> {
                     st.setFailState(failItem.isSelected());
                     markOwningEditorDirty();

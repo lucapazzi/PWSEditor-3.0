@@ -31,6 +31,10 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     // Size of the minimized indicator
     private static final int MINIMIZED_SIZE = 16;
     private static final Color PARTIAL_DEADLOCK_COLOR = new Color(200, 160, 0);
+    private static final Color STATUS_OK_COLOR = new Color(0, 140, 0);
+    private static final Color STATUS_ISSUE_COLOR = new Color(180, 0, 0);
+    private static final Color STATUS_UNREACHABLE_COLOR = new Color(204, 170, 0);
+    private static final String UNREACHABLE_ISSUE_TEXT = "State is unreachable (no configurations).";
     private final java.util.List<HitArea> configHitAreas = new ArrayList<>();
     private final java.util.List<HitArea> constraintHitAreas = new ArrayList<>();
     private final java.util.List<HitArea> exitZoneHitAreas = new ArrayList<>();
@@ -692,7 +696,8 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         boolean coverageRequired = !state.isFailState();
 
         boolean allOk = statusIssues.isEmpty();
-        Color borderColor = allOk ? new Color(0, 140, 0) : new Color(180, 0, 0);
+        boolean unreachableIssue = containsUnreachableIssue(statusIssues);
+        Color borderColor = allOk ? STATUS_OK_COLOR : (unreachableIssue ? STATUS_UNREACHABLE_COLOR : STATUS_ISSUE_COLOR);
 
         int bandHeight = lineHeight + 4;
         int bandX = BORDER_THICKNESS;
@@ -706,9 +711,17 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         int nameX = Math.max(bandX + 4, (getWidth() - nameWidth) / 2);
         int nameY = bandY + (bandHeight - lineHeight) / 2 + fm.getAscent();
         g2d.drawString(stateName, nameX, nameY);
-        String headerTip = allOk
-                ? "Green: state is well-formed (constraints satisfied, exit zones covered, no true deadlocks)."
-                : "Red: " + (statusIssues.isEmpty() ? "state has issues." : String.join("; ", statusIssues));
+        String headerTip;
+        if (allOk) {
+            headerTip = "Green: state is well-formed (constraints satisfied, exit zones covered, no true deadlocks).";
+        } else if (unreachableIssue) {
+            headerTip = "Yellow: state is unreachable (no configurations).";
+            if (statusIssues.size() > 1) {
+                headerTip += " Other issues: " + String.join("; ", statusIssues);
+            }
+        } else {
+            headerTip = "Red: " + (statusIssues.isEmpty() ? "state has issues." : String.join("; ", statusIssues));
+        }
         if (state.isFailState()) {
             headerTip += " Fail state: exit-zone coverage not required.";
         }
@@ -1059,7 +1072,11 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             
             // Add subtle status indicator glow/tint in background
             if (!allOk) {
-                g2d.setColor(new Color(255, 200, 200, 40)); // Very subtle red tint
+                if (unreachableIssue) {
+                    g2d.setColor(new Color(255, 235, 180, 50)); // subtle yellow tint
+                } else {
+                    g2d.setColor(new Color(255, 200, 200, 40)); // subtle red tint
+                }
                 g2d.fillRoundRect(BORDER_THICKNESS, BORDER_THICKNESS, 
                                  getWidth() - 2*BORDER_THICKNESS, getHeight() - 2*BORDER_THICKNESS, 
                                  CORNER_RADIUS - 2, CORNER_RADIUS - 2);
@@ -1076,9 +1093,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
      * Paints the minimized indicator - a small rounded square colored based on overall status.
      */
     private void paintMinimized(Graphics2D g2d) {
-        // Determine overall status (green = all OK, red = has issues)
-        boolean allOk = computeOverallStatus();
-        Color statusColor = allOk ? new Color(0, 160, 0) : new Color(200, 0, 0);
+        Color statusColor = computeOverallStatusColor();
         
         int size = Math.min(getWidth(), getHeight());
         int radius = size / 3;
@@ -1128,7 +1143,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
 
         if (!state.isPseudoState() &&
             (state.getStateSemantics() == null || state.getStateSemantics().getConfigurations().isEmpty())) {
-            issues.add("State is unreachable (no configurations).");
+            issues.add(UNREACHABLE_ISSUE_TEXT);
         }
 
         if (!anyConstraint && constraintsSem != null && state.getStateSemantics() != null) {
@@ -1182,6 +1197,24 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
      */
     public static boolean hasStatusIssues(PWSState state, PWSStateMachine sm) {
         return !computeStatusIssues(state, sm).isEmpty();
+    }
+
+    public static Color getIssueHighlightColor(PWSState state, PWSStateMachine sm) {
+        List<String> issues = computeStatusIssues(state, sm);
+        if (issues.isEmpty()) {
+            return null;
+        }
+        return containsUnreachableIssue(issues) ? STATUS_UNREACHABLE_COLOR : STATUS_ISSUE_COLOR;
+    }
+
+    private static boolean containsUnreachableIssue(Collection<String> issues) {
+        if (issues == null) return false;
+        for (String issue : issues) {
+            if (UNREACHABLE_ISSUE_TEXT.equals(issue)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Set<String> computeCoveredCfgStrs(PWSState state, PWSStateMachine sm) {
@@ -1352,6 +1385,23 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
      */
     private boolean computeOverallStatus() {
         return getOverallStatusIssues().isEmpty();
+    }
+
+    private Color computeOverallStatusColor() {
+        if (content == null) return STATUS_ISSUE_COLOR;
+        try {
+            PWSStateMachine sm = null;
+            if (getParent() instanceof PWSStateMachinePanel p) {
+                sm = p.getStateMachine();
+            } else if (panel != null) {
+                sm = panel.getStateMachine();
+            }
+            if (sm == null) return STATUS_ISSUE_COLOR;
+            Color issueColor = getIssueHighlightColor(content, sm);
+            return issueColor == null ? STATUS_OK_COLOR : issueColor;
+        } catch (Exception e) {
+            return STATUS_ISSUE_COLOR;
+        }
     }
 
     public List<String> getOverallStatusIssues() {
