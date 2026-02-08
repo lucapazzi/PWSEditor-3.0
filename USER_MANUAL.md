@@ -295,7 +295,7 @@ The guard expression determines when a transition can fire. PWSEditor provides v
 #### Default Annotation Visibility for New Transitions
 
 - **Triggered transitions**: guard label starts **hidden**; action label starts **visible**
-- **Initial transitions**: guard label starts **hidden**; action label starts **hidden**
+- **Initial transitions**: guard label starts **visible**; action label starts **hidden**
 - **Autonomous transitions**: guard label starts **visible** (and the guard toggle is not shown); action label starts **hidden**
 - **Transition semantics label**: starts **hidden** for all transition types
 
@@ -1352,7 +1352,7 @@ Each transition can have visible annotations:
 Toggle visibility via the transition's right-click menu.  
 Default visibility for newly created transitions:
 - Triggered: guard hidden, action visible, semantics hidden
-- Initial: guard hidden, action hidden, semantics hidden
+- Initial: guard visible, action hidden, semantics hidden
 - Autonomous: guard visible, action hidden, semantics hidden
 
 **Note:** For autonomous transitions, the guard toggle is not shown (guards remain visible by default).

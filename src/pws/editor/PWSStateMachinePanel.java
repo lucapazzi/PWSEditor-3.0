@@ -651,7 +651,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     }
 
     private boolean defaultGuardAnnotationVisible(PWSTransition transition) {
-        return transition != null && transition.isAutonomous();
+        if (transition == null) {
+            return false;
+        }
+        if (transition.isInitialTransition()) {
+            return true;
+        }
+        return transition.isAutonomous();
     }
 
     private boolean defaultActionAnnotationVisible(PWSTransition transition) {

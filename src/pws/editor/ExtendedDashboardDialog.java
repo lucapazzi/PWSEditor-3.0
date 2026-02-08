@@ -283,7 +283,8 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText(" = internally stuck but covered by an outgoing transition\n", STYLE_GRAY);
             appendText("    Note: true deadlocks are explicitly labeled below and appear with a red underline in the dashboard.\n\n", STYLE_GRAY);
             appendText("    UI note: guard/action label visibility on transitions does not affect this analysis.\n", STYLE_GRAY);
-            appendText("    Newly created triggered/initial transitions start with guard labels hidden.\n", STYLE_GRAY);
+            appendText("    Newly created triggered transitions start with guard labels hidden.\n", STYLE_GRAY);
+            appendText("    Newly created initial transitions start with guard labels visible.\n", STYLE_GRAY);
             appendText("    Newly created initial transitions also start with action labels hidden.\n\n", STYLE_GRAY);
             
             for (Configuration cfg : ss.getConfigurations()) {
