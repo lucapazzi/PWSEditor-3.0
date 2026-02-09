@@ -75,6 +75,16 @@ The `scripts/build.sh` helper compiles the editor against the bundled libraries 
 
 It cleans `out/` before compiling, so rerun when dependencies or sources change. You can then run the editor with `java -cp out:...`.
 
+If you want a single entry point that builds all artifacts available on your current OS, use:
+
+```sh
+./scripts/build-all.sh
+```
+
+Optional flags:
+- `--javadoc` to also generate API docs
+- `--windows-installer` to build a Windows installer when run on Windows
+
 ## Building an executable jar
 
 To generate a runnable jar with its runtime dependencies, use:
@@ -98,3 +108,26 @@ To generate a macOS `.app` you can double-click:
 ```
 
 It produces `dist/PWSEditor.app`. Drag it to your Desktop or Applications, then launch it normally.
+
+## Windows 10/11 desktop launcher (Intel x64)
+
+On Windows, build a package with an executable launcher (`PWSEditor.exe`) using:
+
+```sh
+./scripts/build-windows-app.sh
+```
+
+Prerequisites:
+- Windows 10/11 x64 (Intel/AMD)
+- JDK 17+ with `jpackage` available in `PATH`
+- Run from Git Bash, MSYS2, or Cygwin
+
+Output:
+- App image in `dist/PWSEditor/`
+- Launcher executable `dist/PWSEditor/PWSEditor.exe`
+
+Optional installer build:
+
+```sh
+./scripts/build-windows-app.sh --installer
+```

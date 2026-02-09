@@ -11,11 +11,18 @@ readonly LIBS=(
   "$ROOT/lib/graphics2d-3.0.3.jar"
 )
 
+classpath_separator=":"
+case "$(uname -s)" in
+  CYGWIN*|MINGW*|MSYS*)
+    classpath_separator=";"
+    ;;
+esac
+
 echo "Cleaning $OUT"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
-CLASSPATH=$(IFS=:; echo "${LIBS[*]}")
+CLASSPATH=$(IFS="$classpath_separator"; echo "${LIBS[*]}")
 
 echo "Compiling sources to $OUT"
 javac -d "$OUT" -cp "$CLASSPATH" -sourcepath src $(find src -name "*.java")
