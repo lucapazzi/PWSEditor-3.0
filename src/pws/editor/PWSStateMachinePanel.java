@@ -1473,14 +1473,22 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         Point topLeft = new Point(centerX - radius, centerY - radius);
 
         PWSState newState = new PWSState(name, topLeft, pwsMachine.getAssembly());
+        newState.setAnnotationVisible(true);
+        newState.setAnnotationMinimized(false);
         pwsMachine.addState(newState);
-        repaint();
-        // mark document dirty and trigger semantics recalculation
+
+        // Ensure dashboard visibility for newly created states.
         java.awt.Window w = SwingUtilities.getWindowAncestor(this);
         if (w instanceof PWSEditor pe) {
+            pe.setDashboardsVisible(true);
             pe.markDocumentDirty();
             pe.scheduleSemanticsRecalculation();
+        } else {
+            setShowStateAnnotations(true);
+            restoreVisibleStateAnnotations();
         }
+        revalidate();
+        repaint();
     }
 
     private String generateDefaultStateName(PWSStateMachine machine) {
@@ -1748,14 +1756,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
             if (state instanceof PWSState) {
                 PWSState pwsState = (PWSState) state;
-                JMenuItem toggleAnnot;
-                if (pwsState.isAnnotationVisible()) {
-                    toggleAnnot = new JMenuItem("Hide Dashboard");
-                } else {
-                    toggleAnnot = new JMenuItem("Show Dashboard");
-                }
+                JCheckBoxMenuItem toggleAnnot = new JCheckBoxMenuItem("Show Dashboard", pwsState.isAnnotationVisible());
                 toggleAnnot.addActionListener(ae -> {
-                    boolean newVisible = !pwsState.isAnnotationVisible();
+                    boolean newVisible = toggleAnnot.isSelected();
                     pwsState.setAnnotationVisible(newVisible);
                     if (newVisible) {
                         if (pwsState.getAnnotation() == null) {

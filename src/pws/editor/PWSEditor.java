@@ -1144,6 +1144,16 @@ public class PWSEditor extends JFrame {
         panel.repaint();
     }
 
+    /**
+     * Updates the global dashboards visibility toggle and applies it to the canvas.
+     */
+    public void setDashboardsVisible(boolean visible) {
+        if (showStateAnn != null) {
+            showStateAnn.setSelected(visible);
+        }
+        applyDashboardVisibility();
+    }
+
     /** Keeps the Edit mode menu item and panel in sync. */
     public void setEditModeEnabled(boolean enabled) {
         boolean changed = false;
