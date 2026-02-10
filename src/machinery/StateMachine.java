@@ -58,7 +58,9 @@ public class StateMachine implements StateMachineInterface, Cloneable {
     public List<StateInterface> getInitialStates() {
         List<StateInterface> initialStates = new ArrayList<>();
         for (TransitionInterface t : transitions) {
-            if (t.getSource() == pseudoState && t.isAutonomous() && isTransitionEnabled(t)) {
+            if (t.getSource() == pseudoState
+                    && isTransitionEnabled(t)
+                    && (t.isAutonomous() || "_init".equals(t.getTriggerEvent()))) {
                 initialStates.add(t.getTarget());
             }
         }

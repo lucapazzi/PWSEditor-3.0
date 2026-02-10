@@ -147,6 +147,19 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected int initialTransitionAliasIndex = -1;
     protected int transitionSourcePseudoAliasIndex = -1;
 
+    protected enum DragTransitionKind {
+        GUARD_TRIGGERED,
+        EVENT_TRIGGERED,
+        INITIAL_TRIGGERED
+    }
+
+    protected boolean dragTransitionArmed = false;
+    protected boolean dragTransitionActive = false;
+    protected DragTransitionKind dragTransitionKind = null;
+    protected StateInterface dragTransitionSourceState = null;
+    protected int dragTransitionSourcePseudoAliasIndex = -1;
+    protected Point dragTransitionCurrentPoint = null;
+
     public static class AliasData {
         public final List<Point> pseudoAliases = new ArrayList<>();
         public final Map<String, Integer> pseudoAliasByTransition = new LinkedHashMap<>();
@@ -186,6 +199,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         menuPseudoAliasIndex = -1;
         initialTransitionAliasIndex = -1;
         transitionSourcePseudoAliasIndex = -1;
+        clearBaseDragTransitionState();
     }
 
     public boolean isShowControlHandles() {
@@ -252,6 +266,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         // removeAllTriggerLabels();
         drawStates(g);
         drawTransitions(g);
+        drawBaseDragTransitionPreview(g);
         updateTriggerLabels(); // Add draggable labels for transitions with triggers
         // (Focus glow removed — visual hint disabled during resizing)
         if (isComponentMachine() && hasComponentDeadlocks()) {
@@ -970,6 +985,181 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         canvasDragLast = newPoint;
     }
 
+    protected boolean isBaseDragCommandModifierDown(MouseEvent e) {
+        return e != null && (e.isMetaDown() || e.isControlDown());
+    }
+
+    protected DragTransitionKind determineBaseDragTransitionKind(MouseEvent e, StateInterface sourceState) {
+        if (isPseudoState(sourceState)) {
+            return DragTransitionKind.INITIAL_TRIGGERED;
+        }
+        if (e != null && e.isShiftDown()) {
+            return DragTransitionKind.EVENT_TRIGGERED;
+        }
+        return DragTransitionKind.GUARD_TRIGGERED;
+    }
+
+    protected void armBaseDragTransition(StateInterface sourceState, int sourceAliasIndex, DragTransitionKind kind, Point startPoint) {
+        dragTransitionArmed = true;
+        dragTransitionActive = false;
+        dragTransitionKind = kind;
+        dragTransitionSourceState = sourceState;
+        dragTransitionSourcePseudoAliasIndex = sourceAliasIndex;
+        dragTransitionCurrentPoint = (startPoint != null) ? new Point(startPoint) : null;
+    }
+
+    protected void clearBaseDragTransitionState() {
+        dragTransitionArmed = false;
+        dragTransitionActive = false;
+        dragTransitionKind = null;
+        dragTransitionSourceState = null;
+        dragTransitionSourcePseudoAliasIndex = -1;
+        dragTransitionCurrentPoint = null;
+    }
+
+    protected Rectangle getBaseDragTransitionSourceBounds() {
+        if (!(dragTransitionSourceState instanceof State sourceState)) {
+            return null;
+        }
+        Point pos;
+        int diameter;
+        if (isPseudoState(dragTransitionSourceState)
+                && dragTransitionSourcePseudoAliasIndex >= 0
+                && dragTransitionSourcePseudoAliasIndex < pseudoStateAliases.size()) {
+            pos = pseudoStateAliases.get(dragTransitionSourcePseudoAliasIndex);
+            diameter = PSEUDO_DIAMETER;
+        } else {
+            pos = sourceState.getPosition();
+            diameter = isPseudoState(dragTransitionSourceState) ? PSEUDO_DIAMETER : DIAMETER;
+        }
+        if (pos == null) {
+            return null;
+        }
+        return new Rectangle(pos.x, pos.y, diameter, diameter);
+    }
+
+    protected Point getBaseDragTransitionSourceCenter() {
+        if (!(dragTransitionSourceState instanceof State sourceState)) {
+            return null;
+        }
+        Point pos;
+        int radius;
+        if (isPseudoState(dragTransitionSourceState)
+                && dragTransitionSourcePseudoAliasIndex >= 0
+                && dragTransitionSourcePseudoAliasIndex < pseudoStateAliases.size()) {
+            pos = pseudoStateAliases.get(dragTransitionSourcePseudoAliasIndex);
+            radius = PSEUDO_RADIUS;
+        } else {
+            pos = sourceState.getPosition();
+            radius = isPseudoState(dragTransitionSourceState) ? PSEUDO_RADIUS : RADIUS;
+        }
+        if (pos == null) {
+            return null;
+        }
+        return new Point(pos.x + radius, pos.y + radius);
+    }
+
+    protected boolean updateBaseDragTransitionActivation(Point currentPoint) {
+        if (!dragTransitionArmed || currentPoint == null) {
+            return false;
+        }
+        dragTransitionCurrentPoint = new Point(currentPoint);
+        if (dragTransitionActive) {
+            return true;
+        }
+        Rectangle sourceBounds = getBaseDragTransitionSourceBounds();
+        if (sourceBounds == null || !sourceBounds.contains(currentPoint)) {
+            dragTransitionActive = true;
+        }
+        return dragTransitionActive;
+    }
+
+    protected void drawBaseDragTransitionPreview(Graphics g) {
+        if (!dragTransitionArmed || !dragTransitionActive || dragTransitionCurrentPoint == null) {
+            return;
+        }
+        Point sourceCenter = getBaseDragTransitionSourceCenter();
+        if (sourceCenter == null) {
+            return;
+        }
+        Graphics2D g2d = (Graphics2D) g.create();
+        try {
+            Stroke oldStroke = g2d.getStroke();
+            g2d.setColor(new Color(70, 70, 70));
+            g2d.setStroke(new BasicStroke(
+                    1.5f,
+                    BasicStroke.CAP_ROUND,
+                    BasicStroke.JOIN_ROUND,
+                    1.0f,
+                    new float[] {6f, 4f},
+                    0.0f));
+            g2d.drawLine(sourceCenter.x, sourceCenter.y, dragTransitionCurrentPoint.x, dragTransitionCurrentPoint.y);
+            g2d.setStroke(oldStroke);
+        } finally {
+            g2d.dispose();
+        }
+    }
+
+    protected void scheduleSemanticsRecalculationIfNeeded() {
+        java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
+        if (win instanceof pws.editor.PWSEditor) {
+            ((pws.editor.PWSEditor) win).scheduleSemanticsRecalculation();
+        }
+    }
+
+    protected boolean isInitialPseudoTransition(TransitionInterface t) {
+        if (t == null || !isPseudoState(t.getSource())) {
+            return false;
+        }
+        String trigger = t.getTriggerEvent();
+        if (trigger != null && "_init".equals(trigger.trim())) {
+            return true;
+        }
+        return t.isAutonomous();
+    }
+
+    protected boolean createBaseDragTransitionToTarget(StateInterface targetState) {
+        if (!dragTransitionActive || dragTransitionSourceState == null || targetState == null) {
+            return false;
+        }
+        if (targetState == dragTransitionSourceState) {
+            return false;
+        }
+        if (isPseudoState(targetState)) {
+            JOptionPane.showMessageDialog(this, "Cannot create transition to PseudoState.");
+            return false;
+        }
+
+        TransitionInterface newTransition;
+        if (dragTransitionKind == DragTransitionKind.INITIAL_TRIGGERED) {
+            if (!isPseudoState(dragTransitionSourceState)) {
+                return false;
+            }
+            boolean exists = stateMachine.getTransitions().stream()
+                    .anyMatch(t -> t.getSource() == dragTransitionSourceState
+                            && t.getTarget() == targetState
+                            && isInitialPseudoTransition(t));
+            if (exists) {
+                JOptionPane.showMessageDialog(this, "An initial transition for this state already exists.");
+                return false;
+            }
+            newTransition = new Transition(dragTransitionSourceState, targetState, false, "_init");
+            rememberPseudoAliasForTransition(newTransition, dragTransitionSourcePseudoAliasIndex);
+        } else {
+            boolean autonomous = (dragTransitionKind == DragTransitionKind.GUARD_TRIGGERED);
+            String trigger = autonomous ? "" : "ev";
+            newTransition = new Transition(dragTransitionSourceState, targetState, autonomous, trigger);
+            if (isPseudoState(dragTransitionSourceState)) {
+                rememberPseudoAliasForTransition(newTransition, dragTransitionSourcePseudoAliasIndex);
+            }
+        }
+
+        stateMachine.addTransition(newTransition);
+        scheduleSemanticsRecalculationIfNeeded();
+        markOwningEditorDirty();
+        return true;
+    }
+
     // --------------- MOUSE EVENT HANDLING ---------------
 
     @Override
@@ -979,6 +1169,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         // Ensure the panel gains focus so its arrow‑key bindings have priority
         if (!hasFocus()) {
             requestFocusInWindow();
+        }
+        if (!SwingUtilities.isLeftMouseButton(e)) {
+            clearBaseDragTransitionState();
         }
         // Debug: mouse press details — commented out to reduce console noise
         // System.out.println("mousePressed: button=" + e.getButton() + ", point=" + p + ", isPopupTrigger=" + e.isPopupTrigger());
@@ -1005,6 +1198,18 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             return;
         }
         StateInterface state = getStateAt(p);
+        if (state != null && SwingUtilities.isLeftMouseButton(e) && isBaseDragCommandModifierDown(e)) {
+            int sourceAliasIndex = (isPseudoState(state) && hitPseudoAliasIndex >= 0) ? hitPseudoAliasIndex : -1;
+            DragTransitionKind kind = determineBaseDragTransitionKind(e, state);
+            armBaseDragTransition(state, sourceAliasIndex, kind, p);
+            selectedState = null;
+            selectedPseudoAliasIndex = -1;
+            dragOffset = null;
+            canvasDragActive = false;
+            canvasDragLast = null;
+            repaint();
+            return;
+        }
         if (state != null) {
             selectedState = state;
             selectedPseudoAliasIndex = -1;
@@ -1035,6 +1240,24 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     public void mouseReleased(MouseEvent e) {
         if (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger()) {
             handleRightClick(e);
+            return;
+        }
+
+        if (dragTransitionArmed) {
+            if (dragTransitionActive) {
+                StateInterface targetState = getStateAt(e.getPoint());
+                createBaseDragTransitionToTarget(targetState);
+            }
+            clearBaseDragTransitionState();
+            selectedState = null;
+            selectedPseudoAliasIndex = -1;
+            dragOffset = null;
+            canvasDragActive = false;
+            canvasDragLast = null;
+            canvasDragAccumX = 0;
+            canvasDragAccumY = 0;
+            revalidate();
+            repaint();
             return;
         }
 
@@ -1094,6 +1317,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
 
     @Override
     public void mouseDragged(MouseEvent e) {
+        if (dragTransitionArmed) {
+            updateBaseDragTransitionActivation(e.getPoint());
+            repaint();
+            return;
+        }
         if (canvasDragActive && canvasDragLast != null) {
             dragMoved = true;
             panCanvasTo(e.getPoint());
@@ -1185,9 +1413,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                     .findFirst().orElse(null);
             if (pseudo != null) {
                 boolean exists = stateMachine.getTransitions().stream()
-                        .anyMatch(t -> t.getSource() == pseudo && t.getTarget() == clickedState && t.isAutonomous());
+                        .anyMatch(t -> t.getSource() == pseudo
+                                && t.getTarget() == clickedState
+                                && isInitialPseudoTransition(t));
                 if (!exists) {
-                    TransitionInterface newTransition = new Transition(pseudo, clickedState, true, "");
+                    TransitionInterface newTransition = new Transition(pseudo, clickedState, false, "_init");
                     stateMachine.addTransition(newTransition);
                     rememberPseudoAliasForTransition(newTransition, initialTransitionAliasIndex);
                         // Schedule semantics recalculation if inside PWSEditor
