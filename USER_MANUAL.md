@@ -174,6 +174,7 @@ You can create **multiple aliases** of the pseudo-state to keep diagrams readabl
 
 All aliases are equivalent to the real pseudo-state:
 - Initial transitions created from an alias behave exactly like those created from the original
+- You can create initial transitions directly from an alias with **Cmd/Ctrl + drag**
 - Each initial transition remembers which alias it originates from (anchoring is preserved)
 - You can delete aliases, but **at least one** pseudo-state (original or alias) must remain
 
@@ -191,14 +192,22 @@ All aliases are equivalent to the real pseudo-state:
 
 ### Creating a Transition
 
-1. **Right-click** on a state (the source)
-2. Select **"Create transition: choose arrival state"** from the menu
-3. Click on the target state to complete the transition
-4. A curved arrow appears connecting the two states
+Primary gesture (recommended):
 
-Alternatively:
-- Use **Create transition: choose arrival state** from the state context menu
-- For an initial transition, right-click the pseudo-state (or any alias) and choose **Add initial transition**
+1. Click on the source state and **drag with Cmd/Ctrl held down**
+2. Keep dragging until the pointer exits the source state boundary
+3. Release over another state to create the transition
+
+Gesture variants:
+
+- **Cmd/Ctrl + drag** from a normal state: creates a **guard-triggered** transition (no explicit event label)
+- **Cmd/Ctrl + Shift + drag** from a normal state: creates an **event-triggered** transition with default event name **`ev`**
+- **Cmd/Ctrl + drag** from the pseudo-state (or any alias): creates an **initial** transition with hidden **`_init`** trigger
+
+Alternative (existing workflow):
+
+- Right-click a state and choose **Create transition: choose arrival state** (link mode)
+- For initial transitions, right-click the pseudo-state (or alias) and choose **Add initial transition**
 
 ### Editing Transition Properties
 
@@ -1315,6 +1324,9 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 | Shortcut | Action |
 |----------|--------|
 | **W/A/S/D** | Pan the diagram |
+| **Cmd/Ctrl + Drag (from state)** | Create a guard-triggered transition to the release target |
+| **Cmd/Ctrl + Shift + Drag (from state)** | Create an event-triggered transition with default event `ev` |
+| **Cmd/Ctrl + Drag (from pseudo-state/alias)** | Create an initial transition (hidden `_init`) |
 | **Double-click state** | Rename state |
 | **Right-click** | Context menu |
 

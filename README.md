@@ -29,7 +29,11 @@ computed semantics and reactive spaces.
 - **Event- and guard-triggered transitions:**  
   Supports event-triggered transitions with guard predicates and action
   emissions, as well as guard-only transitions for autonomous evolution and
-  fail-safe repair.
+  fail-safe repair. Transitions can be created directly by drag gestures
+  (`Cmd/Ctrl + drag` for guard-triggered, `Cmd/Ctrl + Shift + drag` for
+  event-triggered with default event `ev`, and `Cmd/Ctrl + drag` from the
+  pseudo-state/aliases for initial `_init` transitions), with context-menu
+  link mode still available as an alternative.
 
 - **Editable guards and actions:**  
   Triggers, guards, and emissions can be edited via in-place annotation
