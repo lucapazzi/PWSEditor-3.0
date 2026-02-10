@@ -38,6 +38,7 @@ public class ExtendedDashboardDialog extends JDialog {
     private static final String STYLE_RED = "red";
     private static final String STYLE_BLUE = "blue";
     private static final String STYLE_ORANGE = "orange";
+    private static final String STYLE_ORANGE_UNDERLINE = "orangeUnderline";
     private static final String STYLE_GRAY = "gray";
     private static final String STYLE_BOLD = "bold";
     private static final String STYLE_GREEN_UNDERLINE = "greenUnderline";
@@ -136,6 +137,11 @@ public class ExtendedDashboardDialog extends JDialog {
         // Orange style (warning)
         Style orange = doc.addStyle(STYLE_ORANGE, normal);
         StyleConstants.setForeground(orange, new Color(204, 102, 0));
+
+        // Orange underline style (component deadlock marker)
+        Style orangeUnderline = doc.addStyle(STYLE_ORANGE_UNDERLINE, normal);
+        StyleConstants.setForeground(orangeUnderline, new Color(204, 102, 0));
+        StyleConstants.setUnderline(orangeUnderline, true);
         
         // Gray style (secondary info)
         Style gray = doc.addStyle(STYLE_GRAY, normal);
@@ -266,26 +272,29 @@ public class ExtendedDashboardDialog extends JDialog {
 
         if (ss != null && !ss.getConfigurations().isEmpty()) {
             appendText("  Configurations (shown as in dashboard):\n", STYLE_GRAY);
-            appendText("    Legend: ", STYLE_GRAY);
-            appendText("GRAY", STYLE_GRAY);
-            appendText(" = no machines, ", STYLE_GRAY);
+            appendText("    Legend:\n", STYLE_GRAY);
+            appendText("      Text color:\n", STYLE_GRAY);
+            appendText("        GRAY", STYLE_GRAY);
+            appendText(" = no machines\n", STYLE_GRAY);
+            appendText("        ", STYLE_GRAY);
             appendText("GREEN", STYLE_GREEN);
-            appendText(" text = satisfies constraints, ", STYLE_GRAY);
+            appendText(" text = satisfies constraints\n", STYLE_GRAY);
+            appendText("        ", STYLE_GRAY);
             appendText("RED", STYLE_RED);
-            appendText(" text = violates constraints, ", STYLE_GRAY);
+            appendText(" text = violates constraints\n", STYLE_GRAY);
+            appendText("      Underline (internal-evolution status):\n", STYLE_GRAY);
+            appendText("        ", STYLE_GRAY);
             appendText("GREEN underline", STYLE_GREEN_UNDERLINE);
-            appendText(" = can evolve internally, ", STYLE_GRAY);
-            appendText("YELLOW underline", STYLE_ORANGE);
-            appendText(" = component deadlock (listed below), ", STYLE_GRAY);
+            appendText(" = can evolve internally\n", STYLE_GRAY);
+            appendText("        ", STYLE_GRAY);
+            appendText("YELLOW underline", STYLE_ORANGE_UNDERLINE);
+            appendText(" = internally stuck due to component deadlock (listed below)\n", STYLE_GRAY);
+            appendText("        ", STYLE_GRAY);
             appendText("RED underline", STYLE_RED_UNDERLINE);
-            appendText(" = true deadlock, ", STYLE_GRAY);
-            appendText("NO underline", STYLE_GRAY);
-            appendText(" = internally stuck but covered by an outgoing transition\n", STYLE_GRAY);
+            appendText(" = true deadlock (internally stuck and not covered by outgoing PWS transitions)\n", STYLE_GRAY);
+            appendText("        NO underline = internally stuck, but at least one enabled outgoing PWS transition can still fire\n", STYLE_GRAY);
+            appendText("          (there is still an exit path, so this is not a true deadlock)\n", STYLE_GRAY);
             appendText("    Note: true deadlocks are explicitly labeled below and appear with a red underline in the dashboard.\n\n", STYLE_GRAY);
-            appendText("    UI note: guard/action label visibility on transitions does not affect this analysis.\n", STYLE_GRAY);
-            appendText("    Newly created triggered transitions start with guard labels hidden.\n", STYLE_GRAY);
-            appendText("    Newly created initial transitions start with guard labels visible.\n", STYLE_GRAY);
-            appendText("    Newly created initial transitions also start with action labels hidden.\n\n", STYLE_GRAY);
             
             for (Configuration cfg : ss.getConfigurations()) {
                 String cfgStr = cfg.toString();
@@ -930,7 +939,11 @@ public class ExtendedDashboardDialog extends JDialog {
             } else if (pt.isInitialTransition()) {
                 label += " [initial]";
             } else {
-                label += " [autonomous]";
+                String guard = pt.getGuardProposition() != null ? pt.getGuardProposition().toString() : "null";
+                if (guard == null || guard.isBlank()) {
+                    guard = "null";
+                }
+                label += " [autonomous, guard=" + guard + "]";
             }
             parts.add(label);
         }
