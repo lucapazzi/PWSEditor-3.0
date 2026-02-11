@@ -348,24 +348,14 @@ public class ControllerReportDialog extends JDialog {
                 continue;
             }
             
-            // Check orphan guard (guard references exit zone that doesn't exist)
+            // Check orphan guard (guard references an unavailable autonomous target)
             if (pt.isAutonomous() && guard instanceof BasicStateProposition bsp) {
                 if (src instanceof PWSState ps && !ps.isPseudoState()) {
-                    HashSet<ExitZone> reactive = ps.getReactiveSemantics();
-                    if (reactive != null && !reactive.isEmpty()) {
-                        boolean found = false;
-                        for (ExitZone zone : reactive) {
-                            if (zone != null && zone.getTarget() != null 
-                                    && zone.getTarget().toString().equals(bsp.toString())) {
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            problems.add(new GuardProblem(pt, srcName, tgtName, guardStr,
-                                    "Orphan Guard",
-                                    "References exit zone '" + bsp + "' which no longer exists in state semantics."));
-                        }
+                    Set<String> availableTargets = collectAutonomousGuardValidationTargets(ps);
+                    if (!availableTargets.contains(bsp.toString())) {
+                        problems.add(new GuardProblem(pt, srcName, tgtName, guardStr,
+                                "Orphan Guard",
+                                "References exit zone '" + bsp + "' which no longer exists or became internal."));
                     }
                 }
             }
@@ -513,6 +503,50 @@ public class ControllerReportDialog extends JDialog {
                 }
             }
         }
+    }
+
+    /**
+     * Collects autonomous guard targets that are still meaningful for validation:
+     * includes reactive and CS-only zones, excluding SS zones that became internal.
+     */
+    private Set<String> collectAutonomousGuardValidationTargets(PWSState srcState) {
+        Set<String> targets = new LinkedHashSet<>();
+        if (srcState == null) {
+            return targets;
+        }
+
+        Semantics stateSem = srcState.getStateSemantics();
+        Set<ExitZone> reactive = srcState.getReactiveSemantics();
+        Set<ExitZone> csOnly = srcState.getCsOnlyExitZones();
+        List<ExitZone> zones = new ArrayList<>();
+        if (reactive != null) {
+            zones.addAll(reactive);
+        }
+        if (csOnly != null && !csOnly.isEmpty()) {
+            for (ExitZone ez : csOnly) {
+                if (!zones.contains(ez)) {
+                    zones.add(ez);
+                }
+            }
+        }
+
+        for (ExitZone zone : zones) {
+            if (zone == null || zone.getTarget() == null) continue;
+            BasicStateProposition target = zone.getTarget();
+            boolean isCsOnly = csOnly != null && csOnly.contains(zone);
+            if (!isCsOnly && assembly != null && stateSem != null) {
+                try {
+                    Semantics targetAndSem = target.toSemantics(assembly).AND(stateSem);
+                    if (!targetAndSem.ISEMPTY()) {
+                        continue; // internal (gray) exit zone
+                    }
+                } catch (Exception ignored) {
+                    // If semantics calculation fails, don't classify as internal.
+                }
+            }
+            targets.add(target.toString());
+        }
+        return targets;
     }
     
     private void appendActionProblemsSection(List<ActionProblem> problems) {

@@ -227,27 +227,16 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             return;
         }
         
-        // Check for orphan guard (guard references exit zone that doesn't exist)
+        // Check for orphan guard (guard references an unavailable autonomous target)
         if (associatedTransition != null && associatedTransition.isAutonomous() 
                 && content instanceof BasicStateProposition bsp) {
             machinery.StateInterface src = associatedTransition.getSource();
             if (src instanceof PWSState ps && !ps.isPseudoState()) {
-                java.util.HashSet<pws.editor.semantics.ExitZone> reactive = ps.getReactiveSemantics();
-                if (reactive != null && !reactive.isEmpty()) {
-                    // Check if the guard's target exists in any exit zone
-                    boolean found = false;
-                    for (pws.editor.semantics.ExitZone zone : reactive) {
-                        if (zone != null && zone.getTarget() != null 
-                                && zone.getTarget().toString().equals(bsp.toString())) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        issueLevel = GuardIssueLevel.RED;
-                        problemReason = "Orphan guard - exit zone no longer exists";
-                        return;
-                    }
+                Set<String> availableTargets = collectAutonomousGuardValidationTargets(ps);
+                if (!availableTargets.contains(bsp.toString())) {
+                    issueLevel = GuardIssueLevel.RED;
+                    problemReason = "Orphan guard - exit zone no longer exists or is internal";
+                    return;
                 }
             }
         }
@@ -766,6 +755,50 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             eligible.add(targetStr);
         }
         return eligible;
+    }
+
+    /**
+     * Collects autonomous guard targets that are still meaningful for validation:
+     * includes reactive and CS-only zones, excluding SS zones that became internal.
+     */
+    private Set<String> collectAutonomousGuardValidationTargets(PWSState srcState) {
+        Set<String> targets = new LinkedHashSet<>();
+        if (srcState == null) {
+            return targets;
+        }
+
+        Semantics stateSem = srcState.getStateSemantics();
+        Set<ExitZone> reactive = srcState.getReactiveSemantics();
+        Set<ExitZone> csOnly = srcState.getCsOnlyExitZones();
+        List<ExitZone> zones = new ArrayList<>();
+        if (reactive != null) {
+            zones.addAll(reactive);
+        }
+        if (csOnly != null && !csOnly.isEmpty()) {
+            for (ExitZone ez : csOnly) {
+                if (!zones.contains(ez)) {
+                    zones.add(ez);
+                }
+            }
+        }
+
+        for (ExitZone zone : zones) {
+            if (zone == null || zone.getTarget() == null) continue;
+            BasicStateProposition target = zone.getTarget();
+            boolean isCsOnly = csOnly != null && csOnly.contains(zone);
+            if (!isCsOnly && assembly != null && stateSem != null) {
+                try {
+                    Semantics targetAndSem = target.toSemantics(assembly).AND(stateSem);
+                    if (!targetAndSem.ISEMPTY()) {
+                        continue; // internal (gray) exit zone
+                    }
+                } catch (Exception ignored) {
+                    // If semantics calculation fails, don't classify as internal.
+                }
+            }
+            targets.add(target.toString());
+        }
+        return targets;
     }
 
     private boolean hasAnyExitZones(PWSState state) {
