@@ -284,8 +284,9 @@ public class ActionAnnotation extends Annotation<ActionList> {
             }
         }
 
-        // Fallback: if semantics-based filtering produced no candidates, use the previous behavior.
-        if (!filteredBySemantics || actionsToInsert.isEmpty()) {
+        // Fallback only when semantics filtering is unavailable.
+        // If semantics filtering is active and yields no candidates, keep the list empty.
+        if (!filteredBySemantics) {
             for (Action a : allActions) {
                 boolean alreadyPresent = false;
                 for (Action act : current) {

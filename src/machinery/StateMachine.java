@@ -82,13 +82,7 @@ public class StateMachine implements StateMachineInterface, Cloneable {
     @Override
     public void addTransition(TransitionInterface transition) {
         transitions.add(transition);
-        // If the transition is triggerable, add its trigger to the machine events.
-        if (transition.isTriggerable()) {
-            String trigger = transition.getTriggerEvent();
-            if (trigger != null && !trigger.trim().isEmpty()) {
-                events.add(trigger);
-            }
-        }
+        rebuildEventsFromTransitions();
     }
 
     @Override
@@ -105,6 +99,7 @@ public class StateMachine implements StateMachineInterface, Cloneable {
 
     @Override
     public Set<String> getEvents() {
+        rebuildEventsFromTransitions();
         return events;
     }
 
@@ -137,7 +132,8 @@ public class StateMachine implements StateMachineInterface, Cloneable {
     }
 
     public void setTransitions(List<TransitionInterface> transitions) {
-        this.transitions = transitions;
+        this.transitions = (transitions != null) ? transitions : new ArrayList<>();
+        rebuildEventsFromTransitions();
     }
 
     @Override
@@ -188,8 +184,8 @@ public class StateMachine implements StateMachineInterface, Cloneable {
             }
         }
 
-        // --- Clone events ---
-        clone.events.addAll(this.events);
+        // --- Clone events from transitions (avoid stale trigger cache) ---
+        clone.rebuildEventsFromTransitions();
 
         // --- Fix duplicate pseudoState issue ---
         // The StateMachine constructor adds a default pseudoState that isn't part of the original.
@@ -204,7 +200,7 @@ public class StateMachine implements StateMachineInterface, Cloneable {
         return clone;
     }
     public void setEvents(Set<String> events) {
-        this.events = events;
+        this.events = (events != null) ? new HashSet<>(events) : new HashSet<>();
     }
 
     public StateInterface getPseudoState() {
@@ -213,5 +209,29 @@ public class StateMachine implements StateMachineInterface, Cloneable {
 
     public void setPseudoState(StateInterface pseudoState) {
         this.pseudoState = pseudoState;
+    }
+
+    /**
+     * Rebuilds the event set from the current triggerable transitions.
+     * This keeps events consistent after trigger renames/deletions.
+     */
+    private void rebuildEventsFromTransitions() {
+        if (events == null) {
+            events = new HashSet<>();
+        } else {
+            events.clear();
+        }
+        if (transitions == null) {
+            return;
+        }
+        for (TransitionInterface transition : transitions) {
+            if (transition == null || !transition.isTriggerable()) {
+                continue;
+            }
+            String trigger = transition.getTriggerEvent();
+            if (trigger != null && !trigger.trim().isEmpty()) {
+                events.add(trigger);
+            }
+        }
     }
 }
