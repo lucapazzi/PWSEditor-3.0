@@ -4,18 +4,19 @@
 
 1. [Getting Started](#getting-started)
 2. [Concepts & Terminology](#concepts--terminology)
-3. [The Main Interface](#the-main-interface)
-4. [Working with States](#working-with-states)
-5. [Working with Transitions](#working-with-transitions)
-6. [Managing Assemblies](#managing-assemblies)
-7. [Using the Machine Library](#using-the-machine-library)
-8. [Semantic Constraints & Annotations](#semantic-constraints--annotations)
-9. [Deadlock Detection](#deadlock-detection)
-10. [Exit Zones](#exit-zones)
-11. [File Management](#file-management)
-12. [Menu Reference](#menu-reference)
-13. [Controller Report](#controller-report)
-14. [Tips & Troubleshooting](#tips--troubleshooting)
+3. [PWS in Practice](#pws-in-practice)
+4. [The Main Interface](#the-main-interface)
+5. [Working with States](#working-with-states)
+6. [Working with Transitions](#working-with-transitions)
+7. [Managing Assemblies](#managing-assemblies)
+8. [Using the Machine Library](#using-the-machine-library)
+9. [Semantic Constraints & Annotations](#semantic-constraints--annotations)
+10. [Deadlock Detection](#deadlock-detection)
+11. [Exit Zones](#exit-zones)
+12. [File Management](#file-management)
+13. [Menu Reference](#menu-reference)
+14. [Controller Report](#controller-report)
+15. [Tips & Troubleshooting](#tips--troubleshooting)
 
 ---
 
@@ -49,6 +50,48 @@ A **Part-Whole Statechart** is a behavioral modeling formalism that describes:
 - **States**: Control points in a state machine
 - **Transitions**: Connections between states, optionally triggered by events and guarded by conditions
 - **Semantics**: Formal specifications of allowed system configurations
+
+#### PWS in Practice
+
+Think of PWS as a two-layer model:
+- **Assembly**: Component machines are referred to collectively as the assembly.
+- **Component machine interface**: Each component exposes observable states (`m.S`) and accepted events (`m.e`).
+- **Controller**: The controller watches component conditions and coordinates behavior by emitting actions to components.
+
+PWS execution model vs PWSEditor analysis:
+- **PWS execution model**: Runtime evolution applies enabled transitions to concrete configurations. PWS models can be translated to execution languages (e.g., Structured Text, `ST`) and other real-time execution models.
+- **PWSEditor analysis model**: The editor keeps track of reached configuration sets per controller state to compute semantics, coverage, deadlocks, and exit zones.
+
+Use this transition notation in examples:
+- `trigger [guard] <m.e>`
+- Actions are written as `<m.e>` and are **not** preceded by `/`.
+
+Execution order for a transition contribution:
+1. Trigger is satisfied (explicit event, hidden `_init` for initial transitions, or no trigger for autonomous transitions).
+2. Guard evaluates to true.
+3. Actions are applied with **strict semantics**.
+4. Destination constraints filter accepted configurations; overflow is tracked as `T|...` markers.
+
+Transition families in PWS:
+- **Triggered**: Event + guard.
+- **Autonomous**: Guard only (used to react to component changes/exit zones).
+- **Initial**: Special triggered transition from the pseudo-state via hidden `_init`.
+
+Strict action consequence:
+- If the controller emits `<m.e>`, only configurations where `e` is enabled in component `m` move forward.
+- Configurations where `e` is not enabled are discarded.
+
+Exit-zone intuition:
+- Exit zones represent "boundary reached" situations in component behavior that require controller attention.
+- Autonomous controller transitions can monitor these conditions and react immediately.
+
+Partial-constraint intuition:
+- If a constraint mentions only some machines, unspecified machines are implicitly expanded to all their possible states.
+
+Mini example:
+- Transition label: `button_pressed [isReady] <alarm.beep>`
+- Meaning: when `button_pressed` occurs and `isReady` is true, the controller emits `beep` to component `alarm`.
+- Under strict semantics, only configurations where `alarm.beep` is enabled can reach the target state.
 
 ### Key Terms
 
@@ -237,10 +280,12 @@ A **triggered transition** has a **trigger event** (shown as text on the arrow).
 - Require external stimulus to activate
 - Are the most common type in reactive systems
 
-Example: A transition labeled `button_pressed [isReady] / beep` fires when:
+Example: A transition labeled `button_pressed [isReady] <alarm.beep>` fires when:
 1. The event `button_pressed` occurs
 2. The guard `isReady` evaluates to true
-3. The action `beep` is then emitted
+3. The action `alarm.beep` is emitted
+
+Actions are not preceded by `/`; they use the form `<m.e>`.
 
 #### Action Semantics (Strict)
 
