@@ -1160,6 +1160,11 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 2. Choose location and filename
 3. A **vector PDF** of the current diagram is created
 
+**Export as PNG:**
+1. Go to **File → Export as PNG**
+2. Choose location and filename
+3. A **PNG snapshot** of the current diagram is created
+
 ---
 
 ## Menu Reference
@@ -1174,6 +1179,7 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 | **Save As...** | Save current document to a new location |
 | **Close** | Close current document (prompts to save if dirty) |
 | **Export as PDF** | Export current diagram as a vector PDF |
+| **Export as PNG** | Export current diagram as a PNG image |
 | **Exit** | Close the editor |
 
 ### Edit Menu
@@ -1303,7 +1309,7 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 3. **Use the library**: Build reusable machine templates to speed up future designs
 4. **Name clearly**: Use descriptive names for states and machines for clarity
 5. **Align visually**: Use grid snapping and arrow keys to keep diagrams organized
-6. **Export documentation**: Use PDF export to document your designs
+6. **Export documentation**: Use PDF export for vector output or PNG export for quick sharing
 7. **Monitor deadlocks**: Pay attention to red underlines—they indicate true deadlocks
 
 ### Understanding Visual Feedback
@@ -1455,7 +1461,7 @@ Here's a step-by-step example to get started:
 
 1. Go to **File → Save**
 2. Name your project `traffic_light.pws`
-3. Go to **File → Export as PDF** to generate a diagram
+3. Go to **File → Export as PDF** or **File → Export as PNG** to generate a diagram
 
 ---
 

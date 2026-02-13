@@ -190,6 +190,34 @@ public class StateMachineEditor extends JFrame {
             }
         });
         fileMenu.add(exportPDFItem);
+
+        JMenuItem saveAsPNGItem = new JMenuItem("Export as PNG");
+        saveAsPNGItem.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setFileFilter(
+                    new javax.swing.filechooser.FileNameExtensionFilter("PNG Image", "png"));
+
+            if (fileChooser.showSaveDialog(StateMachineEditor.this)
+                    == JFileChooser.APPROVE_OPTION) {
+
+                File file = fileChooser.getSelectedFile();
+                if (!file.getName().toLowerCase().endsWith(".png")) {
+                    file = new File(file.getAbsolutePath() + ".png");
+                }
+
+                try {
+                    utility.PNGExporter.exportPanelToPNG(statePanel, file);
+                    JOptionPane.showMessageDialog(StateMachineEditor.this,
+                            "PNG file successfully saved.");
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                    JOptionPane.showMessageDialog(StateMachineEditor.this,
+                            "Error saving PNG: " + ex.getMessage(),
+                            "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+        fileMenu.add(saveAsPNGItem);
         fileMenu.add(closeEditorItem);
         menuBar.add(fileMenu);
 

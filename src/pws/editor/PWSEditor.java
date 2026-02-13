@@ -65,6 +65,7 @@ public class PWSEditor extends JFrame {
     private JMenuItem saveAsItem;
     private JMenuItem closeItem;
     private JMenuItem exportPDFItem;
+    private JMenuItem saveAsPNGItem;
     private JCheckBoxMenuItem editModeItem;
     private JCheckBoxMenuItem showStateAnn;
     private JCheckBoxMenuItem showExitZoneMachineIdsItem;
@@ -748,6 +749,44 @@ public class PWSEditor extends JFrame {
         });
         fileMenu.add(exportPDFItem);
 
+        saveAsPNGItem = new JMenuItem("Export as PNG");
+        saveAsPNGItem.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setFileFilter(
+                    new javax.swing.filechooser.FileNameExtensionFilter("PNG Image", "png"));
+
+            if (fileChooser.showSaveDialog(PWSEditor.this)
+                    == JFileChooser.APPROVE_OPTION) {
+
+                File file = fileChooser.getSelectedFile();
+                if (!file.getName().toLowerCase().endsWith(".png")) {
+                    file = new File(file.getAbsolutePath() + ".png");
+                }
+
+                StateMachinePanel panel =
+                        ((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+
+                if (panel == null) {
+                    JOptionPane.showMessageDialog(PWSEditor.this,
+                            "Controller panel is not available.",
+                            "Not Available", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+
+                try {
+                    utility.PNGExporter.exportPanelToPNG(panel, file);
+                    JOptionPane.showMessageDialog(PWSEditor.this,
+                            "PNG file saved successfully.");
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                    JOptionPane.showMessageDialog(PWSEditor.this,
+                            "Error saving PNG: " + ex.getMessage(),
+                            "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+        fileMenu.add(saveAsPNGItem);
+
         // Exit item
         JMenuItem exitItem = new JMenuItem("Exit");
         exitItem.addActionListener(e -> {
@@ -1053,6 +1092,7 @@ public class PWSEditor extends JFrame {
         if (closeItem != null) closeItem.setEnabled(hasDoc);
 
         if (exportPDFItem != null) exportPDFItem.setEnabled(ctrl);
+        if (saveAsPNGItem != null) saveAsPNGItem.setEnabled(ctrl);
 
         if (editModeItem != null) editModeItem.setEnabled(ctrl);
         if (showStateAnn != null) showStateAnn.setEnabled(ctrl);
