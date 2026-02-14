@@ -11,6 +11,7 @@ import java.awt.event.MouseEvent;
 public class DraggableTriggerLabel extends JLabel {
     private Point initialClick;
     private TransitionInterface associatedTransition;
+    private transient boolean delegatedToPanelSelection = false;
 
     /**
      * Creates a draggable label for the given transition.
@@ -34,12 +35,22 @@ public class DraggableTriggerLabel extends JLabel {
         this(text, null);
     }
 
+    public TransitionInterface getAssociatedTransition() {
+        return associatedTransition;
+    }
+
     private void initDrag() {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                initialClick = e.getPoint();
                 Component smPanel = SwingUtilities.getAncestorOfClass(editor.StateMachinePanel.class, DraggableTriggerLabel.this);
+                if (smPanel instanceof editor.StateMachinePanel panel
+                        && panel.handleSelectableComponentMousePressed(DraggableTriggerLabel.this, e)) {
+                    delegatedToPanelSelection = true;
+                    return;
+                }
+                delegatedToPanelSelection = false;
+                initialClick = e.getPoint();
                 if (smPanel != null) {
                     smPanel.requestFocusInWindow();
                 } else if (getParent() != null) {
@@ -68,6 +79,13 @@ public class DraggableTriggerLabel extends JLabel {
             @Override
             public void mouseReleased(MouseEvent e) {
                 Component comp = SwingUtilities.getAncestorOfClass(editor.StateMachinePanel.class, DraggableTriggerLabel.this);
+                if (delegatedToPanelSelection) {
+                    delegatedToPanelSelection = false;
+                    if (comp instanceof editor.StateMachinePanel panel
+                            && panel.handleSelectableComponentMouseReleased(DraggableTriggerLabel.this, e)) {
+                        return;
+                    }
+                }
                 if (comp instanceof editor.StateMachinePanel) {
                     editor.StateMachinePanel panel = (editor.StateMachinePanel) comp;
                     if (panel.isSnapToGrid()) {
@@ -98,14 +116,18 @@ public class DraggableTriggerLabel extends JLabel {
         addMouseMotionListener(new MouseAdapter() {
             @Override
             public void mouseDragged(MouseEvent e) {
+                Component comp = SwingUtilities.getAncestorOfClass(editor.StateMachinePanel.class, DraggableTriggerLabel.this);
+                if (delegatedToPanelSelection
+                        && comp instanceof editor.StateMachinePanel panel
+                        && panel.handleSelectableComponentMouseDragged(DraggableTriggerLabel.this, e)) {
+                    return;
+                }
                 int thisX = getX();
                 int thisY = getY();
                 int xMoved = e.getX() - initialClick.x;
                 int yMoved = e.getY() - initialClick.y;
                 int newX = thisX + xMoved;
                 int newY = thisY + yMoved;
-
-                Component comp = SwingUtilities.getAncestorOfClass(editor.StateMachinePanel.class, DraggableTriggerLabel.this);
                 if (comp instanceof editor.StateMachinePanel) {
                     editor.StateMachinePanel panel = (editor.StateMachinePanel) comp;
                     if (panel.isSnapToGrid()) {

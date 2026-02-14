@@ -81,6 +81,7 @@ public class StateMachineEditor extends JFrame {
 
     protected JMenuBar createMenuBar() {
         JMenuBar menuBar = new JMenuBar();
+        final int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
 
         // File Menu
         JMenu fileMenu = new JMenu("File");
@@ -88,6 +89,7 @@ public class StateMachineEditor extends JFrame {
 
 // Load Single Machine
         JMenuItem loadMachineItem = new JMenuItem("Load Single Machine");
+        loadMachineItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, menuMask));
         loadMachineItem.addActionListener(e -> {
             JFileChooser fileChooser = new JFileChooser();
             fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Machine File (sm)", "sm"));
@@ -126,6 +128,7 @@ public class StateMachineEditor extends JFrame {
 
 // Save Single Machine
         JMenuItem saveMachineItem = new JMenuItem("Save Single Machine");
+        saveMachineItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, menuMask));
         saveMachineItem.addActionListener(e -> {
             JFileChooser fileChooser = new JFileChooser();
             fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Machine File (sm)", "sm"));
@@ -152,6 +155,7 @@ public class StateMachineEditor extends JFrame {
 // --- Then the existing Exit menu item follows ---
 
         JMenuItem closeEditorItem = new JMenuItem("Close Editor");
+        closeEditorItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_W, menuMask));
         closeEditorItem.addActionListener(e -> {
             if (closeCallback != null) {
                 closeCallback.run();
@@ -164,6 +168,7 @@ public class StateMachineEditor extends JFrame {
         fileMenu.addSeparator();
 
         JMenuItem exportPDFItem = new JMenuItem("Export as PDF");
+        exportPDFItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, menuMask));
         exportPDFItem.addActionListener(e -> {
             JFileChooser fileChooser = new JFileChooser();
             fileChooser.setFileFilter(
@@ -178,20 +183,42 @@ public class StateMachineEditor extends JFrame {
                 }
 
                 try {
-                    utility.PDFExporter.exportPanelToPDF(statePanel, file);
+                    Rectangle exportRegion = (statePanel != null && statePanel.hasObjectSelection())
+                            ? statePanel.getSelectionBoundsForExport()
+                            : null;
+                    if (statePanel == null) {
+                        JOptionPane.showMessageDialog(StateMachineEditor.this,
+                                "State machine panel is not available.",
+                                "Not Available", JOptionPane.WARNING_MESSAGE);
+                        return;
+                    }
+                    if (exportRegion != null) {
+                        statePanel.beginSelectionOnlyExport();
+                    }
+                    statePanel.setRenderSelectionHighlights(false);
+                    utility.PDFExporter.exportPanelToPDF(statePanel, file, exportRegion);
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
-                            "PDF file successfully saved.");
+                            (exportRegion != null)
+                                    ? "PDF file successfully saved (selected objects)."
+                                    : "PDF file successfully saved.");
                 } catch (IOException ex) {
                     ex.printStackTrace();
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
                             "Error saving PDF: " + ex.getMessage(),
                             "Error", JOptionPane.ERROR_MESSAGE);
+                } finally {
+                    if (statePanel != null) {
+                        statePanel.endSelectionOnlyExport();
+                        statePanel.setRenderSelectionHighlights(true);
+                        statePanel.repaint();
+                    }
                 }
             }
         });
         fileMenu.add(exportPDFItem);
 
         JMenuItem saveAsPNGItem = new JMenuItem("Export as PNG");
+        saveAsPNGItem.setEnabled(false);
         saveAsPNGItem.addActionListener(e -> {
             JFileChooser fileChooser = new JFileChooser();
             fileChooser.setFileFilter(
@@ -206,14 +233,31 @@ public class StateMachineEditor extends JFrame {
                 }
 
                 try {
-                    utility.PNGExporter.exportPanelToPNG(statePanel, file);
+                    Rectangle exportRegion = (statePanel != null && statePanel.hasObjectSelection())
+                            ? statePanel.getSelectionBoundsForExport()
+                            : null;
+                    if (statePanel == null) {
+                        JOptionPane.showMessageDialog(StateMachineEditor.this,
+                                "State machine panel is not available.",
+                                "Not Available", JOptionPane.WARNING_MESSAGE);
+                        return;
+                    }
+                    statePanel.setRenderSelectionHighlights(false);
+                    utility.PNGExporter.exportPanelToPNG(statePanel, file, exportRegion);
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
-                            "PNG file successfully saved.");
+                            (exportRegion != null)
+                                    ? "PNG file successfully saved (selected objects)."
+                                    : "PNG file successfully saved.");
                 } catch (IOException ex) {
                     ex.printStackTrace();
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
                             "Error saving PNG: " + ex.getMessage(),
                             "Error", JOptionPane.ERROR_MESSAGE);
+                } finally {
+                    if (statePanel != null) {
+                        statePanel.setRenderSelectionHighlights(true);
+                        statePanel.repaint();
+                    }
                 }
             }
         });
@@ -224,7 +268,6 @@ public class StateMachineEditor extends JFrame {
         // Edit Menu
         JMenu editMenu = new JMenu("Edit");
 
-        int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
         undoItem = new JMenuItem("Undo");
         undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, menuMask));
         undoItem.addActionListener(e -> performUndo());

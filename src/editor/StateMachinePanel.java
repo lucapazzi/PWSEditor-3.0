@@ -8,14 +8,21 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.Stroke;
+import java.awt.geom.FlatteningPathIterator;
+import java.awt.geom.Line2D;
+import java.awt.geom.PathIterator;
 import java.awt.geom.Point2D;
 import java.awt.geom.QuadCurve2D;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Canvas panel for drawing and editing state machines. */
 public class StateMachinePanel extends JPanel implements MouseListener, MouseMotionListener {
@@ -160,6 +167,30 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected int dragTransitionSourcePseudoAliasIndex = -1;
     protected Point dragTransitionCurrentPoint = null;
 
+    private static final Color SELECTION_RECT_STROKE = new Color(27, 88, 166);
+    private static final Color SELECTION_RECT_FILL = new Color(27, 88, 166, 48);
+    private static final int EXPORT_SELECTION_MARGIN = 16;
+    private final Set<StateInterface> selectedStates = new LinkedHashSet<>();
+    private final Set<Integer> selectedPseudoAliases = new LinkedHashSet<>();
+    private final Set<Component> selectedComponents = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<TransitionInterface> selectedTransitions = new LinkedHashSet<>();
+    private boolean selectionBoxActive = false;
+    private Point selectionBoxAnchor = null;
+    private Rectangle selectionBoxRect = null;
+    private final Set<StateInterface> selectionBoxBaseStates = new LinkedHashSet<>();
+    private final Set<Integer> selectionBoxBaseAliases = new LinkedHashSet<>();
+    private final Set<Component> selectionBoxBaseComponents = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<TransitionInterface> selectionBoxBaseTransitions = new LinkedHashSet<>();
+    private boolean selectionDragActive = false;
+    private Point selectionDragAnchor = null;
+    private final Map<StateInterface, Point> selectionDragStateOrigins = new HashMap<>();
+    private final Map<Integer, Point> selectionDragAliasOrigins = new HashMap<>();
+    private final Map<Component, Rectangle> selectionDragComponentOrigins = new IdentityHashMap<>();
+    private final Map<TransitionInterface, Point> selectionDragTransitionControlOrigins = new HashMap<>();
+    private boolean renderSelectionHighlights = true;
+    private boolean exportSelectionOnlyActive = false;
+    private final Map<Component, Boolean> exportSelectionComponentVisibility = new IdentityHashMap<>();
+
     public static class AliasData {
         public final List<Point> pseudoAliases = new ArrayList<>();
         public final Map<String, Integer> pseudoAliasByTransition = new LinkedHashMap<>();
@@ -200,6 +231,116 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         initialTransitionAliasIndex = -1;
         transitionSourcePseudoAliasIndex = -1;
         clearBaseDragTransitionState();
+        clearObjectSelection();
+        clearSelectionInteractionState();
+    }
+
+    public void setRenderSelectionHighlights(boolean renderSelectionHighlights) {
+        this.renderSelectionHighlights = renderSelectionHighlights;
+        repaint();
+    }
+
+    public boolean beginSelectionOnlyExport() {
+        if (!hasObjectSelection()) {
+            return false;
+        }
+        exportSelectionOnlyActive = true;
+        exportSelectionComponentVisibility.clear();
+        for (Component c : getComponents()) {
+            if (!isSelectableComponent(c)) continue;
+            if (isComponentSelectedForObjectSelection(c)) continue;
+            if (!c.isVisible()) continue;
+            exportSelectionComponentVisibility.put(c, Boolean.TRUE);
+            c.setVisible(false);
+        }
+        return true;
+    }
+
+    public void endSelectionOnlyExport() {
+        if (!exportSelectionOnlyActive) {
+            return;
+        }
+        for (Map.Entry<Component, Boolean> entry : exportSelectionComponentVisibility.entrySet()) {
+            Component c = entry.getKey();
+            Boolean wasVisible = entry.getValue();
+            if (c != null && wasVisible != null) {
+                c.setVisible(wasVisible);
+            }
+        }
+        exportSelectionComponentVisibility.clear();
+        exportSelectionOnlyActive = false;
+    }
+
+    protected boolean isSelectionOnlyExportActive() {
+        return exportSelectionOnlyActive;
+    }
+
+    protected boolean isStateSelectedForObjectSelection(StateInterface state) {
+        return selectedStates.contains(state);
+    }
+
+    protected boolean isPseudoAliasSelectedForObjectSelection(int aliasIndex) {
+        return selectedPseudoAliases.contains(aliasIndex);
+    }
+
+    protected boolean isTransitionSelectedForObjectSelection(TransitionInterface transition) {
+        return selectedTransitions.contains(transition);
+    }
+
+    protected boolean isComponentSelectedForObjectSelection(Component component) {
+        return selectedComponents.contains(component);
+    }
+
+    public boolean hasObjectSelection() {
+        pruneSelection();
+        return !selectedStates.isEmpty()
+                || !selectedPseudoAliases.isEmpty()
+                || !selectedComponents.isEmpty()
+                || !selectedTransitions.isEmpty();
+    }
+
+    public Rectangle getSelectionBoundsForExport() {
+        pruneSelection();
+        Rectangle bounds = null;
+        for (StateInterface state : selectedStates) {
+            if (!(state instanceof State st)) continue;
+            Point pos = st.getPosition();
+            if (pos == null) continue;
+            int diameter = isPseudoState(state) ? PSEUDO_DIAMETER : DIAMETER;
+            Rectangle r = new Rectangle(pos.x, pos.y, diameter, diameter);
+            bounds = (bounds == null) ? new Rectangle(r) : bounds.union(r);
+        }
+
+        for (Integer aliasIndex : selectedPseudoAliases) {
+            if (aliasIndex == null || aliasIndex < 0 || aliasIndex >= pseudoStateAliases.size()) continue;
+            Point pos = pseudoStateAliases.get(aliasIndex);
+            Rectangle r = new Rectangle(pos.x, pos.y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+            bounds = (bounds == null) ? new Rectangle(r) : bounds.union(r);
+        }
+
+        for (TransitionInterface t : selectedTransitions) {
+            Rectangle r = getTransitionVisualBounds(t);
+            if (r == null) continue;
+            bounds = (bounds == null) ? new Rectangle(r) : bounds.union(r);
+        }
+
+        for (Component c : selectedComponents) {
+            if (c == null || c.getParent() != this || !c.isVisible()) continue;
+            Rectangle r = c.getBounds();
+            bounds = (bounds == null) ? new Rectangle(r) : bounds.union(r);
+        }
+
+        if (bounds == null || bounds.width <= 0 || bounds.height <= 0) {
+            return null;
+        }
+
+        int x = Math.max(0, bounds.x - EXPORT_SELECTION_MARGIN);
+        int y = Math.max(0, bounds.y - EXPORT_SELECTION_MARGIN);
+        int maxX = Math.min(getWidth(), bounds.x + bounds.width + EXPORT_SELECTION_MARGIN);
+        int maxY = Math.min(getHeight(), bounds.y + bounds.height + EXPORT_SELECTION_MARGIN);
+        int w = Math.max(1, maxX - x);
+        int h = Math.max(1, maxY - y);
+        return new Rectangle(x, y, w, h);
     }
 
     public boolean isShowControlHandles() {
@@ -245,6 +386,107 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         repaint();
     }
 
+    /**
+     * Optional hook for child components (annotations, trigger labels) that want
+     * to delegate mouse handling to a panel-level selection controller.
+     */
+    public boolean handleSelectableComponentMousePressed(Component component, MouseEvent e) {
+        if (!isSelectableComponent(component) || e == null) {
+            return false;
+        }
+        if (initialTransitionMode || linkMode) {
+            return false;
+        }
+        if (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger()) {
+            return false;
+        }
+        if (!SwingUtilities.isLeftMouseButton(e)) {
+            return false;
+        }
+        if (isBaseDragCommandModifierDown(e)) {
+            return false;
+        }
+
+        Point panelPoint = SwingUtilities.convertPoint(component, e.getPoint(), this);
+        dragMoved = false;
+        if (!hasFocus()) {
+            requestFocusInWindow();
+        }
+        clearSelectionInteractionState();
+
+        if (e.isShiftDown()) {
+            toggleComponentSelection(component);
+            selectedState = null;
+            selectedPseudoAliasIndex = -1;
+            dragOffset = null;
+            canvasDragActive = false;
+            canvasDragLast = null;
+            canvasDragAccumX = 0;
+            canvasDragAccumY = 0;
+            repaint();
+            return true;
+        }
+
+        pruneSelection();
+        if (!selectedComponents.contains(component)) {
+            return false;
+        }
+        selectedState = null;
+        selectedPseudoAliasIndex = -1;
+        dragOffset = null;
+        canvasDragActive = false;
+        canvasDragLast = null;
+        canvasDragAccumX = 0;
+        canvasDragAccumY = 0;
+        beginSelectionDrag(panelPoint);
+        repaint();
+        return true;
+    }
+
+    /**
+     * Optional hook for child components (annotations, trigger labels) that want
+     * to delegate mouse handling to a panel-level selection controller.
+     */
+    public boolean handleSelectableComponentMouseDragged(Component component, MouseEvent e) {
+        if (!isSelectableComponent(component) || e == null) {
+            return false;
+        }
+        if (!selectionDragActive) {
+            return e.isShiftDown() && SwingUtilities.isLeftMouseButton(e);
+        }
+        Point panelPoint = SwingUtilities.convertPoint(component, e.getPoint(), this);
+        updateSelectionDrag(panelPoint);
+        repaint();
+        return true;
+    }
+
+    /**
+     * Optional hook for child components (annotations, trigger labels) that want
+     * to delegate mouse handling to a panel-level selection controller.
+     */
+    public boolean handleSelectableComponentMouseReleased(Component component, MouseEvent e) {
+        if (!isSelectableComponent(component) || e == null) {
+            return false;
+        }
+        if (!selectionDragActive) {
+            return SwingUtilities.isLeftMouseButton(e);
+        }
+        finishSelectionDrag();
+        selectedState = null;
+        selectedPseudoAliasIndex = -1;
+        dragOffset = null;
+        canvasDragActive = false;
+        canvasDragLast = null;
+        canvasDragAccumX = 0;
+        canvasDragAccumY = 0;
+        repaint();
+        if (dragMoved) {
+            markOwningEditorDirty();
+        }
+        dragMoved = false;
+        return true;
+    }
+
     public void enableLinkMode() {
         linkMode = true;
         transitionSourceState = null;
@@ -279,6 +521,12 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         }
     }
 
+    @Override
+    protected void paintChildren(Graphics g) {
+        super.paintChildren(g);
+        drawSelectionOverlay(g);
+    }
+
     // Remove and clear all trigger labels
     private void removeAllTriggerLabels() {
         for (DraggableTriggerLabel label : triggerLabels.values()) {
@@ -291,6 +539,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
      * Updates/creates draggable trigger labels for each triggerable transition.
      */
     protected void updateTriggerLabels() {
+        boolean selectionOnlyExport = isSelectionOnlyExportActive();
         // Remove alias mappings for transitions that no longer exist
         Iterator<Map.Entry<TransitionInterface, Integer>> aliasIt = pseudoAliasByTransition.entrySet().iterator();
         while (aliasIt.hasNext()) {
@@ -314,6 +563,16 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             if (t.isTriggerable() && !isInitTrigger(t)) {
                 // Get the label for this transition, if it exists.
                 DraggableTriggerLabel label = triggerLabels.get(t);
+                if (selectionOnlyExport) {
+                    boolean keep = isTransitionSelectedForObjectSelection(t)
+                            || (label != null && isComponentSelectedForObjectSelection(label));
+                    if (!keep) {
+                        if (label != null) {
+                            label.setVisible(false);
+                        }
+                        continue;
+                    }
+                }
                 if (label == null) {
                     // Create a new label, associating it with the transition.
                     label = new DraggableTriggerLabel(t.getTriggerEvent(), t);
@@ -365,6 +624,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                     label.setBounds(placedX, placedY, size.width, size.height);
                     triggerLabels.put(t, label);
                 } else {
+                    label.setVisible(true);
                     // Update text in case it changed.
                     label.setText("<html><b><u>" + t.getTriggerEvent() + "</u></b></html>");
                     // If the transition already has a stored trigger offset, use it.
@@ -394,6 +654,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         Graphics2D g2d = (Graphics2D) g;
         Stroke oldStroke = g2d.getStroke();
         Stroke normalStroke = new BasicStroke(stateBorderThickness);
+        boolean selectionOnlyExport = isSelectionOnlyExportActive();
         float failThickness = Math.max(2.0f, stateBorderThickness + 1.5f);
         float deadlockThickness = Math.max(2.0f, stateBorderThickness + 1.0f);
         Stroke failStroke = new BasicStroke(
@@ -411,18 +672,29 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 : java.util.Collections.emptySet();
         List<StateInterface> states = stateMachine.getStates();
         for (StateInterface state : states) {
+            if (selectionOnlyExport && !isStateSelectedForObjectSelection(state)) {
+                continue;
+            }
             Point pos = ((State) state).getPosition();
             int x = pos.x;
             int y = pos.y;
             if (state.getName().equals("PseudoState")) {
+                boolean isSelected = (renderSelectionHighlights
+                        && (selectedStates.contains(state) || state == transitionSourceState));
                 g2d.setColor(Color.BLACK);
                 g2d.fillOval(x, y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
                 g2d.setColor(Color.BLACK);
+                g2d.setStroke(normalStroke);
                 g2d.drawOval(x, y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+                if (isSelected) {
+                    g2d.setColor(Color.RED);
+                    g2d.drawOval(x - 2, y - 2, PSEUDO_DIAMETER + 4, PSEUDO_DIAMETER + 4);
+                }
             } else {
                 g2d.setColor(Color.WHITE);
                 g2d.fillOval(x, y, DIAMETER, DIAMETER);
-                boolean isSelected = (state == selectedState || state == transitionSourceState);
+                boolean isSelected = (renderSelectionHighlights
+                        && (selectedStates.contains(state) || state == transitionSourceState));
                 boolean isUnreachable = isComponentMachine() && !reachable.contains(state);
                 boolean isDeadlock = false;
                 if (!isUnreachable && isComponentMachine()) {
@@ -472,14 +744,24 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 int textHeight = fm.getHeight();
                 int textX = x + (DIAMETER - textWidth) / 2;
                 int textY = y + (DIAMETER - textHeight) / 2 + fm.getAscent();
+                g2d.setColor(isSelected ? Color.RED : Color.BLACK);
                 g2d.drawString(name, textX, textY);
             }
         }
-        for (Point aliasPos : pseudoStateAliases) {
+        for (int i = 0; i < pseudoStateAliases.size(); i++) {
+            if (selectionOnlyExport && !isPseudoAliasSelectedForObjectSelection(i)) {
+                continue;
+            }
+            Point aliasPos = pseudoStateAliases.get(i);
             g2d.setColor(Color.BLACK);
             g2d.fillOval(aliasPos.x, aliasPos.y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
             g2d.setColor(Color.BLACK);
+            g2d.setStroke(normalStroke);
             g2d.drawOval(aliasPos.x, aliasPos.y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+            if (renderSelectionHighlights && selectedPseudoAliases.contains(i)) {
+                g2d.setColor(Color.RED);
+                g2d.drawOval(aliasPos.x - 2, aliasPos.y - 2, PSEUDO_DIAMETER + 4, PSEUDO_DIAMETER + 4);
+            }
         }
         g2d.setStroke(oldStroke);
     }
@@ -504,8 +786,12 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     protected void drawTransitions(Graphics g) {
         Graphics2D g2d = (Graphics2D) g;
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        boolean selectionOnlyExport = isSelectionOnlyExportActive();
         List<TransitionInterface> transitions = stateMachine.getTransitions();
         for (TransitionInterface t : transitions) {
+            if (selectionOnlyExport && !isTransitionSelectedForObjectSelection(t)) {
+                continue;
+            }
             drawSingleTransition(g2d, t);
         }
     }
@@ -550,6 +836,12 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         }
         g2d.draw(curve);
         drawArrowHead(g2d, p0, p2, cp);
+        if (renderSelectionHighlights && selectedTransitions.contains(t)) {
+            g2d.setStroke(new BasicStroke(disabled ? 3.0f : 2.0f));
+            g2d.setColor(Color.RED);
+            g2d.draw(curve);
+            drawArrowHead(g2d, p0, p2, cp);
+        }
         g2d.setStroke(oldStroke);
 
         // For triggerable transitions, the draggable label is now used.
@@ -566,6 +858,128 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         if (editMode) {
             drawControlHandle(g2d, cp);
         }
+    }
+
+    private Point getTransitionControlPointForRendering(TransitionInterface t) {
+        if (!(t instanceof Transition transition)) {
+            return null;
+        }
+        Point cp = transition.getControlPoint();
+        if (cp != null) {
+            return cp;
+        }
+        StateInterface source = t.getSource();
+        StateInterface target = t.getTarget();
+        if (!(source instanceof State) || !(target instanceof State)) {
+            return null;
+        }
+        Point sourcePos = getStatePositionForTransition(source, t, true);
+        Point targetPos = getStatePositionForTransition(target, t, false);
+        if (sourcePos == null || targetPos == null) {
+            return null;
+        }
+        int sourceCenterOffset = isPseudoState(source) ? PSEUDO_RADIUS : RADIUS;
+        int targetCenterOffset = isPseudoState(target) ? PSEUDO_RADIUS : RADIUS;
+        Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+        Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+        cp = computeControlPoint(centerSource, centerTarget);
+        transition.setControlPoint(cp);
+        return cp;
+    }
+
+    private Point[] computeTransitionEndpoints(TransitionInterface t) {
+        if (t == null || t.getSource() == null || t.getTarget() == null) {
+            return null;
+        }
+        Point cp = getTransitionControlPointForRendering(t);
+        if (cp == null) {
+            return null;
+        }
+        Point sourcePos = getStatePositionForTransition(t.getSource(), t, true);
+        Point targetPos = getStatePositionForTransition(t.getTarget(), t, false);
+        if (sourcePos == null || targetPos == null) {
+            return null;
+        }
+        int sourceCenterOffset = isPseudoState(t.getSource()) ? PSEUDO_RADIUS : RADIUS;
+        int targetCenterOffset = isPseudoState(t.getTarget()) ? PSEUDO_RADIUS : RADIUS;
+        Point centerSource = new Point(sourcePos.x + sourceCenterOffset, sourcePos.y + sourceCenterOffset);
+        Point centerTarget = new Point(targetPos.x + targetCenterOffset, targetPos.y + targetCenterOffset);
+        Point p0 = computeStartPoint(centerSource, cp, sourceCenterOffset);
+        Point p2 = computeEndPoint(centerTarget, cp, targetCenterOffset);
+        return new Point[] {p0, p2};
+    }
+
+    private QuadCurve2D.Double buildTransitionCurve(TransitionInterface t) {
+        Point cp = getTransitionControlPointForRendering(t);
+        Point[] endpoints = computeTransitionEndpoints(t);
+        if (cp == null || endpoints == null || endpoints[0] == null || endpoints[1] == null) {
+            return null;
+        }
+        QuadCurve2D.Double curve = new QuadCurve2D.Double();
+        curve.setCurve(endpoints[0].x, endpoints[0].y, cp.x, cp.y, endpoints[1].x, endpoints[1].y);
+        return curve;
+    }
+
+    private boolean isPointNearCurve(QuadCurve2D.Double curve, Point point, double tolerance) {
+        if (curve == null || point == null) return false;
+        PathIterator iterator = new FlatteningPathIterator(curve.getPathIterator(null), 1.5);
+        double[] coords = new double[6];
+        double lastX = 0;
+        double lastY = 0;
+        while (!iterator.isDone()) {
+            int segment = iterator.currentSegment(coords);
+            if (segment == PathIterator.SEG_MOVETO) {
+                lastX = coords[0];
+                lastY = coords[1];
+            } else if (segment == PathIterator.SEG_LINETO) {
+                double dist = Line2D.ptSegDist(lastX, lastY, coords[0], coords[1], point.x, point.y);
+                if (dist <= tolerance) {
+                    return true;
+                }
+                lastX = coords[0];
+                lastY = coords[1];
+            }
+            iterator.next();
+        }
+        return false;
+    }
+
+    private TransitionInterface getTransitionAt(Point p) {
+        if (p == null) return null;
+        List<TransitionInterface> transitions = stateMachine.getTransitions();
+        for (int i = transitions.size() - 1; i >= 0; i--) {
+            TransitionInterface t = transitions.get(i);
+            QuadCurve2D.Double curve = buildTransitionCurve(t);
+            if (isPointNearCurve(curve, p, 7.0)) {
+                return t;
+            }
+        }
+        return null;
+    }
+
+    private boolean transitionIntersectsRect(TransitionInterface t, Rectangle rect) {
+        if (t == null || rect == null) return false;
+        QuadCurve2D.Double curve = buildTransitionCurve(t);
+        if (curve == null) return false;
+        if (curve.intersects(rect.x, rect.y, rect.width, rect.height)) {
+            return true;
+        }
+        if (rect.contains(curve.getP1()) || rect.contains(curve.getP2()) || rect.contains(curve.getCtrlPt())) {
+            return true;
+        }
+        return false;
+    }
+
+    private Rectangle getTransitionVisualBounds(TransitionInterface t) {
+        QuadCurve2D.Double curve = buildTransitionCurve(t);
+        if (curve == null) return null;
+        Rectangle bounds = curve.getBounds();
+        bounds.grow(8, 8);
+        DraggableTriggerLabel label = triggerLabels.get(t);
+        if (label != null && label.getParent() == this && label.isVisible()) {
+            bounds = bounds.union(label.getBounds());
+        }
+        return bounds;
     }
 
     private boolean isComponentMachine() {
@@ -768,6 +1182,17 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 entry.setValue(idx - 1);
             }
         }
+        if (selectedPseudoAliases.isEmpty()) {
+            return;
+        }
+        Set<Integer> updated = new LinkedHashSet<>();
+        for (Integer idx : selectedPseudoAliases) {
+            if (idx == null) continue;
+            if (idx == aliasIndex) continue;
+            updated.add(idx > aliasIndex ? idx - 1 : idx);
+        }
+        selectedPseudoAliases.clear();
+        selectedPseudoAliases.addAll(updated);
     }
 
     protected void deletePrimaryPseudoAlias() {
@@ -832,6 +1257,370 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             }
         }
         repaint();
+    }
+
+    private void pruneSelection() {
+        selectedStates.removeIf(s -> s == null || !stateMachine.getStates().contains(s));
+        selectedPseudoAliases.removeIf(i -> i == null || i < 0 || i >= pseudoStateAliases.size());
+        selectedComponents.removeIf(c -> c == null || c.getParent() != this || !isSelectableComponent(c));
+        selectedTransitions.removeIf(t -> t == null || !stateMachine.getTransitions().contains(t));
+    }
+
+    protected boolean isSelectableComponent(Component component) {
+        return component instanceof DraggableTriggerLabel;
+    }
+
+    private boolean isStateOrAliasSelected(StateInterface state, int aliasIndex) {
+        if (state == null) return false;
+        if (isPseudoState(state) && aliasIndex >= 0) {
+            return selectedPseudoAliases.contains(aliasIndex);
+        }
+        return selectedStates.contains(state);
+    }
+
+    private void clearObjectSelection() {
+        selectedStates.clear();
+        selectedPseudoAliases.clear();
+        selectedComponents.clear();
+        selectedTransitions.clear();
+    }
+
+    private void toggleStateOrAlias(StateInterface state, int aliasIndex) {
+        if (state == null) return;
+        if (isPseudoState(state) && aliasIndex >= 0) {
+            if (!selectedPseudoAliases.remove(aliasIndex)) {
+                selectedPseudoAliases.add(aliasIndex);
+            }
+            return;
+        }
+        if (!selectedStates.remove(state)) {
+            selectedStates.add(state);
+        }
+    }
+
+    private void toggleComponentSelection(Component component) {
+        if (component == null || !isSelectableComponent(component)) return;
+        if (!selectedComponents.remove(component)) {
+            selectedComponents.add(component);
+        }
+    }
+
+    private void toggleTransitionSelection(TransitionInterface transition) {
+        if (transition == null) return;
+        if (!selectedTransitions.remove(transition)) {
+            selectedTransitions.add(transition);
+        }
+    }
+
+    private void clearSelectionInteractionState() {
+        selectionBoxActive = false;
+        selectionBoxAnchor = null;
+        selectionBoxRect = null;
+        selectionBoxBaseStates.clear();
+        selectionBoxBaseAliases.clear();
+        selectionBoxBaseComponents.clear();
+        selectionBoxBaseTransitions.clear();
+
+        selectionDragActive = false;
+        selectionDragAnchor = null;
+        selectionDragStateOrigins.clear();
+        selectionDragAliasOrigins.clear();
+        selectionDragComponentOrigins.clear();
+        selectionDragTransitionControlOrigins.clear();
+    }
+
+    private void beginSelectionDrag(Point anchor) {
+        pruneSelection();
+        if (anchor == null || (!hasObjectSelection())) {
+            selectionDragActive = false;
+            selectionDragAnchor = null;
+            return;
+        }
+        selectionDragActive = true;
+        selectionDragAnchor = new Point(anchor);
+        selectionDragStateOrigins.clear();
+        selectionDragAliasOrigins.clear();
+        selectionDragComponentOrigins.clear();
+        selectionDragTransitionControlOrigins.clear();
+
+        for (StateInterface state : selectedStates) {
+            if (state instanceof State st && st.getPosition() != null) {
+                selectionDragStateOrigins.put(state, new Point(st.getPosition()));
+            }
+        }
+        for (Integer aliasIndex : selectedPseudoAliases) {
+            if (aliasIndex != null && aliasIndex >= 0 && aliasIndex < pseudoStateAliases.size()) {
+                selectionDragAliasOrigins.put(aliasIndex, new Point(pseudoStateAliases.get(aliasIndex)));
+            }
+        }
+        for (Component c : selectedComponents) {
+            if (c != null && c.getParent() == this) {
+                selectionDragComponentOrigins.put(c, new Rectangle(c.getBounds()));
+            }
+        }
+        for (TransitionInterface t : selectedTransitions) {
+            Point cp = getTransitionControlPointForRendering(t);
+            if (cp != null) {
+                selectionDragTransitionControlOrigins.put(t, new Point(cp));
+            }
+        }
+        if (selectionDragStateOrigins.isEmpty()
+                && selectionDragAliasOrigins.isEmpty()
+                && selectionDragComponentOrigins.isEmpty()
+                && selectionDragTransitionControlOrigins.isEmpty()) {
+            selectionDragActive = false;
+            selectionDragAnchor = null;
+        }
+    }
+
+    private void updateSelectionDrag(Point current) {
+        if (!selectionDragActive || selectionDragAnchor == null || current == null) {
+            return;
+        }
+        int dx = current.x - selectionDragAnchor.x;
+        int dy = current.y - selectionDragAnchor.y;
+        if (dx == 0 && dy == 0) {
+            return;
+        }
+
+        for (Map.Entry<StateInterface, Point> entry : selectionDragStateOrigins.entrySet()) {
+            if (!(entry.getKey() instanceof State st)) continue;
+            Point base = entry.getValue();
+            st.setPosition(new Point(base.x + dx, base.y + dy));
+        }
+
+        for (Map.Entry<Integer, Point> entry : selectionDragAliasOrigins.entrySet()) {
+            Integer aliasIndex = entry.getKey();
+            if (aliasIndex == null || aliasIndex < 0 || aliasIndex >= pseudoStateAliases.size()) continue;
+            Point base = entry.getValue();
+            pseudoStateAliases.get(aliasIndex).setLocation(base.x + dx, base.y + dy);
+        }
+
+        for (Map.Entry<Component, Rectangle> entry : selectionDragComponentOrigins.entrySet()) {
+            Component c = entry.getKey();
+            Rectangle base = entry.getValue();
+            if (c == null || c.getParent() != this) continue;
+            int x = base.x + dx;
+            int y = base.y + dy;
+            c.setBounds(x, y, base.width, base.height);
+            if (c instanceof DraggableTriggerLabel label && label.getAssociatedTransition() != null) {
+                label.getAssociatedTransition().setTriggerOffset(new Point(x, y));
+            }
+        }
+
+        for (Map.Entry<TransitionInterface, Point> entry : selectionDragTransitionControlOrigins.entrySet()) {
+            TransitionInterface t = entry.getKey();
+            Point base = entry.getValue();
+            if (!(t instanceof Transition tr) || !stateMachine.getTransitions().contains(t)) continue;
+            tr.setControlPoint(new Point(base.x + dx, base.y + dy));
+        }
+        dragMoved = true;
+    }
+
+    private boolean snapSelectedObjectsToGrid() {
+        if (!snapToGrid || getGridSize() <= 0) {
+            return false;
+        }
+        boolean moved = false;
+        int grid = getGridSize();
+        int half = Math.max(1, grid / 2);
+
+        for (StateInterface state : selectedStates) {
+            if (!(state instanceof State st)) continue;
+            Point pos = st.getPosition();
+            if (pos == null) continue;
+            int diameter = isPseudoState(state) ? PSEUDO_DIAMETER : DIAMETER;
+            int radius = diameter / 2;
+            Point center = new Point(pos.x + radius, pos.y + radius);
+            Point snappedCenter = snap(center);
+            Point snappedPos = new Point(snappedCenter.x - radius, snappedCenter.y - radius);
+            if (!snappedPos.equals(pos)) {
+                st.setPosition(snappedPos);
+                moved = true;
+            }
+        }
+
+        for (Integer aliasIndex : selectedPseudoAliases) {
+            if (aliasIndex == null || aliasIndex < 0 || aliasIndex >= pseudoStateAliases.size()) continue;
+            Point pos = pseudoStateAliases.get(aliasIndex);
+            int radius = PSEUDO_DIAMETER / 2;
+            Point center = new Point(pos.x + radius, pos.y + radius);
+            Point snappedCenter = snap(center);
+            Point snappedPos = new Point(snappedCenter.x - radius, snappedCenter.y - radius);
+            if (!snappedPos.equals(pos)) {
+                pos.setLocation(snappedPos);
+                moved = true;
+            }
+        }
+
+        for (Component c : selectedComponents) {
+            if (c == null || c.getParent() != this || !c.isVisible()) continue;
+            Rectangle b = c.getBounds();
+            int centerX = b.x + b.width / 2;
+            int centerY = b.y + b.height / 2;
+            int snappedCenterX = Math.round((float) centerX / half) * half;
+            int snappedCenterY = Math.round((float) centerY / half) * half;
+            int snappedX = snappedCenterX - b.width / 2;
+            int snappedY = snappedCenterY - b.height / 2;
+            if (snappedX != b.x || snappedY != b.y) {
+                c.setBounds(snappedX, snappedY, b.width, b.height);
+                if (c instanceof DraggableTriggerLabel label && label.getAssociatedTransition() != null) {
+                    label.getAssociatedTransition().setTriggerOffset(new Point(snappedX, snappedY));
+                }
+                moved = true;
+            }
+        }
+
+        for (TransitionInterface t : selectedTransitions) {
+            if (!(t instanceof Transition tr) || !stateMachine.getTransitions().contains(t)) continue;
+            Point cp = tr.getControlPoint();
+            if (cp == null) {
+                cp = getTransitionControlPointForRendering(t);
+            }
+            if (cp != null) {
+                Point snapped = snap(cp);
+                if (!snapped.equals(cp)) {
+                    tr.setControlPoint(snapped);
+                    moved = true;
+                }
+            }
+        }
+
+        return moved;
+    }
+
+    private void finishSelectionDrag() {
+        if (selectionDragActive && snapSelectedObjectsToGrid()) {
+            dragMoved = true;
+        }
+        selectionDragActive = false;
+        selectionDragAnchor = null;
+        selectionDragStateOrigins.clear();
+        selectionDragAliasOrigins.clear();
+        selectionDragComponentOrigins.clear();
+        selectionDragTransitionControlOrigins.clear();
+    }
+
+    private void startSelectionBox(Point anchor) {
+        pruneSelection();
+        selectionBoxActive = true;
+        selectionBoxAnchor = (anchor != null) ? new Point(anchor) : null;
+        selectionBoxRect = (anchor != null) ? new Rectangle(anchor.x, anchor.y, 1, 1) : null;
+        selectionBoxBaseStates.clear();
+        selectionBoxBaseStates.addAll(selectedStates);
+        selectionBoxBaseAliases.clear();
+        selectionBoxBaseAliases.addAll(selectedPseudoAliases);
+        selectionBoxBaseComponents.clear();
+        selectionBoxBaseComponents.addAll(selectedComponents);
+        selectionBoxBaseTransitions.clear();
+        selectionBoxBaseTransitions.addAll(selectedTransitions);
+    }
+
+    private void updateSelectionBox(Point current) {
+        if (!selectionBoxActive || selectionBoxAnchor == null || current == null) {
+            return;
+        }
+        selectionBoxRect = normalizeRect(selectionBoxAnchor, current);
+        Set<StateInterface> states = new LinkedHashSet<>(selectionBoxBaseStates);
+        Set<Integer> aliases = new LinkedHashSet<>(selectionBoxBaseAliases);
+        Set<Component> components = Collections.newSetFromMap(new IdentityHashMap<>());
+        components.addAll(selectionBoxBaseComponents);
+        Set<TransitionInterface> transitions = new LinkedHashSet<>(selectionBoxBaseTransitions);
+        collectIntersectingObjects(selectionBoxRect, states, aliases, components, transitions);
+
+        selectedStates.clear();
+        selectedStates.addAll(states);
+        selectedPseudoAliases.clear();
+        selectedPseudoAliases.addAll(aliases);
+        selectedComponents.clear();
+        selectedComponents.addAll(components);
+        selectedTransitions.clear();
+        selectedTransitions.addAll(transitions);
+    }
+
+    private void finishSelectionBox() {
+        selectionBoxActive = false;
+        selectionBoxAnchor = null;
+        selectionBoxBaseStates.clear();
+        selectionBoxBaseAliases.clear();
+        selectionBoxBaseComponents.clear();
+        selectionBoxBaseTransitions.clear();
+    }
+
+    private void collectIntersectingObjects(
+            Rectangle rect,
+            Set<StateInterface> states,
+            Set<Integer> aliases,
+            Set<Component> components,
+            Set<TransitionInterface> transitions) {
+        if (rect == null) return;
+
+        for (StateInterface state : stateMachine.getStates()) {
+            if (!(state instanceof State st)) continue;
+            Point pos = st.getPosition();
+            if (pos == null) continue;
+            int d = isPseudoState(state) ? PSEUDO_DIAMETER : DIAMETER;
+            Rectangle stateRect = new Rectangle(pos.x, pos.y, d, d);
+            if (rect.intersects(stateRect) || rect.contains(stateRect)) {
+                states.add(state);
+            }
+        }
+
+        for (int i = 0; i < pseudoStateAliases.size(); i++) {
+            Point pos = pseudoStateAliases.get(i);
+            Rectangle aliasRect = new Rectangle(pos.x, pos.y, PSEUDO_DIAMETER, PSEUDO_DIAMETER);
+            if (rect.intersects(aliasRect) || rect.contains(aliasRect)) {
+                aliases.add(i);
+            }
+        }
+
+        for (Component c : getComponents()) {
+            if (!isSelectableComponent(c) || !c.isVisible()) continue;
+            Rectangle bounds = c.getBounds();
+            if (rect.intersects(bounds) || rect.contains(bounds)) {
+                components.add(c);
+            }
+        }
+
+        for (TransitionInterface t : stateMachine.getTransitions()) {
+            if (transitionIntersectsRect(t, rect)) {
+                transitions.add(t);
+            }
+        }
+    }
+
+    private Rectangle normalizeRect(Point a, Point b) {
+        int x = Math.min(a.x, b.x);
+        int y = Math.min(a.y, b.y);
+        int w = Math.abs(a.x - b.x);
+        int h = Math.abs(a.y - b.y);
+        return new Rectangle(x, y, Math.max(1, w), Math.max(1, h));
+    }
+
+    private void drawSelectionOverlay(Graphics g) {
+        if (!renderSelectionHighlights) {
+            return;
+        }
+        pruneSelection();
+        Graphics2D g2d = (Graphics2D) g.create();
+        try {
+            g2d.setColor(Color.RED);
+            g2d.setStroke(new BasicStroke(1.5f));
+            for (Component c : selectedComponents) {
+                if (c == null || c.getParent() != this || !c.isVisible()) continue;
+                Rectangle b = c.getBounds();
+                g2d.drawRect(b.x - 2, b.y - 2, b.width + 4, b.height + 4);
+            }
+            if (selectionBoxActive && selectionBoxRect != null) {
+                g2d.setColor(SELECTION_RECT_FILL);
+                g2d.fill(selectionBoxRect);
+                g2d.setColor(SELECTION_RECT_STROKE);
+                g2d.setStroke(new BasicStroke(1.2f));
+                g2d.draw(selectionBoxRect);
+            }
+        } finally {
+            g2d.dispose();
+        }
     }
 
     protected Point getStatePositionForTransition(StateInterface state, TransitionInterface t, boolean source) {
@@ -1172,12 +1961,13 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         }
         if (!SwingUtilities.isLeftMouseButton(e)) {
             clearBaseDragTransitionState();
+            clearSelectionInteractionState();
         }
         // Debug: mouse press details — commented out to reduce console noise
         // System.out.println("mousePressed: button=" + e.getButton() + ", point=" + p + ", isPopupTrigger=" + e.isPopupTrigger());
         if (e.getButton() == MouseEvent.BUTTON1) {
             for (TransitionInterface t : stateMachine.getTransitions()) {
-                Point cp = ((Transition) t).getControlPoint();
+                Point cp = getTransitionControlPointForRendering(t);
                 if (cp != null && p.distance(cp) <= 8) {
                     selectedTransitionForControl = t;
                     controlDragOffset = new Point(e.getX() - cp.x, e.getY() - cp.y);
@@ -1198,8 +1988,10 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             return;
         }
         StateInterface state = getStateAt(p);
+        int aliasIndex = (isPseudoState(state) && hitPseudoAliasIndex >= 0) ? hitPseudoAliasIndex : -1;
         if (state != null && SwingUtilities.isLeftMouseButton(e) && isBaseDragCommandModifierDown(e)) {
-            int sourceAliasIndex = (isPseudoState(state) && hitPseudoAliasIndex >= 0) ? hitPseudoAliasIndex : -1;
+            clearSelectionInteractionState();
+            int sourceAliasIndex = aliasIndex;
             DragTransitionKind kind = determineBaseDragTransitionKind(e, state);
             armBaseDragTransition(state, sourceAliasIndex, kind, p);
             selectedState = null;
@@ -1207,25 +1999,85 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             dragOffset = null;
             canvasDragActive = false;
             canvasDragLast = null;
+            canvasDragAccumX = 0;
+            canvasDragAccumY = 0;
             repaint();
             return;
         }
-        if (state != null) {
-            selectedState = state;
-            selectedPseudoAliasIndex = -1;
-            if (isPseudoState(state) && hitPseudoAliasIndex >= 0 && hitPseudoAliasIndex < pseudoStateAliases.size()) {
-                selectedPseudoAliasIndex = hitPseudoAliasIndex;
-                Point aliasPos = pseudoStateAliases.get(selectedPseudoAliasIndex);
-                dragOffset = new Point(p.x - aliasPos.x, p.y - aliasPos.y);
+        TransitionInterface transitionHit = (state == null) ? getTransitionAt(p) : null;
+        boolean additiveSelectionGesture = SwingUtilities.isLeftMouseButton(e)
+                && e.isShiftDown()
+                && !isBaseDragCommandModifierDown(e);
+        if (additiveSelectionGesture) {
+            clearSelectionInteractionState();
+            if (state != null) {
+                toggleStateOrAlias(state, aliasIndex);
+                selectedState = null;
+                selectedPseudoAliasIndex = -1;
+                dragOffset = null;
+                canvasDragActive = false;
+                canvasDragLast = null;
+                canvasDragAccumX = 0;
+                canvasDragAccumY = 0;
+            } else if (transitionHit != null) {
+                toggleTransitionSelection(transitionHit);
+                selectedState = null;
+                selectedPseudoAliasIndex = -1;
+                dragOffset = null;
+                canvasDragActive = false;
+                canvasDragLast = null;
+                canvasDragAccumX = 0;
+                canvasDragAccumY = 0;
             } else {
-                Point posState = ((State) state).getPosition();
-                dragOffset = new Point(p.x - posState.x, p.y - posState.y);
+                startSelectionBox(p);
+                canvasDragActive = false;
+                canvasDragLast = null;
+                canvasDragAccumX = 0;
+                canvasDragAccumY = 0;
+            }
+            repaint();
+            return;
+        }
+
+        clearSelectionInteractionState();
+        if (state != null) {
+            if (isStateOrAliasSelected(state, aliasIndex)) {
+                beginSelectionDrag(p);
+                selectedState = null;
+                selectedPseudoAliasIndex = -1;
+                dragOffset = null;
+            } else {
+                selectedState = state;
+                selectedPseudoAliasIndex = aliasIndex;
+                if (aliasIndex >= 0 && aliasIndex < pseudoStateAliases.size()) {
+                    Point aliasPos = pseudoStateAliases.get(selectedPseudoAliasIndex);
+                    dragOffset = new Point(p.x - aliasPos.x, p.y - aliasPos.y);
+                } else {
+                    Point posState = ((State) state).getPosition();
+                    dragOffset = new Point(p.x - posState.x, p.y - posState.y);
+                }
             }
             canvasDragActive = false;
             canvasDragLast = null;
-        } else {
+            canvasDragAccumX = 0;
+            canvasDragAccumY = 0;
+        } else if (transitionHit != null) {
+            pruneSelection();
+            if (selectedTransitions.contains(transitionHit)) {
+                beginSelectionDrag(p);
+            }
             selectedState = null;
             selectedPseudoAliasIndex = -1;
+            dragOffset = null;
+            canvasDragActive = false;
+            canvasDragLast = null;
+            canvasDragAccumX = 0;
+            canvasDragAccumY = 0;
+        } else {
+            clearObjectSelection();
+            selectedState = null;
+            selectedPseudoAliasIndex = -1;
+            dragOffset = null;
             if (SwingUtilities.isLeftMouseButton(e)) {
                 canvasDragActive = true;
                 canvasDragLast = p;
@@ -1243,6 +2095,16 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             return;
         }
 
+        if (selectionBoxActive) {
+            finishSelectionBox();
+            selectionBoxRect = null;
+            selectedState = null;
+            selectedPseudoAliasIndex = -1;
+            dragOffset = null;
+            repaint();
+            return;
+        }
+
         if (dragTransitionArmed) {
             if (dragTransitionActive) {
                 StateInterface targetState = getStateAt(e.getPoint());
@@ -1256,8 +2118,28 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             canvasDragLast = null;
             canvasDragAccumX = 0;
             canvasDragAccumY = 0;
+            clearSelectionInteractionState();
             revalidate();
             repaint();
+            return;
+        }
+
+        if (selectionDragActive) {
+            finishSelectionDrag();
+            selectedTransitionForControl = null;
+            controlDragOffset = null;
+            selectedState = null;
+            selectedPseudoAliasIndex = -1;
+            dragOffset = null;
+            canvasDragActive = false;
+            canvasDragLast = null;
+            canvasDragAccumX = 0;
+            canvasDragAccumY = 0;
+            repaint();
+            if (dragMoved) {
+                markOwningEditorDirty();
+            }
+            dragMoved = false;
             return;
         }
 
@@ -1322,6 +2204,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             repaint();
             return;
         }
+        if (selectionBoxActive) {
+            updateSelectionBox(e.getPoint());
+            repaint();
+            return;
+        }
         if (canvasDragActive && canvasDragLast != null) {
             dragMoved = true;
             panCanvasTo(e.getPoint());
@@ -1332,6 +2219,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             Point newControlPoint = new Point(newPoint.x - controlDragOffset.x, newPoint.y - controlDragOffset.y);
             ((Transition) selectedTransitionForControl).setControlPoint(newControlPoint);
             dragMoved = true;
+            repaint();
+        } else if (selectionDragActive) {
+            updateSelectionDrag(e.getPoint());
             repaint();
         } else if (selectedPseudoAliasIndex >= 0 && dragOffset != null) {
             Point newPoint = e.getPoint();
@@ -1755,11 +2645,25 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 if (confirm == JOptionPane.YES_OPTION) {
                     boolean removed = stateMachine.getStates().remove(state);
                     if (removed) {
-                        stateMachine.getTransitions().removeIf(t -> t.getSource() == state || t.getTarget() == state);
+                        Iterator<TransitionInterface> transitionIterator = stateMachine.getTransitions().iterator();
+                        while (transitionIterator.hasNext()) {
+                            TransitionInterface t = transitionIterator.next();
+                            if (t.getSource() == state || t.getTarget() == state) {
+                                clearPseudoAliasForTransition(t);
+                                transitionIterator.remove();
+                                selectedTransitions.remove(t);
+                                DraggableTriggerLabel label = triggerLabels.remove(t);
+                                if (label != null) {
+                                    remove(label);
+                                }
+                            }
+                        }
                         System.out.println("The state and related transitions have been removed from the structure.");
                     } else {
                         System.out.println("Error: state not found in the structure.");
                     }
+                        clearObjectSelection();
+                        clearSelectionInteractionState();
                         // Schedule semantics recalculation if inside PWSEditor
                         java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);
                         if (win instanceof pws.editor.PWSEditor) {
@@ -1798,6 +2702,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
 //            clearAnnotationsForTransition((PWSTransition) t);
 //        }
         clearPseudoAliasForTransition(t);
+        selectedTransitions.remove(t);
+        DraggableTriggerLabel label = triggerLabels.remove(t);
+        if (label != null) {
+            remove(label);
+        }
         // Remove the transition from the global list.
         stateMachine.getTransitions().remove(t);
 

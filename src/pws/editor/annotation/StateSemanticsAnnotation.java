@@ -700,9 +700,11 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         Color borderColor = allOk ? STATUS_OK_COLOR : (unreachableIssue ? STATUS_UNREACHABLE_COLOR : STATUS_ISSUE_COLOR);
 
         int bandHeight = lineHeight + 4;
-        int bandX = BORDER_THICKNESS;
-        int bandY = BORDER_THICKNESS;
-        int bandW = getWidth() - BORDER_THICKNESS * 2;
+        // Keep the name band corner arc consistent with the outer dashboard frame.
+        int borderInset = BORDER_THICKNESS / 2;
+        int bandX = borderInset;
+        int bandY = borderInset;
+        int bandW = getWidth() - BORDER_THICKNESS;
         g2d.setColor(borderColor);
         g2d.fillRoundRect(bandX, bandY, bandW, bandHeight, CORNER_RADIUS, CORNER_RADIUS);
         g2d.setColor(Color.WHITE);

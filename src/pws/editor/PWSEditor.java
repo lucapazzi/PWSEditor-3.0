@@ -579,6 +579,7 @@ public class PWSEditor extends JFrame {
 
     private JMenuBar createMenuBar() {
         JMenuBar menuBar = new JMenuBar();
+        final int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
 
         // File menu
         JMenu fileMenu = new JMenu("File");
@@ -638,6 +639,7 @@ public class PWSEditor extends JFrame {
 
         // Classic file operations
         JMenuItem newItem = new JMenuItem("New");
+        newItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, menuMask));
         newItem.addActionListener(e -> {
             if (currentDocument != null && currentDocument.isDirty()) {
                 Object[] options = new Object[] {"No", "Yes"};
@@ -657,6 +659,7 @@ public class PWSEditor extends JFrame {
         fileMenu.add(newItem);
 
         JMenuItem openItem = new JMenuItem("Open...");
+        openItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, menuMask));
         openItem.addActionListener(e -> {
             if (currentDocument != null && currentDocument.isDirty()) {
                 Object[] options = new Object[] {"No", "Yes"};
@@ -675,18 +678,21 @@ public class PWSEditor extends JFrame {
         fileMenu.add(openItem);
 
         saveItem = new JMenuItem("Save");
+        saveItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, menuMask));
         saveItem.addActionListener(e -> {
             fileManager.save();
         });
         fileMenu.add(saveItem);
 
         saveAsItem = new JMenuItem("Save As...");
+        saveAsItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, menuMask | InputEvent.SHIFT_DOWN_MASK));
         saveAsItem.addActionListener(e -> {
             fileManager.saveAs();
         });
         fileMenu.add(saveAsItem);
 
         closeItem = new JMenuItem("Close");
+        closeItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_W, menuMask));
         closeItem.addActionListener(e -> {
             if (currentDocument != null && currentDocument.isDirty()) {
                 Object[] options = new Object[] {"No", "Yes"};
@@ -713,6 +719,7 @@ public class PWSEditor extends JFrame {
 
         // New: Export as PDF menu item.
         exportPDFItem = new JMenuItem("Export as PDF");
+        exportPDFItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, menuMask));
         exportPDFItem.addActionListener(e -> {
             JFileChooser fileChooser = new JFileChooser();
             fileChooser.setFileFilter(
@@ -728,11 +735,23 @@ public class PWSEditor extends JFrame {
 
                 StateMachinePanel panel =
                         ((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+                PWSStateMachinePanel pwsPanel = (panel instanceof PWSStateMachinePanel p) ? p : null;
+                Rectangle exportRegion = null;
+                boolean selectionOnlyExport = false;
+                if (panel != null && panel.hasObjectSelection()) {
+                    exportRegion = panel.getSelectionBoundsForExport();
+                    selectionOnlyExport = panel.beginSelectionOnlyExport();
+                }
+                if (pwsPanel != null) {
+                    pwsPanel.setRenderSelectionHighlights(false);
+                }
 
                 try {
-                    utility.PDFExporter.exportPanelToPDF(panel, file);
+                    utility.PDFExporter.exportPanelToPDF(panel, file, exportRegion);
                     JOptionPane.showMessageDialog(PWSEditor.this,
-                            "PDF file saved successfully.");
+                            (exportRegion != null)
+                                    ? "PDF file saved successfully (selected objects)."
+                                    : "PDF file saved successfully.");
                 } catch (UnsupportedOperationException uoe) {
                     // PDF export not implemented due to missing dependency (e.g., PDFBox)
                     uoe.printStackTrace();
@@ -744,12 +763,21 @@ public class PWSEditor extends JFrame {
                     JOptionPane.showMessageDialog(PWSEditor.this,
                             "Error saving PDF: " + ex.getMessage(),
                             "Error", JOptionPane.ERROR_MESSAGE);
+                } finally {
+                    if (selectionOnlyExport && panel != null) {
+                        panel.endSelectionOnlyExport();
+                    }
+                    if (pwsPanel != null) {
+                        pwsPanel.setRenderSelectionHighlights(true);
+                        pwsPanel.repaint();
+                    }
                 }
             }
         });
         fileMenu.add(exportPDFItem);
 
         saveAsPNGItem = new JMenuItem("Export as PNG");
+        saveAsPNGItem.setEnabled(false);
         saveAsPNGItem.addActionListener(e -> {
             JFileChooser fileChooser = new JFileChooser();
             fileChooser.setFileFilter(
@@ -765,6 +793,11 @@ public class PWSEditor extends JFrame {
 
                 StateMachinePanel panel =
                         ((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+                PWSStateMachinePanel pwsPanel = (panel instanceof PWSStateMachinePanel p) ? p : null;
+                Rectangle exportRegion = null;
+                if (pwsPanel != null && pwsPanel.hasObjectSelection()) {
+                    exportRegion = pwsPanel.getSelectionBoundsForExport();
+                }
 
                 if (panel == null) {
                     JOptionPane.showMessageDialog(PWSEditor.this,
@@ -772,16 +805,26 @@ public class PWSEditor extends JFrame {
                             "Not Available", JOptionPane.WARNING_MESSAGE);
                     return;
                 }
+                if (pwsPanel != null) {
+                    pwsPanel.setRenderSelectionHighlights(false);
+                }
 
                 try {
-                    utility.PNGExporter.exportPanelToPNG(panel, file);
+                    utility.PNGExporter.exportPanelToPNG(panel, file, exportRegion);
                     JOptionPane.showMessageDialog(PWSEditor.this,
-                            "PNG file saved successfully.");
+                            (exportRegion != null)
+                                    ? "PNG file saved successfully (selected objects)."
+                                    : "PNG file saved successfully.");
                 } catch (IOException ex) {
                     ex.printStackTrace();
                     JOptionPane.showMessageDialog(PWSEditor.this,
                             "Error saving PNG: " + ex.getMessage(),
                             "Error", JOptionPane.ERROR_MESSAGE);
+                } finally {
+                    if (pwsPanel != null) {
+                        pwsPanel.setRenderSelectionHighlights(true);
+                        pwsPanel.repaint();
+                    }
                 }
             }
         });
@@ -789,6 +832,7 @@ public class PWSEditor extends JFrame {
 
         // Exit item
         JMenuItem exitItem = new JMenuItem("Exit");
+        exitItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, menuMask));
         exitItem.addActionListener(e -> {
             if (currentDocument != null && currentDocument.isDirty()) {
                 Object[] options = new Object[] {"Yes", "No", "Cancel"};
@@ -816,7 +860,6 @@ public class PWSEditor extends JFrame {
         // --- Edit Menu (existing items) ---
         JMenu editMenu = new JMenu("Edit");
 
-        int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
         undoItem = new JMenuItem("Undo");
         undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, menuMask));
         undoItem.addActionListener(e -> undo());
@@ -1092,7 +1135,7 @@ public class PWSEditor extends JFrame {
         if (closeItem != null) closeItem.setEnabled(hasDoc);
 
         if (exportPDFItem != null) exportPDFItem.setEnabled(ctrl);
-        if (saveAsPNGItem != null) saveAsPNGItem.setEnabled(ctrl);
+        if (saveAsPNGItem != null) saveAsPNGItem.setEnabled(false);
 
         if (editModeItem != null) editModeItem.setEnabled(ctrl);
         if (showStateAnn != null) showStateAnn.setEnabled(ctrl);

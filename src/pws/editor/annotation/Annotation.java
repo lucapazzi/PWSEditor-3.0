@@ -18,6 +18,7 @@ public class Annotation<T> extends JComponent implements Serializable {
     protected T content;
     /** Mouse drag offset used while repositioning the annotation. */
     protected Point dragOffset;
+    private transient boolean delegatedToPanelSelection = false;
 
     /**
      * Creates an annotation with the given content.
@@ -33,6 +34,13 @@ public class Annotation<T> extends JComponent implements Serializable {
         MouseAdapter ma = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
+                java.awt.Container parent = SwingUtilities.getAncestorOfClass(StateMachinePanel.class, Annotation.this);
+                if (parent instanceof StateMachinePanel panel
+                        && panel.handleSelectableComponentMousePressed(Annotation.this, e)) {
+                    delegatedToPanelSelection = true;
+                    return;
+                }
+                delegatedToPanelSelection = false;
                 if (e.isPopupTrigger()) {
                     showPopup(e);
                 } else {
@@ -41,13 +49,20 @@ public class Annotation<T> extends JComponent implements Serializable {
             }
             @Override
             public void mouseReleased(MouseEvent e) {
+                java.awt.Container parent = SwingUtilities.getAncestorOfClass(StateMachinePanel.class, Annotation.this);
+                if (delegatedToPanelSelection) {
+                    delegatedToPanelSelection = false;
+                    if (parent instanceof StateMachinePanel panel
+                            && panel.handleSelectableComponentMouseReleased(Annotation.this, e)) {
+                        return;
+                    }
+                }
                 if (e.isPopupTrigger()) {
                     showPopup(e);
                 }
 
                 // Snap annotation to half-grid if parent panel supports it
                 // The center of the annotation is snapped to half-grid increments
-                java.awt.Container parent = SwingUtilities.getAncestorOfClass(StateMachinePanel.class, Annotation.this);
                 if (parent instanceof StateMachinePanel panel && panel.isSnapToGrid()) {
                     int grid = panel.getGridSize();
                     if (grid > 0) {
@@ -83,6 +98,12 @@ public class Annotation<T> extends JComponent implements Serializable {
             }
             @Override
             public void mouseDragged(MouseEvent e) {
+                java.awt.Container parent = SwingUtilities.getAncestorOfClass(StateMachinePanel.class, Annotation.this);
+                if (delegatedToPanelSelection
+                        && parent instanceof StateMachinePanel panel
+                        && panel.handleSelectableComponentMouseDragged(Annotation.this, e)) {
+                    return;
+                }
                 if (dragOffset != null && getParent() != null) {
                     Point parentPoint = SwingUtilities.convertPoint(Annotation.this, e.getPoint(), getParent());
                     setLocation(parentPoint.x - dragOffset.x, parentPoint.y - dragOffset.y);

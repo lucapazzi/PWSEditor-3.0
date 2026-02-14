@@ -35,6 +35,16 @@ computed semantics and reactive spaces.
   pseudo-state/aliases for initial `_init` transitions), with context-menu
   link mode still available as an alternative.
 
+- **Multi-object selection, drag, and focused export:**  
+  Use `Shift + Left click` to add/remove a state, pseudostate origin, pseudostate
+  alias, transition, or trigger label from the selection. Use
+  `Shift + Left drag` on empty space to extend a rectangular selection.
+  Drag any already selected object to move the full selected set together.
+  `Export as PDF` (`Cmd/Ctrl + E`) exports only selected objects when a
+  selection exists; nearby unselected objects are not rendered. If nothing is
+  selected, export uses the full canvas. `Export as PNG` is currently disabled
+  in the editor menus.
+
 - **Editable guards and actions:**  
   Triggers, guards, and emissions can be edited via in-place annotation
   widgets. Newly created triggered transitions start with guard labels hidden,
@@ -48,6 +58,10 @@ computed semantics and reactive spaces.
 - **Path toward the full PWS toolchain:**  
   Future releases will integrate with model-checking, analysis, and
   code-generation tools for PWS-based controller synthesis.
+
+## User Manual
+
+- Interaction guide: `docs/USER_MANUAL.md`
 
 ## Building and Running
 

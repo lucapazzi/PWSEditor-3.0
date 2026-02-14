@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
 import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -31,16 +32,24 @@ public class PDFExporter {
      * @throws IOException if the file cannot be written
      */
     public static void exportPanelToPDF(JPanel panel, File file) throws IOException {
+        exportPanelToPDF(panel, file, null);
+    }
+
+    /**
+     * Export a region of a JPanel to a vector PDF file.
+     *
+     * @param panel panel to export
+     * @param file output PDF file
+     * @param region panel-space region to export; null exports the full panel
+     * @throws IOException if the file cannot be written
+     */
+    public static void exportPanelToPDF(JPanel panel, File file, Rectangle region) throws IOException {
         if (panel == null) throw new IllegalArgumentException("panel is null");
         if (file == null) throw new IllegalArgumentException("file is null");
 
-        int width = panel.getWidth();
-        int height = panel.getHeight();
-        if (width <= 0 || height <= 0) {
-            java.awt.Dimension d = panel.getPreferredSize();
-            width = Math.max(1, d.width);
-            height = Math.max(1, d.height);
-        }
+        Rectangle exportRect = resolveExportRect(panel, region);
+        int width = exportRect.width;
+        int height = exportRect.height;
 
         try (PDDocument doc = new PDDocument()) {
             PDRectangle rect = new PDRectangle(width, height);
@@ -51,10 +60,15 @@ public class PDFExporter {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
             g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            boolean oldDoubleBuffered = panel.isDoubleBuffered();
             panel.setDoubleBuffered(false);
-            panel.printAll(g2);
-            g2.dispose();
-            panel.setDoubleBuffered(true);
+            try {
+                g2.translate(-exportRect.x, -exportRect.y);
+                panel.printAll(g2);
+            } finally {
+                g2.dispose();
+                panel.setDoubleBuffered(oldDoubleBuffered);
+            }
 
             PDFormXObject xform = g2.getXFormObject();
             try (PDPageContentStream contents = new PDPageContentStream(doc, page)) {
@@ -69,5 +83,24 @@ public class PDFExporter {
         } catch (Exception ex) {
             throw new IOException("Failed to create PDF: " + ex.getMessage(), ex);
         }
+    }
+
+    private static Rectangle resolveExportRect(JPanel panel, Rectangle region) {
+        int width = panel.getWidth();
+        int height = panel.getHeight();
+        if (width <= 0 || height <= 0) {
+            java.awt.Dimension d = panel.getPreferredSize();
+            width = Math.max(1, d.width);
+            height = Math.max(1, d.height);
+        }
+        Rectangle panelRect = new Rectangle(0, 0, width, height);
+        if (region == null) {
+            return panelRect;
+        }
+        Rectangle clipped = panelRect.intersection(region);
+        if (clipped.width <= 0 || clipped.height <= 0) {
+            return panelRect;
+        }
+        return clipped;
     }
 }
