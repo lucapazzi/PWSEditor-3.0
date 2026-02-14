@@ -44,7 +44,10 @@ computed semantics and reactive spaces.
   Drag any already selected object to move the full selected set together.
   `Export as PDF` (`Cmd/Ctrl + Shift + E`) exports only selected objects when a
   selection exists; nearby unselected objects are not rendered. If nothing is
-  selected, export uses the full canvas. In `PWSEditor`, `Cmd/Ctrl + A` and
+  selected, export uses the full canvas. The PDF save dialog in both editors
+  also includes `Save to Clipboard` to copy the exported PDF to the system
+  clipboard without writing a file.
+  In `PWSEditor`, `Cmd/Ctrl + A` and
   `Cmd/Ctrl + E` target the active panel (controller or embedded
   `StateMachineEditor`) according to focus/last interaction. `Export as PNG` is
   currently disabled in the editor menus.

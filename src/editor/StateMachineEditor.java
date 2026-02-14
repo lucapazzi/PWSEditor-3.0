@@ -170,48 +170,53 @@ public class StateMachineEditor extends JFrame {
         JMenuItem exportPDFItem = new JMenuItem("Export as PDF");
         exportPDFItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, menuMask | InputEvent.SHIFT_DOWN_MASK));
         exportPDFItem.addActionListener(e -> {
-            JFileChooser fileChooser = new JFileChooser();
-            fileChooser.setFileFilter(
-                    new javax.swing.filechooser.FileNameExtensionFilter("PDF File", "pdf"));
+            utility.PDFExportDialog.Result exportTarget = utility.PDFExportDialog.showSaveDialog(StateMachineEditor.this);
+            if (exportTarget.destination() == utility.PDFExportDialog.Destination.CANCEL) {
+                return;
+            }
 
-            if (fileChooser.showSaveDialog(StateMachineEditor.this)
-                    == JFileChooser.APPROVE_OPTION) {
-
-                File file = fileChooser.getSelectedFile();
-                if (!file.getName().toLowerCase().endsWith(".pdf")) {
-                    file = new File(file.getAbsolutePath() + ".pdf");
+            try {
+                Rectangle exportRegion = (statePanel != null && statePanel.hasObjectSelection())
+                        ? statePanel.getSelectionBoundsForExport()
+                        : null;
+                if (statePanel == null) {
+                    JOptionPane.showMessageDialog(StateMachineEditor.this,
+                            "State machine panel is not available.",
+                            "Not Available", JOptionPane.WARNING_MESSAGE);
+                    return;
                 }
-
-                try {
-                    Rectangle exportRegion = (statePanel != null && statePanel.hasObjectSelection())
-                            ? statePanel.getSelectionBoundsForExport()
-                            : null;
-                    if (statePanel == null) {
-                        JOptionPane.showMessageDialog(StateMachineEditor.this,
-                                "State machine panel is not available.",
-                                "Not Available", JOptionPane.WARNING_MESSAGE);
-                        return;
-                    }
-                    if (exportRegion != null) {
-                        statePanel.beginSelectionOnlyExport();
-                    }
-                    statePanel.setRenderSelectionHighlights(false);
-                    utility.PDFExporter.exportPanelToPDF(statePanel, file, exportRegion);
+                if (exportRegion != null) {
+                    statePanel.beginSelectionOnlyExport();
+                }
+                statePanel.setRenderSelectionHighlights(false);
+                if (exportTarget.destination() == utility.PDFExportDialog.Destination.CLIPBOARD) {
+                    utility.PDFExporter.exportPanelToClipboard(statePanel, exportRegion);
+                    JOptionPane.showMessageDialog(StateMachineEditor.this,
+                            (exportRegion != null)
+                                    ? "PDF copied to clipboard (selected objects)."
+                                    : "PDF copied to clipboard.");
+                } else {
+                    utility.PDFExporter.exportPanelToPDF(statePanel, exportTarget.file(), exportRegion);
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
                             (exportRegion != null)
                                     ? "PDF file successfully saved (selected objects)."
                                     : "PDF file successfully saved.");
-                } catch (IOException ex) {
-                    ex.printStackTrace();
-                    JOptionPane.showMessageDialog(StateMachineEditor.this,
-                            "Error saving PDF: " + ex.getMessage(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
-                } finally {
-                    if (statePanel != null) {
-                        statePanel.endSelectionOnlyExport();
-                        statePanel.setRenderSelectionHighlights(true);
-                        statePanel.repaint();
-                    }
+                }
+            } catch (UnsupportedOperationException uoe) {
+                uoe.printStackTrace();
+                JOptionPane.showMessageDialog(StateMachineEditor.this,
+                        "PDF export is not available: " + uoe.getMessage(),
+                        "Not Available", JOptionPane.WARNING_MESSAGE);
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                JOptionPane.showMessageDialog(StateMachineEditor.this,
+                        "Error exporting PDF: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
+            } finally {
+                if (statePanel != null) {
+                    statePanel.endSelectionOnlyExport();
+                    statePanel.setRenderSelectionHighlights(true);
+                    statePanel.repaint();
                 }
             }
         });

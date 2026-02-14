@@ -740,57 +740,57 @@ public class PWSEditor extends JFrame {
         exportPDFItem = new JMenuItem("Export as PDF");
         exportPDFItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, menuMask | InputEvent.SHIFT_DOWN_MASK));
         exportPDFItem.addActionListener(e -> {
-            JFileChooser fileChooser = new JFileChooser();
-            fileChooser.setFileFilter(
-                    new javax.swing.filechooser.FileNameExtensionFilter("PDF File", "pdf"));
+            utility.PDFExportDialog.Result exportTarget = utility.PDFExportDialog.showSaveDialog(PWSEditor.this);
+            if (exportTarget.destination() == utility.PDFExportDialog.Destination.CANCEL) {
+                return;
+            }
 
-            if (fileChooser.showSaveDialog(PWSEditor.this)
-                    == JFileChooser.APPROVE_OPTION) {
+            StateMachinePanel panel = resolveActiveStateMachinePanel();
+            if (panel == null) {
+                JOptionPane.showMessageDialog(PWSEditor.this,
+                        "Active editor panel is not available.",
+                        "Not Available", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            Rectangle exportRegion = null;
+            boolean selectionOnlyExport = false;
+            if (panel.hasObjectSelection()) {
+                exportRegion = panel.getSelectionBoundsForExport();
+                selectionOnlyExport = panel.beginSelectionOnlyExport();
+            }
+            panel.setRenderSelectionHighlights(false);
 
-                File file = fileChooser.getSelectedFile();
-                if (!file.getName().toLowerCase().endsWith(".pdf")) {
-                    file = new File(file.getAbsolutePath() + ".pdf");
-                }
-
-                StateMachinePanel panel =
-                        ((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
-                PWSStateMachinePanel pwsPanel = (panel instanceof PWSStateMachinePanel p) ? p : null;
-                Rectangle exportRegion = null;
-                boolean selectionOnlyExport = false;
-                if (panel != null && panel.hasObjectSelection()) {
-                    exportRegion = panel.getSelectionBoundsForExport();
-                    selectionOnlyExport = panel.beginSelectionOnlyExport();
-                }
-                if (pwsPanel != null) {
-                    pwsPanel.setRenderSelectionHighlights(false);
-                }
-
-                try {
-                    utility.PDFExporter.exportPanelToPDF(panel, file, exportRegion);
+            try {
+                if (exportTarget.destination() == utility.PDFExportDialog.Destination.CLIPBOARD) {
+                    utility.PDFExporter.exportPanelToClipboard(panel, exportRegion);
+                    JOptionPane.showMessageDialog(PWSEditor.this,
+                            (exportRegion != null)
+                                    ? "PDF copied to clipboard (selected objects)."
+                                    : "PDF copied to clipboard.");
+                } else {
+                    utility.PDFExporter.exportPanelToPDF(panel, exportTarget.file(), exportRegion);
                     JOptionPane.showMessageDialog(PWSEditor.this,
                             (exportRegion != null)
                                     ? "PDF file saved successfully (selected objects)."
                                     : "PDF file saved successfully.");
-                } catch (UnsupportedOperationException uoe) {
-                    // PDF export not implemented due to missing dependency (e.g., PDFBox)
-                    uoe.printStackTrace();
-                    JOptionPane.showMessageDialog(PWSEditor.this,
-                            "PDF export is not available: " + uoe.getMessage(),
-                            "Not Available", JOptionPane.WARNING_MESSAGE);
-                } catch (IOException ex) {
-                    ex.printStackTrace();
-                    JOptionPane.showMessageDialog(PWSEditor.this,
-                            "Error saving PDF: " + ex.getMessage(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
-                } finally {
-                    if (selectionOnlyExport && panel != null) {
-                        panel.endSelectionOnlyExport();
-                    }
-                    if (pwsPanel != null) {
-                        pwsPanel.setRenderSelectionHighlights(true);
-                        pwsPanel.repaint();
-                    }
                 }
+            } catch (UnsupportedOperationException uoe) {
+                // PDF export not implemented due to missing dependency (e.g., PDFBox)
+                uoe.printStackTrace();
+                JOptionPane.showMessageDialog(PWSEditor.this,
+                        "PDF export is not available: " + uoe.getMessage(),
+                        "Not Available", JOptionPane.WARNING_MESSAGE);
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                JOptionPane.showMessageDialog(PWSEditor.this,
+                        "Error exporting PDF: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
+            } finally {
+                if (selectionOnlyExport && panel != null) {
+                    panel.endSelectionOnlyExport();
+                }
+                panel.setRenderSelectionHighlights(true);
+                panel.repaint();
             }
         });
         fileMenu.add(exportPDFItem);

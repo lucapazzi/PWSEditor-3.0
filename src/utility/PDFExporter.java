@@ -1,8 +1,10 @@
 package utility;
 
 import javax.swing.*;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
@@ -46,12 +48,25 @@ public class PDFExporter {
     public static void exportPanelToPDF(JPanel panel, File file, Rectangle region) throws IOException {
         if (panel == null) throw new IllegalArgumentException("panel is null");
         if (file == null) throw new IllegalArgumentException("file is null");
+        byte[] pdfBytes = exportPanelToPDFBytes(panel, region);
+        Files.write(file.toPath(), pdfBytes);
+    }
 
+    /**
+     * Export a region of a JPanel to in-memory PDF bytes.
+     *
+     * @param panel panel to export
+     * @param region panel-space region to export; null exports the full panel
+     * @return exported PDF bytes
+     * @throws IOException if the PDF cannot be generated
+     */
+    public static byte[] exportPanelToPDFBytes(JPanel panel, Rectangle region) throws IOException {
+        if (panel == null) throw new IllegalArgumentException("panel is null");
         Rectangle exportRect = resolveExportRect(panel, region);
         int width = exportRect.width;
         int height = exportRect.height;
 
-        try (PDDocument doc = new PDDocument()) {
+        try (PDDocument doc = new PDDocument(); ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             PDRectangle rect = new PDRectangle(width, height);
             PDPage page = new PDPage(rect);
             doc.addPage(page);
@@ -74,7 +89,8 @@ public class PDFExporter {
             try (PDPageContentStream contents = new PDPageContentStream(doc, page)) {
                 contents.drawForm(xform);
             }
-            doc.save(file);
+            doc.save(baos);
+            return baos.toByteArray();
 
         } catch (NoClassDefFoundError ncd) {
             throw new UnsupportedOperationException("PDF export requires PDFBox and pdfbox-graphics2d on the classpath.", ncd);
@@ -83,6 +99,18 @@ public class PDFExporter {
         } catch (Exception ex) {
             throw new IOException("Failed to create PDF: " + ex.getMessage(), ex);
         }
+    }
+
+    /**
+     * Export a region of a JPanel and place the resulting PDF in the system clipboard.
+     *
+     * @param panel panel to export
+     * @param region panel-space region to export; null exports the full panel
+     * @throws IOException if the PDF cannot be generated or clipboard update fails
+     */
+    public static void exportPanelToClipboard(JPanel panel, Rectangle region) throws IOException {
+        byte[] pdfBytes = exportPanelToPDFBytes(panel, region);
+        PDFClipboard.putPDFOnSystemClipboard(pdfBytes);
     }
 
     private static Rectangle resolveExportRect(JPanel panel, Rectangle region) {

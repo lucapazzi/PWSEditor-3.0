@@ -34,6 +34,7 @@ These commands are intentionally separate from `Shift + Left` selection gestures
 
 - `File -> Export as PDF` (`Cmd/Ctrl + Shift + E`)
 - `File -> Export as PNG` is currently disabled in both editors.
+- In the PDF save dialog, use `Save` to write a `.pdf` file or `Save to Clipboard` to copy the exported PDF to the system clipboard.
 
 If one or more objects are selected, PDF export renders only selected objects and
 does not include nearby unselected objects.  
