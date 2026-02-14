@@ -438,6 +438,16 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     Rectangle annotBounds = annotation.getBounds();
                     int annotCenterX = annotBounds.x + annotBounds.width / 2;
                     int annotCenterY = annotBounds.y + annotBounds.height / 2;
+                    int lineStartX = centerX;
+                    int lineStartY = centerY;
+                    double dx = annotCenterX - centerX;
+                    double dy = annotCenterY - centerY;
+                    double dist = Math.hypot(dx, dy);
+                    if (dist > 0.0) {
+                        double radius = stateDiam / 2.0;
+                        lineStartX = (int) Math.round(centerX + (dx / dist) * radius);
+                        lineStartY = (int) Math.round(centerY + (dy / dist) * radius);
+                    }
                     Graphics2D g2d = (Graphics2D) g;
                     Stroke oldStroke = g2d.getStroke();
                     float[] dashPattern = {2f, 4f};
@@ -450,7 +460,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                         0.0f
                     ));
                     g2d.setColor(new Color(150, 150, 150));  // darker grey for better visibility
-                    g2d.drawLine(centerX, centerY, annotCenterX, annotCenterY);
+                    g2d.drawLine(lineStartX, lineStartY, annotCenterX, annotCenterY);
                     g2d.setStroke(oldStroke);
                 }
             }
@@ -2049,6 +2059,40 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             repaint();
         } else if (selectionDragActive) {
             updateSelectionDrag(e.getPoint());
+            repaint();
+        } else if (selectedPseudoAliasIndex >= 0 && dragOffset != null) {
+            Point newPoint = e.getPoint();
+            int rawX = newPoint.x - dragOffset.x;
+            int rawY = newPoint.y - dragOffset.y;
+            int radius = PSEUDO_DIAMETER / 2;
+            if (snapToGrid) {
+                Point center = new Point(rawX + radius, rawY + radius);
+                Point snappedCenter = snap(center);
+                rawX = snappedCenter.x - radius;
+                rawY = snappedCenter.y - radius;
+            }
+            Point aliasPos = pseudoStateAliases.get(selectedPseudoAliasIndex);
+            aliasPos.setLocation(rawX, rawY);
+            dragMoved = true;
+            repaint();
+        } else if (selectedState != null && dragOffset != null) {
+            Point newPoint = e.getPoint();
+            int rawX = newPoint.x - dragOffset.x;
+            int rawY = newPoint.y - dragOffset.y;
+
+            machinery.State st = (machinery.State) selectedState;
+            int diameter = st.getName().equals("PseudoState") ? PSEUDO_DIAMETER : DIAMETER;
+            int radius = diameter / 2;
+
+            if (snapToGrid) {
+                Point center = new Point(rawX + radius, rawY + radius);
+                Point snappedCenter = snap(center);
+                rawX = snappedCenter.x - radius;
+                rawY = snappedCenter.y - radius;
+            }
+
+            st.setPosition(new Point(rawX, rawY));
+            dragMoved = true;
             repaint();
         }
     }
