@@ -39,11 +39,15 @@ computed semantics and reactive spaces.
   Use `Shift + Left click` to add/remove a state, pseudostate origin, pseudostate
   alias, transition, or trigger label from the selection. Use
   `Shift + Left drag` on empty space to extend a rectangular selection.
+  Use `Cmd/Ctrl + A` to select all objects in the active canvas, and
+  `Cmd/Ctrl + E` to toggle Edit mode.
   Drag any already selected object to move the full selected set together.
-  `Export as PDF` (`Cmd/Ctrl + E`) exports only selected objects when a
+  `Export as PDF` (`Cmd/Ctrl + Shift + E`) exports only selected objects when a
   selection exists; nearby unselected objects are not rendered. If nothing is
-  selected, export uses the full canvas. `Export as PNG` is currently disabled
-  in the editor menus.
+  selected, export uses the full canvas. In `PWSEditor`, `Cmd/Ctrl + A` and
+  `Cmd/Ctrl + E` target the active panel (controller or embedded
+  `StateMachineEditor`) according to focus/last interaction. `Export as PNG` is
+  currently disabled in the editor menus.
 
 - **Editable guards and actions:**  
   Triggers, guards, and emissions can be edited via in-place annotation

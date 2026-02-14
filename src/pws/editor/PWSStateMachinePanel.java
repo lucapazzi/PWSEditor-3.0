@@ -138,6 +138,45 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     }
 
     @Override
+    public void selectAllObjects() {
+        clearSelectionInteractionState();
+        selectedStates.clear();
+        selectedStates.addAll(stateMachine.getStates());
+        selectedPseudoAliases.clear();
+        for (int i = 0; i < pseudoStateAliases.size(); i++) {
+            selectedPseudoAliases.add(i);
+        }
+        selectedTransitions.clear();
+        selectedTransitions.addAll(stateMachine.getTransitions());
+        selectedComponents.clear();
+        for (Component c : getComponents()) {
+            if (isSelectableComponent(c) && c.isVisible()) {
+                selectedComponents.add(c);
+            }
+        }
+        selectedState = null;
+        selectedPseudoAliasIndex = -1;
+        selectedTransitionForControl = null;
+        controlDragOffset = null;
+        dragOffset = null;
+        selectedSelfLoopTransition = null;
+        draggingSelfLoopStart = false;
+        draggingSelfLoopEnd = false;
+        draggingEndpointTransition = null;
+        draggingEndpointStart = false;
+        draggingEndpointEnd = false;
+        draggingEndpointPoint = null;
+        canvasDragActive = false;
+        canvasDragLast = null;
+        canvasDragAccumX = 0;
+        canvasDragAccumY = 0;
+        if (!hasFocus()) {
+            requestFocusInWindow();
+        }
+        repaint();
+    }
+
+    @Override
     protected boolean isStateSelectedForObjectSelection(StateInterface state) {
         return selectedStates.contains(state);
     }

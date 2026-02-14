@@ -67,6 +67,7 @@ public class PWSEditor extends JFrame {
     private JMenuItem exportPDFItem;
     private JMenuItem saveAsPNGItem;
     private JCheckBoxMenuItem editModeItem;
+    private JMenuItem selectAllItem;
     private JCheckBoxMenuItem showStateAnn;
     private JCheckBoxMenuItem showExitZoneMachineIdsItem;
     private JCheckBoxMenuItem showGridItem;
@@ -88,6 +89,8 @@ public class PWSEditor extends JFrame {
     private boolean undoRecordingSuspended = false;
     private boolean suppressDirtyNotifications = false;
     private static final int MAX_UNDO = 100;
+    private static final String ACTIVE_PANEL_TRACKING_PROPERTY = "pws.activePanelTracking";
+    private StateMachinePanel lastActiveStateMachinePanel;
 
     // The main PWSEditor window uses a fixed title, e.g. "PWSEditor"
     /**
@@ -200,6 +203,10 @@ public class PWSEditor extends JFrame {
         // Also attach directly to the controller panel so clicks on its child components transfer focus
         if (controllerPanel != null) {
             controllerPanel.addMouseListener(focusRequester);
+            if (controllerPanel instanceof StateMachinePanel panel) {
+                registerActivePanelTracking(panel);
+                lastActiveStateMachinePanel = panel;
+            }
         }
 
         // Right area: assembly list + embedded machine editor container (also with header)
@@ -322,6 +329,7 @@ public class PWSEditor extends JFrame {
                                     machineEditorContainer.revalidate();
                                     machineEditorContainer.repaint();
                                     embeddedMachineId = null;
+                                    lastActiveStateMachinePanel = getControllerStateMachinePanel();
                                         // Restore focus to the main controller panel when embedded editor is closed
                                         SwingUtilities.invokeLater(() -> {
                                             try {
@@ -345,6 +353,8 @@ public class PWSEditor extends JFrame {
                                         ? pwsStateMachine.getAssembly().getMachineLibrary().getAliasData(libKey)
                                         : pwsStateMachine.getAssembly().getAliasData(id);
                                 smPanel.importAliasData(aliasData);
+                                registerActivePanelTracking(smPanel);
+                                lastActiveStateMachinePanel = smPanel;
                             }
 
                             JPanel wrapper = new JPanel(new BorderLayout());
@@ -378,6 +388,8 @@ public class PWSEditor extends JFrame {
                                     ? pwsStateMachine.getAssembly().getMachineLibrary().getAliasData(libKey)
                                     : pwsStateMachine.getAssembly().getAliasData(id);
                             smPanel.importAliasData(aliasData);
+                            registerActivePanelTracking(smPanel);
+                            lastActiveStateMachinePanel = smPanel;
                             wrapper.add(smPanel, BorderLayout.CENTER);
                             machineEditorContainer.add(wrapper, BorderLayout.CENTER);
                             machineEditorContainer.revalidate();
@@ -400,6 +412,7 @@ public class PWSEditor extends JFrame {
                             machineEditorContainer.repaint();
                         }
                         embeddedMachineId = null;
+                        lastActiveStateMachinePanel = getControllerStateMachinePanel();
                         // ensure focus returns to main controller panel after removal
                         try {
                             Component ctrl = baseEditor.getStateMachinePanel();
@@ -477,6 +490,7 @@ public class PWSEditor extends JFrame {
                                     machineEditorContainer.revalidate();
                                     machineEditorContainer.repaint();
                                     embeddedMachineId = null;
+                                    lastActiveStateMachinePanel = getControllerStateMachinePanel();
                                 });
                             } else {
                                 embeddedEditor.bindStateMachine(machine);
@@ -489,6 +503,8 @@ public class PWSEditor extends JFrame {
                                 StateMachinePanel.AliasData aliasData = pwsStateMachine.getAssembly()
                                         .getMachineLibrary().getAliasData(key);
                                 smPanel.importAliasData(aliasData);
+                                registerActivePanelTracking(smPanel);
+                                lastActiveStateMachinePanel = smPanel;
                             }
 
                             JPanel wrapper = new JPanel(new BorderLayout());
@@ -520,6 +536,8 @@ public class PWSEditor extends JFrame {
                             StateMachinePanel.AliasData aliasData = pwsStateMachine.getAssembly()
                                     .getMachineLibrary().getAliasData(key);
                             smPanel.importAliasData(aliasData);
+                            registerActivePanelTracking(smPanel);
+                            lastActiveStateMachinePanel = smPanel;
                             wrapper.add(smPanel, BorderLayout.CENTER);
                             machineEditorContainer.add(wrapper, BorderLayout.CENTER);
                             machineEditorContainer.revalidate();
@@ -539,6 +557,7 @@ public class PWSEditor extends JFrame {
                         machineEditorContainer.revalidate();
                         machineEditorContainer.repaint();
                         embeddedMachineId = null;
+                        lastActiveStateMachinePanel = getControllerStateMachinePanel();
                     });
                 }
             }
@@ -719,7 +738,7 @@ public class PWSEditor extends JFrame {
 
         // New: Export as PDF menu item.
         exportPDFItem = new JMenuItem("Export as PDF");
-        exportPDFItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, menuMask));
+        exportPDFItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, menuMask | InputEvent.SHIFT_DOWN_MASK));
         exportPDFItem.addActionListener(e -> {
             JFileChooser fileChooser = new JFileChooser();
             fileChooser.setFileFilter(
@@ -872,6 +891,11 @@ public class PWSEditor extends JFrame {
 
         editMenu.addSeparator();
 
+        selectAllItem = new JMenuItem("Select All");
+        selectAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, menuMask));
+        selectAllItem.addActionListener(e -> selectAllInActivePanel());
+        editMenu.add(selectAllItem);
+
 //        JMenuItem addTransitionItem = new JMenuItem("Add Transition");
 //        addTransitionItem.addActionListener(e -> {
 //            String sourceName = JOptionPane.showInputDialog(PWSEditor.this, "Enter the source state name:");
@@ -900,9 +924,8 @@ public class PWSEditor extends JFrame {
 //        editMenu.add(addTransitionItem);
 
         editModeItem = new JCheckBoxMenuItem("Edit mode", true);
-        editModeItem.addActionListener(e -> {
-            setEditModeEnabled(editModeItem.isSelected());
-        });
+        editModeItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, menuMask));
+        editModeItem.addActionListener(e -> setActiveEditModeEnabled(editModeItem.isSelected()));
         editMenu.add(editModeItem);
 
         menuBar.add(editMenu);
@@ -1126,6 +1149,93 @@ public class PWSEditor extends JFrame {
         updateMenuItemsEnabledState();
     }
 
+    private StateMachinePanel getControllerStateMachinePanel() {
+        if (baseEditor == null) return null;
+        return baseEditor.getStateMachinePanel();
+    }
+
+    private StateMachinePanel getEmbeddedStateMachinePanel() {
+        if (embeddedEditor == null) return null;
+        return embeddedEditor.getStateMachinePanel();
+    }
+
+    private StateMachinePanel resolveActiveStateMachinePanel() {
+        StateMachinePanel embeddedPanel = getEmbeddedStateMachinePanel();
+        StateMachinePanel controllerPanel = getControllerStateMachinePanel();
+        Component focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        if (focusOwner != null) {
+            if (embeddedPanel != null && SwingUtilities.isDescendingFrom(focusOwner, embeddedPanel)) {
+                lastActiveStateMachinePanel = embeddedPanel;
+                return embeddedPanel;
+            }
+            if (controllerPanel != null && SwingUtilities.isDescendingFrom(focusOwner, controllerPanel)) {
+                lastActiveStateMachinePanel = controllerPanel;
+                return controllerPanel;
+            }
+        }
+        if (lastActiveStateMachinePanel != null && lastActiveStateMachinePanel.isDisplayable()) {
+            return lastActiveStateMachinePanel;
+        }
+        if (controllerPanel != null) {
+            return controllerPanel;
+        }
+        return embeddedPanel;
+    }
+
+    private void registerActivePanelTracking(StateMachinePanel panel) {
+        if (panel == null) return;
+        if (Boolean.TRUE.equals(panel.getClientProperty(ACTIVE_PANEL_TRACKING_PROPERTY))) return;
+        panel.putClientProperty(ACTIVE_PANEL_TRACKING_PROPERTY, Boolean.TRUE);
+        panel.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                lastActiveStateMachinePanel = panel;
+                if (editModeItem != null) {
+                    editModeItem.setSelected(panel.isEditMode());
+                }
+            }
+        });
+        panel.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusGained(java.awt.event.FocusEvent e) {
+                lastActiveStateMachinePanel = panel;
+                if (editModeItem != null) {
+                    editModeItem.setSelected(panel.isEditMode());
+                }
+            }
+        });
+    }
+
+    private void selectAllInActivePanel() {
+        StateMachinePanel panel = resolveActiveStateMachinePanel();
+        if (panel == null) return;
+        panel.selectAllObjects();
+        lastActiveStateMachinePanel = panel;
+    }
+
+    private void setActiveEditModeEnabled(boolean enabled) {
+        StateMachinePanel panel = resolveActiveStateMachinePanel();
+        if (panel == null) {
+            if (editModeItem != null) {
+                editModeItem.setSelected(enabled);
+            }
+            return;
+        }
+
+        boolean changed = panel.isEditMode() != enabled;
+        panel.setEditMode(enabled);
+        lastActiveStateMachinePanel = panel;
+        if (editModeItem != null) {
+            if (editModeItem.isSelected() != enabled) {
+                changed = true;
+            }
+            editModeItem.setSelected(enabled);
+        }
+        if (changed) {
+            markDocumentDirty();
+        }
+    }
+
     private void updateMenuItemsEnabledState() {
         boolean ctrl = controllerEditorVisible && baseEditor != null;
         // Save/SaveAs/Close require a document
@@ -1138,6 +1248,7 @@ public class PWSEditor extends JFrame {
         if (saveAsPNGItem != null) saveAsPNGItem.setEnabled(false);
 
         if (editModeItem != null) editModeItem.setEnabled(ctrl);
+        if (selectAllItem != null) selectAllItem.setEnabled(ctrl);
         if (showStateAnn != null) showStateAnn.setEnabled(ctrl);
         if (showExitZoneMachineIdsItem != null) showExitZoneMachineIdsItem.setEnabled(ctrl);
         if (showGridItem != null) showGridItem.setEnabled(ctrl);
@@ -1240,9 +1351,11 @@ public class PWSEditor extends JFrame {
     /** Keeps the Edit mode menu item and panel in sync. */
     public void setEditModeEnabled(boolean enabled) {
         boolean changed = false;
-        if (baseEditor != null && baseEditor.getStateMachinePanel() != null) {
-            changed = baseEditor.getStateMachinePanel().isEditMode() != enabled;
-            baseEditor.getStateMachinePanel().setEditMode(enabled);
+        StateMachinePanel controllerPanel = getControllerStateMachinePanel();
+        if (controllerPanel != null) {
+            changed = controllerPanel.isEditMode() != enabled;
+            controllerPanel.setEditMode(enabled);
+            lastActiveStateMachinePanel = controllerPanel;
         }
         if (editModeItem != null) {
             if (editModeItem.isSelected() != enabled) {

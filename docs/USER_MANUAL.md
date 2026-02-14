@@ -5,6 +5,7 @@ This guide summarizes the core canvas interactions shared by the controller edit
 ## 1. Selection Model
 
 - `Shift + Left click` toggles selection on a single object.
+- `Cmd/Ctrl + A` selects all selectable objects in the active canvas.
 - Objects that support selection:
   - States
   - The original pseudostate node
@@ -31,7 +32,7 @@ These commands are intentionally separate from `Shift + Left` selection gestures
 
 ## 4. Export Behavior
 
-- `File -> Export as PDF` (`Cmd/Ctrl + E`)
+- `File -> Export as PDF` (`Cmd/Ctrl + Shift + E`)
 - `File -> Export as PNG` is currently disabled in both editors.
 
 If one or more objects are selected, PDF export renders only selected objects and
@@ -46,6 +47,8 @@ exported. The connector is exported only when both endpoints are selected.
 
 - Pseudostate origin selection is supported the same way as alias selection (`Shift + Left click`).
 - Right-click context menus and existing link-mode workflows remain available.
+- `Cmd/Ctrl + E` toggles `Edit mode` in the active canvas.
+- In `PWSEditor`, `Cmd/Ctrl + A` and `Cmd/Ctrl + E` apply to the active state-machine panel (controller or embedded machine editor), based on focus/last interaction.
 
 ## 6. File Menu Shortcuts
 
@@ -55,11 +58,11 @@ Controller editor (`PWSEditor`):
 - `Cmd/Ctrl + S`: Save
 - `Cmd/Ctrl + Shift + S`: Save As
 - `Cmd/Ctrl + W`: Close
-- `Cmd/Ctrl + E`: Export as PDF
+- `Cmd/Ctrl + Shift + E`: Export as PDF
 - `Cmd/Ctrl + Q`: Exit
 
 Controlled editor (`StateMachineEditor`):
 - `Cmd/Ctrl + O`: Load Single Machine
 - `Cmd/Ctrl + S`: Save Single Machine
 - `Cmd/Ctrl + W`: Close Editor
-- `Cmd/Ctrl + E`: Export as PDF
+- `Cmd/Ctrl + Shift + E`: Export as PDF

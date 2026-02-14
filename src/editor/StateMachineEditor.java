@@ -168,7 +168,7 @@ public class StateMachineEditor extends JFrame {
         fileMenu.addSeparator();
 
         JMenuItem exportPDFItem = new JMenuItem("Export as PDF");
-        exportPDFItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, menuMask));
+        exportPDFItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, menuMask | InputEvent.SHIFT_DOWN_MASK));
         exportPDFItem.addActionListener(e -> {
             JFileChooser fileChooser = new JFileChooser();
             fileChooser.setFileFilter(
@@ -280,6 +280,15 @@ public class StateMachineEditor extends JFrame {
 
         editMenu.addSeparator();
 
+        JMenuItem selectAllItem = new JMenuItem("Select All");
+        selectAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, menuMask));
+        selectAllItem.addActionListener(e -> {
+            if (statePanel != null) {
+                statePanel.selectAllObjects();
+            }
+        });
+        editMenu.add(selectAllItem);
+
 // 3. Add transition
 //        JMenuItem addTransitionItem = new JMenuItem("Add Transition");
 //        addTransitionItem.addActionListener(e -> {
@@ -303,6 +312,7 @@ public class StateMachineEditor extends JFrame {
 
 // 4. Edit mode (checkbox)
         editModeItem = new JCheckBoxMenuItem("Edit mode", true);
+        editModeItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, menuMask));
         editModeItem.addActionListener(e -> setEditModeEnabled(editModeItem.isSelected()));
         editMenu.add(editModeItem);
 
