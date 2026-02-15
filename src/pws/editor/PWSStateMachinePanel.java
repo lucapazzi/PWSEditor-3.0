@@ -15,7 +15,9 @@ import pws.editor.annotation.Annotation;
 import pws.editor.annotation.GuardAnnotation;
 import pws.editor.annotation.StateSemanticsAnnotation;
 import pws.editor.annotation.TransitionSemanticsAnnotation;
+import pws.editor.semantics.Configuration;
 import pws.editor.semantics.Semantics;
+import smalgebra.BasicStateProposition;
 import smalgebra.SMProposition;
 import smalgebra.TrueProposition;
 import utility.DraggableTriggerLabel;
@@ -31,6 +33,7 @@ import java.awt.geom.PathIterator;
 import java.awt.geom.Point2D;
 import java.awt.geom.QuadCurve2D;
 import java.text.AttributedString;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -599,6 +602,365 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             }
         }
         g2d.setStroke(oldStroke);
+    }
+
+    @Override
+    public String getToolTipText(MouseEvent e) {
+        StateInterface hit = getStateAt(e.getPoint());
+        if (!(hit instanceof PWSState state) || state.isPseudoState()) {
+            return null;
+        }
+        if (!(stateMachine instanceof PWSStateMachine pwsMachine)) {
+            return null;
+        }
+        return buildControllerStateTooltip(state, pwsMachine);
+    }
+
+    private String buildControllerStateTooltip(PWSState state, PWSStateMachine sm) {
+        Semantics ss = state.getStateSemantics();
+        List<Configuration> configs = (ss != null)
+                ? new ArrayList<>(ss.getConfigurations())
+                : Collections.emptyList();
+        int totalConfigs = configs.size();
+
+        Set<String> internallyStuckCfgs = new LinkedHashSet<>();
+        Set<Configuration> deadlocks = state.getDeadlockConfigurations();
+        if (deadlocks != null) {
+            for (Configuration cfg : deadlocks) {
+                if (cfg != null) {
+                    internallyStuckCfgs.add(cfg.toString());
+                }
+            }
+        }
+        int internallyStuckCount = internallyStuckCfgs.size();
+
+        List<PWSTransition> outgoingEnabled = new ArrayList<>();
+        int outgoingDisabled = 0;
+        int incomingEnabled = 0;
+        int incomingDisabled = 0;
+        for (TransitionInterface ti : sm.getTransitions()) {
+            if (!(ti instanceof PWSTransition pt)) {
+                continue;
+            }
+            if (pt.getSource() == state) {
+                if (pt.isEnabled()) {
+                    outgoingEnabled.add(pt);
+                } else {
+                    outgoingDisabled++;
+                }
+            }
+            if (pt.getTarget() == state) {
+                if (pt.isEnabled()) {
+                    incomingEnabled++;
+                } else {
+                    incomingDisabled++;
+                }
+            }
+        }
+
+        Map<PWSTransition, Integer> coveredByTransition = new HashMap<>();
+        Set<String> coveredCfgs = new LinkedHashSet<>();
+        for (Configuration cfg : configs) {
+            if (cfg == null) {
+                continue;
+            }
+            boolean covered = false;
+            for (PWSTransition pt : outgoingEnabled) {
+                if (sm.transitionCoversConfiguration(pt, cfg)) {
+                    covered = true;
+                    coveredByTransition.put(pt, coveredByTransition.getOrDefault(pt, 0) + 1);
+                }
+            }
+            if (covered) {
+                coveredCfgs.add(cfg.toString());
+            }
+        }
+
+        int trueDeadlocks = 0;
+        for (String cfgStr : internallyStuckCfgs) {
+            if (!coveredCfgs.contains(cfgStr)) {
+                trueDeadlocks++;
+            }
+        }
+
+        boolean hasEmptyConfiguration = false;
+        for (Configuration cfg : configs) {
+            if (cfg != null && cfg.getBasicStatePropositions().isEmpty()) {
+                hasEmptyConfiguration = true;
+                break;
+            }
+        }
+
+        List<String> configNames = new ArrayList<>();
+        List<String> evolvingConfigNames = new ArrayList<>();
+        List<String> stuckConfigNames = new ArrayList<>();
+        for (Configuration cfg : configs) {
+            if (cfg == null) {
+                continue;
+            }
+            String cfgName = cfg.toString();
+            configNames.add(cfgName);
+            if (internallyStuckCfgs.contains(cfgName)) {
+                stuckConfigNames.add(cfgName);
+            } else {
+                evolvingConfigNames.add(cfgName);
+            }
+        }
+        List<String> coveredConfigNames = new ArrayList<>();
+        List<String> uncoveredConfigNames = new ArrayList<>();
+        for (String cfgName : configNames) {
+            if (coveredCfgs.contains(cfgName)) {
+                coveredConfigNames.add(cfgName);
+            } else {
+                uncoveredConfigNames.add(cfgName);
+            }
+        }
+
+        List<String> statusIssues = StateSemanticsAnnotation.computeStatusIssues(state, sm);
+        List<String> componentDeadlocks = findComponentDeadlocks(configs, sm.getAssembly());
+        List<String> componentFailStates = findComponentFailStates(configs, sm.getAssembly());
+
+        StringBuilder tip = new StringBuilder("<html>");
+        tip.append("<b>").append(escapeHtml(state.getName())).append("</b><br>");
+        if (totalConfigs == 0) {
+            tip.append("Status: unreachable (no configurations).<br>");
+        } else if (trueDeadlocks > 0) {
+            tip.append("Status: true deadlock configurations present.<br>");
+        } else if (statusIssues.isEmpty()) {
+            tip.append("Status: well-formed under strict action semantics.<br>");
+        } else {
+            tip.append("Status: issues detected (see dashboard details).<br>");
+        }
+        tip.append("Configurations: ").append(totalConfigs);
+        if (hasEmptyConfiguration) {
+            if (totalConfigs == 1) {
+                tip.append(" (the empty configuration ())");
+            } else {
+                tip.append(" (includes empty configuration ())");
+            }
+        }
+        if (!configNames.isEmpty()) {
+            tip.append(": ").append(escapeHtml(joinLimited(configNames, 4)));
+        }
+        tip.append("<br>");
+
+        if (totalConfigs > 0) {
+            int canEvolve = Math.max(0, totalConfigs - internallyStuckCount);
+            tip.append("Internal evolution: ")
+                    .append(canEvolve)
+                    .append(" can evolve, ")
+                    .append(internallyStuckCount)
+                    .append(" internally stuck");
+            if (hasEmptyConfiguration) {
+                tip.append(" (includes () structural case)");
+            }
+            tip.append(".");
+            if (!evolvingConfigNames.isEmpty()) {
+                tip.append(" Can evolve: ")
+                        .append(escapeHtml(joinLimited(evolvingConfigNames, 3)))
+                        .append(".");
+            }
+            if (!stuckConfigNames.isEmpty()) {
+                tip.append(" Internally stuck: ")
+                        .append(escapeHtml(joinLimited(stuckConfigNames, 3)))
+                        .append(".");
+            }
+            tip.append("<br>");
+            tip.append("Strict transition coverage: ")
+                    .append(coveredCfgs.size())
+                    .append("/")
+                    .append(totalConfigs)
+                    .append(" covered by outgoing transitions.");
+            if (!coveredConfigNames.isEmpty()) {
+                tip.append(" Covered: ")
+                        .append(escapeHtml(joinLimited(coveredConfigNames, 3)))
+                        .append(".");
+            }
+            if (!uncoveredConfigNames.isEmpty()) {
+                tip.append(" Uncovered: ")
+                        .append(escapeHtml(joinLimited(uncoveredConfigNames, 3)))
+                        .append(".");
+            }
+            tip.append("<br>");
+            tip.append("True deadlocks: ").append(trueDeadlocks).append("<br>");
+        }
+
+        if (state.isFailState()) {
+            tip.append("Fail state: exit-zone coverage not required.<br>");
+        }
+        if (!componentFailStates.isEmpty()) {
+            tip.append("Contains component Fail states: ")
+                    .append(escapeHtml(joinLimited(componentFailStates, 3)))
+                    .append(" (warning only).<br>");
+        }
+        if (!componentDeadlocks.isEmpty()) {
+            tip.append("Component sinks in configurations: ")
+                    .append(escapeHtml(joinLimited(componentDeadlocks, 3)))
+                    .append(".<br>");
+        }
+
+        if (outgoingEnabled.isEmpty()) {
+            tip.append("Outgoing connections: none enabled");
+            if (outgoingDisabled > 0) {
+                tip.append(" (").append(outgoingDisabled).append(" disabled)");
+            }
+            tip.append(".<br>");
+        } else {
+            tip.append("Outgoing connections: ")
+                    .append(outgoingEnabled.size())
+                    .append(" enabled");
+            if (outgoingDisabled > 0) {
+                tip.append(", ").append(outgoingDisabled).append(" disabled");
+            }
+            tip.append(".<br>");
+            int shown = 0;
+            for (PWSTransition pt : outgoingEnabled) {
+                if (shown >= 4) {
+                    tip.append("... ")
+                            .append(outgoingEnabled.size() - shown)
+                            .append(" more connections.<br>");
+                    break;
+                }
+                String targetName = pt.getTarget() != null ? pt.getTarget().getName() : "?";
+                int covered = coveredByTransition.getOrDefault(pt, 0);
+                tip.append("- to ")
+                        .append(escapeHtml(targetName))
+                        .append(" [")
+                        .append(escapeHtml(describeControllerTransition(pt)))
+                        .append("]: ")
+                        .append(covered)
+                        .append("/")
+                        .append(totalConfigs)
+                        .append(" configs covered.<br>");
+                shown++;
+            }
+        }
+
+        tip.append("Incoming connections: ").append(incomingEnabled).append(" enabled");
+        if (incomingDisabled > 0) {
+            tip.append(", ").append(incomingDisabled).append(" disabled");
+        }
+        tip.append(".<br>");
+        tip.append("Definitions follow Deadlock Framework: internal stuckness + strict action coverage.");
+        tip.append("</html>");
+        return tip.toString();
+    }
+
+    private String describeControllerTransition(PWSTransition transition) {
+        if (transition == null) {
+            return "unknown";
+        }
+        if (transition.isInitialTransition()) {
+            return "initial";
+        }
+        if (transition.isAutonomous()) {
+            return "autonomous";
+        }
+        String trigger = transition.getTriggerEvent();
+        if (trigger == null || trigger.isBlank()) {
+            return "triggered";
+        }
+        return "trigger " + trigger.trim();
+    }
+
+    private List<String> findComponentDeadlocks(List<Configuration> configs, Assembly assembly) {
+        if (configs == null || configs.isEmpty() || assembly == null || assembly.getStateMachines() == null) {
+            return Collections.emptyList();
+        }
+        Set<String> found = new LinkedHashSet<>();
+        for (Configuration cfg : configs) {
+            if (cfg == null) {
+                continue;
+            }
+            for (BasicStateProposition bsp : cfg.getBasicStatePropositions()) {
+                if (bsp == null) {
+                    continue;
+                }
+                machinery.StateMachine machine = assembly.getStateMachines().get(bsp.getMachineId());
+                machinery.StateInterface componentState = findStateByName(machine, bsp.getStateName());
+                if (componentState == null || "PseudoState".equals(componentState.getName())) {
+                    continue;
+                }
+                boolean hasEnabledOutgoing = false;
+                for (machinery.TransitionInterface ti : machine.getTransitions()) {
+                    if (ti != null && ti.getSource() == componentState && isTransitionEnabled(ti)) {
+                        hasEnabledOutgoing = true;
+                        break;
+                    }
+                }
+                if (!hasEnabledOutgoing) {
+                    found.add(bsp.getMachineId() + "." + bsp.getStateName());
+                }
+            }
+        }
+        return new ArrayList<>(found);
+    }
+
+    private List<String> findComponentFailStates(List<Configuration> configs, Assembly assembly) {
+        if (configs == null || configs.isEmpty() || assembly == null || assembly.getStateMachines() == null) {
+            return Collections.emptyList();
+        }
+        Set<String> found = new LinkedHashSet<>();
+        for (Configuration cfg : configs) {
+            if (cfg == null) {
+                continue;
+            }
+            for (BasicStateProposition bsp : cfg.getBasicStatePropositions()) {
+                if (bsp == null) {
+                    continue;
+                }
+                machinery.StateMachine machine = assembly.getStateMachines().get(bsp.getMachineId());
+                machinery.StateInterface componentState = findStateByName(machine, bsp.getStateName());
+                if (componentState instanceof machinery.State st
+                        && !"PseudoState".equals(st.getName())
+                        && st.isFailState()) {
+                    found.add(bsp.getMachineId() + "." + bsp.getStateName());
+                }
+            }
+        }
+        return new ArrayList<>(found);
+    }
+
+    private machinery.StateInterface findStateByName(machinery.StateMachine machine, String stateName) {
+        if (machine == null || stateName == null || machine.getStates() == null) {
+            return null;
+        }
+        for (machinery.StateInterface si : machine.getStates()) {
+            if (si != null && stateName.equals(si.getName())) {
+                return si;
+            }
+        }
+        return null;
+    }
+
+    private boolean isTransitionEnabled(machinery.TransitionInterface transition) {
+        if (transition instanceof machinery.Transition tr) {
+            return tr.isEnabled();
+        }
+        return true;
+    }
+
+    private String joinLimited(List<String> values, int limit) {
+        if (values == null || values.isEmpty()) {
+            return "";
+        }
+        int safeLimit = Math.max(1, limit);
+        int shown = Math.min(safeLimit, values.size());
+        String base = String.join(", ", values.subList(0, shown));
+        if (values.size() > shown) {
+            base += " (+" + (values.size() - shown) + " more)";
+        }
+        return base;
+    }
+
+    private String escapeHtml(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
     }
 
     /**

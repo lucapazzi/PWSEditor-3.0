@@ -37,6 +37,7 @@ import javax.swing.JCheckBoxMenuItem;
 
 /** Main Swing application window for the PWS editor. */
 public class PWSEditor extends JFrame {
+    private static final int INDEFINITE_TOOLTIP_DISMISS_DELAY_MS = Integer.MAX_VALUE;
 
     // private Assembly assembly;
     private PWSStateMachine pwsStateMachine;
@@ -101,6 +102,7 @@ public class PWSEditor extends JFrame {
      */
     public PWSEditor(PWSStateMachine machine) {
         super("PWSEditor");
+        configureTooltipBehavior();
         // Use the specialized PWSStateMachine:
         if (machine instanceof PWSStateMachine) {
             this.pwsStateMachine = ((PWSStateMachine) machine).clone();
@@ -118,6 +120,11 @@ public class PWSEditor extends JFrame {
         this.currentDocument = null;
         updateWindowTitle();
         initializeUndoHistory();
+    }
+
+    private void configureTooltipBehavior() {
+        // Keep tooltips visible while the pointer remains still over the same component.
+        ToolTipManager.sharedInstance().setDismissDelay(INDEFINITE_TOOLTIP_DISMISS_DELAY_MS);
     }
 
     // Helper stream that can append objects to an existing object stream
