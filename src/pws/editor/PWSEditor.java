@@ -79,6 +79,7 @@ public class PWSEditor extends JFrame {
     private JMenuItem ltlEditorItem;
     private JMenuItem ltlCheckNowItem;
     private LTLChecksDialog ltlChecksDialog;
+    private JDialog infoDialog;
     // Track current semantics recalculation worker for debouncing
     private SwingWorker<Void, Void> currentSemanticsWorker = null;
     private JMenuItem undoItem;
@@ -965,12 +966,7 @@ public class PWSEditor extends JFrame {
 
         showGridItem = new JCheckBoxMenuItem("Show grid", true);
         showGridItem.addActionListener(e -> {
-            if (baseEditor == null) return;
-            PWSStateMachinePanel panel =
-                (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
-            panel.setShowGrid(showGridItem.isSelected());
-            panel.repaint();
-            markDocumentDirty();
+            setShowGridEnabled(showGridItem.isSelected());
         });
         viewMenu.add(showGridItem);
 
@@ -1124,6 +1120,11 @@ public class PWSEditor extends JFrame {
         updateUndoRedoMenuItems();
 
         menuBar.add(viewMenu);
+        JMenu infoMenu = new JMenu("Info");
+        JMenuItem showInfoItem = new JMenuItem("Show Info");
+        showInfoItem.addActionListener(e -> showInfoWindow());
+        infoMenu.add(showInfoItem);
+        menuBar.add(infoMenu);
         return menuBar;
     }
 
@@ -1257,8 +1258,9 @@ public class PWSEditor extends JFrame {
         if (stateSizeMenu != null) stateSizeMenu.setEnabled(ctrl);
         if (stateBorderMenu != null) stateBorderMenu.setEnabled(ctrl);
         if (stateFontMenu != null) stateFontMenu.setEnabled(ctrl);
-        if (ltlEditorItem != null) ltlEditorItem.setEnabled(ctrl);
-        if (ltlCheckNowItem != null) ltlCheckNowItem.setEnabled(ctrl);
+        // Temporarily keep LTL actions disabled.
+        if (ltlEditorItem != null) ltlEditorItem.setEnabled(false);
+        if (ltlCheckNowItem != null) ltlCheckNowItem.setEnabled(false);
         if (ctrl) {
             syncViewMenuSelections();
         }
@@ -1362,6 +1364,31 @@ public class PWSEditor extends JFrame {
                 changed = true;
             }
             editModeItem.setSelected(enabled);
+        }
+        if (changed) {
+            markDocumentDirty();
+        }
+    }
+
+    /** Keeps the Show grid menu item and controller panel in sync. */
+    public void setShowGridEnabled(boolean enabled) {
+        boolean changed = false;
+        if (showGridItem != null) {
+            if (showGridItem.isSelected() != enabled) {
+                changed = true;
+            }
+            showGridItem.setSelected(enabled);
+        }
+        if (baseEditor != null) {
+            PWSStateMachinePanel panel =
+                (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+            if (panel != null) {
+                if (panel.isShowGrid() != enabled) {
+                    changed = true;
+                }
+                panel.setShowGrid(enabled);
+                panel.repaint();
+            }
         }
         if (changed) {
             markDocumentDirty();
@@ -1899,9 +1926,7 @@ public class PWSEditor extends JFrame {
         }
     }
 
-    private static JWindow createSplashWindow() {
-        JWindow splash = new JWindow();
-
+    private static JPanel createInfoContentPanel() {
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
         content.setBorder(BorderFactory.createCompoundBorder(
@@ -1909,7 +1934,6 @@ public class PWSEditor extends JFrame {
                 BorderFactory.createEmptyBorder(18, 22, 18, 22)));
         content.setBackground(new Color(250, 250, 250));
         content.setOpaque(true);
-        content.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         JLabel title = new JLabel("PWSEditor", SwingConstants.CENTER);
         title.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -1925,29 +1949,23 @@ public class PWSEditor extends JFrame {
                 SwingConstants.CENTER);
         license.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JLabel hint = new JLabel("Click anywhere to continue", SwingConstants.CENTER);
-        hint.setAlignmentX(Component.CENTER_ALIGNMENT);
-        hint.setFont(hint.getFont().deriveFont(Font.PLAIN, 11f));
-        hint.setForeground(new Color(90, 90, 90));
-
         content.add(title);
         content.add(Box.createVerticalStrut(8));
         content.add(license);
-        content.add(Box.createVerticalStrut(12));
-        content.add(hint);
-
-        splash.setContentPane(content);
-        splash.pack();
-        return splash;
+        return content;
     }
 
-    private static void addMouseListenerRecursive(Component component, java.awt.event.MouseListener listener) {
-        component.addMouseListener(listener);
-        if (component instanceof Container) {
-            for (Component child : ((Container) component).getComponents()) {
-                addMouseListenerRecursive(child, listener);
-            }
+    private void showInfoWindow() {
+        if (infoDialog == null || !infoDialog.isDisplayable()) {
+            infoDialog = new JDialog(this, "PWSEditor Info", false);
+            infoDialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+            infoDialog.setContentPane(createInfoContentPanel());
+            infoDialog.pack();
         }
+        infoDialog.setLocationRelativeTo(this);
+        infoDialog.setVisible(true);
+        infoDialog.toFront();
+        infoDialog.requestFocus();
     }
 
 
@@ -1976,27 +1994,7 @@ public class PWSEditor extends JFrame {
             editor.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             editor.setSize(1000, 600);
             editor.setLocationRelativeTo(null);
-
-            JWindow splash = createSplashWindow();
-            splash.setLocationRelativeTo(null);
-            splash.setAlwaysOnTop(true);
-
-            final boolean[] dismissed = {false};
-            java.awt.event.MouseAdapter dismissListener = new java.awt.event.MouseAdapter() {
-                @Override
-                public void mousePressed(java.awt.event.MouseEvent e) {
-                    if (dismissed[0]) return;
-                    dismissed[0] = true;
-                    splash.setVisible(false);
-                    splash.dispose();
-                    editor.setVisible(true);
-                    editor.toFront();
-                    editor.requestFocus();
-                }
-            };
-            addMouseListenerRecursive(splash.getContentPane(), dismissListener);
-            splash.addMouseListener(dismissListener);
-            splash.setVisible(true);
+            editor.setVisible(true);
         });
     }
 }

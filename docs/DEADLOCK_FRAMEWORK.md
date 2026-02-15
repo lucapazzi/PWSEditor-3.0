@@ -33,6 +33,8 @@ This document captures the current deadlock notions for PWSEditor under **strict
 A configuration is **internally stuck** if it **cannot evolve internally** via autonomous component transitions.
 - This is a property of the *configuration*, not just a single component.
 - Internal evolution ignores controller actions.
+- **Special case (zero component machines):** the empty configuration `()` is internally stuck by definition, because there are no component machines and therefore no autonomous component transition can fire.
+- This special case is **not** a component deadlock (there is no component state involved); it is structural absence of internal evolution.
 
 ## 4) Controller-Level Deadlock
 
@@ -62,6 +64,7 @@ If a controller state’s semantics include component Fail states:
 
 - Component sink state: treat as **failure** (or flag if not marked Fail).
 - Configuration internally stuck: no autonomous component evolution.
+- Zero-component assembly: `()` is internally stuck by definition (no components => no autonomous evolution).
 - Controller true deadlock: internally stuck **and** not strictly covered by any outgoing controller transition.
 
 ## 8) Example: Engine May Fail to Start

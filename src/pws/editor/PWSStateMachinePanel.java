@@ -2653,6 +2653,18 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         
         popup.addSeparator();
 
+        JCheckBoxMenuItem showGridItem = new JCheckBoxMenuItem("Show grid", isShowGrid());
+        showGridItem.addActionListener(ae -> {
+            boolean enabled = showGridItem.isSelected();
+            java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+            if (w instanceof PWSEditor pe) {
+                pe.setShowGridEnabled(enabled);
+            } else {
+                setShowGrid(enabled);
+            }
+        });
+        popup.add(showGridItem);
+
         JCheckBoxMenuItem editModeItem = new JCheckBoxMenuItem("Edit mode", isEditMode());
         editModeItem.addActionListener(ae -> {
             boolean enabled = editModeItem.isSelected();

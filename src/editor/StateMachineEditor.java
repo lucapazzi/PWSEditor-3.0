@@ -26,6 +26,7 @@ public class StateMachineEditor extends JFrame {
     private Runnable closeCallback = null;
     private Runnable modelChangedCallback = null;
     private JCheckBoxMenuItem editModeItem;
+    private JCheckBoxMenuItem showGridItem;
     private JMenuItem undoItem;
     private JMenuItem redoItem;
     private static final int MAX_UNDO = 100;
@@ -342,8 +343,8 @@ public class StateMachineEditor extends JFrame {
         // View menu (grid and snapping)
         JMenu viewMenu = new JMenu("View");
 
-        JCheckBoxMenuItem showGridItem = new JCheckBoxMenuItem("Show grid", true);
-        showGridItem.addActionListener(e -> statePanel.setShowGrid(showGridItem.isSelected()));
+        showGridItem = new JCheckBoxMenuItem("Show grid", statePanel != null && statePanel.isShowGrid());
+        showGridItem.addActionListener(e -> setShowGridEnabled(showGridItem.isSelected()));
         viewMenu.add(showGridItem);
 
         JCheckBoxMenuItem snapToGridItem = new JCheckBoxMenuItem("Snap to grid", true);
@@ -555,6 +556,16 @@ public class StateMachineEditor extends JFrame {
         }
         if (statePanel != null) {
             statePanel.setEditMode(enabled);
+        }
+    }
+
+    /** Keeps the Show grid menu item and panel in sync. */
+    public void setShowGridEnabled(boolean enabled) {
+        if (showGridItem != null) {
+            showGridItem.setSelected(enabled);
+        }
+        if (statePanel != null) {
+            statePanel.setShowGrid(enabled);
         }
     }
 
