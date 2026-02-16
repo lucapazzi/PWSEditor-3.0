@@ -19,15 +19,17 @@ import java.util.List;
  * Uses an "add machine constraint" approach where you explicitly add only
  * the machines you want to constrain.
  */
+@SuppressWarnings("this-escape")
 public class ConstraintsEditorDialog extends JDialog {
+    private static final long serialVersionUID = 1L;
     private PWSState state;
     private Assembly assembly;
     private JPanel constraintLinesPanel;
     private JLabel previewLabel;
-    private List<ConstraintLinePanel> constraintLines = new ArrayList<>();
+    private ArrayList<ConstraintLinePanel> constraintLines = new ArrayList<>();
     
     // Cache of machine IDs and their states
-    private Map<String, List<String>> machineStates = new LinkedHashMap<>();
+    private LinkedHashMap<String, List<String>> machineStates = new LinkedHashMap<>();
 
     /**
      * Creates a dialog to edit constraint semantics for a state.
@@ -272,8 +274,9 @@ public class ConstraintsEditorDialog extends JDialog {
      * Users can add/remove individual machine constraints within this line.
      */
     private class ConstraintLinePanel extends JPanel {
+        private static final long serialVersionUID = 1L;
         private JPanel machineConstraintsPanel;
-        private List<MachineConstraintPanel> machineConstraints = new ArrayList<>();
+        private ArrayList<MachineConstraintPanel> machineConstraints = new ArrayList<>();
         
         ConstraintLinePanel(Map<String, String> initialSelections) {
             setLayout(new BorderLayout(4, 2));
@@ -403,6 +406,7 @@ public class ConstraintsEditorDialog extends JDialog {
          * Inner class representing a single machine:state constraint chip.
          */
         private class MachineConstraintPanel extends JPanel {
+            private static final long serialVersionUID = 1L;
             private String machineId;
             private JComboBox<String> stateCombo;
             

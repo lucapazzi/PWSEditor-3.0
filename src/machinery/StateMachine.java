@@ -7,11 +7,12 @@ import java.util.List;
 
 /** Mutable state machine with states, transitions, and current state. */
 public class StateMachine implements StateMachineInterface, Cloneable {
+    private static final long serialVersionUID = 1L;
     private String name;
-    protected List<StateInterface> states;
-    protected List<TransitionInterface> transitions;
+    protected ArrayList<StateInterface> states;
+    protected ArrayList<TransitionInterface> transitions;
     private StateInterface currentState;
-    private Set<String> events;
+    private HashSet<String> events;
     protected StateInterface pseudoState; // Initial pseudo-state
 
     public StateMachine(String name) {
@@ -30,10 +31,10 @@ public class StateMachine implements StateMachineInterface, Cloneable {
                         StateInterface currentState,
                         Set<String> events) {
         this.name = name;
-        this.states = (states != null) ? states : new ArrayList<>();
-        this.transitions = (transitions != null) ? transitions : new ArrayList<>();
+        this.states = (states != null) ? new ArrayList<>(states) : new ArrayList<>();
+        this.transitions = (transitions != null) ? new ArrayList<>(transitions) : new ArrayList<>();
         this.currentState = currentState;
-        this.events = (events != null) ? events : new HashSet<>();
+        this.events = (events != null) ? new HashSet<>(events) : new HashSet<>();
         boolean foundPseudo = false;
         for (StateInterface s : this.states) {
             if (s.getName().equals("PseudoState")) {
@@ -123,7 +124,7 @@ public class StateMachine implements StateMachineInterface, Cloneable {
     }
 
     public void setStates(List<StateInterface> states) {
-        this.states = states;
+        this.states = (states != null) ? new ArrayList<>(states) : new ArrayList<>();
     }
 
     @Override
@@ -132,7 +133,7 @@ public class StateMachine implements StateMachineInterface, Cloneable {
     }
 
     public void setTransitions(List<TransitionInterface> transitions) {
-        this.transitions = (transitions != null) ? transitions : new ArrayList<>();
+        this.transitions = (transitions != null) ? new ArrayList<>(transitions) : new ArrayList<>();
         rebuildEventsFromTransitions();
     }
 

@@ -4,7 +4,9 @@ import java.awt.*;
 import java.util.UUID;
 
 /** Transition between two states with trigger/guard metadata and geometry. */
+@SuppressWarnings("this-escape")
 public class Transition implements TransitionInterface {
+    private static final long serialVersionUID = 1L;
 
     private String id;
 

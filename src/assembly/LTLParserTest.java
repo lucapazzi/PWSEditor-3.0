@@ -1,9 +1,5 @@
 package assembly;
 
-/**
- * Minimal test runner for LTL parser/analyzer/validator.
- * Run as: java -cp out assembly.LTLParserTest
- */
 /** Simple CLI test harness for the LTL parser and classifier. */
 public class LTLParserTest {
     /** Utility class; do not instantiate. */

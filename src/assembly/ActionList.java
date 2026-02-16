@@ -6,6 +6,7 @@ import java.util.Collection;
 
 /** Serializable list of actions associated with a transition. */
 public class ActionList extends ArrayList<Action> implements Serializable {
+    private static final long serialVersionUID = 1L;
 
     /** Creates an empty action list. */
     public ActionList() {

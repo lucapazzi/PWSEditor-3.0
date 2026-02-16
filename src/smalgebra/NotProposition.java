@@ -6,6 +6,7 @@ import assembly.AssemblyInterface;
  * Rappresenta la negazione logica (NOT) di una SMProposition.
  */
 public class NotProposition implements SMProposition {
+    private static final long serialVersionUID = 1L;
     private final SMProposition proposition;
 
     /**

@@ -15,6 +15,7 @@ import java.util.Set;
 
 /** PWS-specific state with semantics, constraints, and UI annotation. */
 public class PWSState extends State {
+    private static final long serialVersionUID = 1L;
     private transient StateSemanticsAnnotation annotation;
     private boolean annotationVisible = false; // Di default nascosta.
     private boolean annotationMinimized = false; // Whether the dashboard is minimized (small square)

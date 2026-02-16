@@ -7,6 +7,7 @@ import assembly.AssemblyInterface;
  * Rappresenta la congiunzione logica (AND) di due SMProposition.
  */
 public class AndProposition implements SMProposition {
+    private static final long serialVersionUID = 1L;
     private final SMProposition left;
     private final SMProposition right;
 

@@ -65,6 +65,7 @@ public class LTLParser {
 
     /** Parse error with position information. */
     public static class ParseException extends Exception {
+        private static final long serialVersionUID = 1L;
         /** Error position in the input string. */
         public final int pos;
         /**

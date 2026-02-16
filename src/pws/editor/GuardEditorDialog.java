@@ -25,12 +25,14 @@ import java.util.function.Consumer;
 import java.util.StringJoiner;
 
 /** Dialog that reuses the "add machine constraint" UI to compose trigger guards. */
+@SuppressWarnings("this-escape")
 public class GuardEditorDialog extends JDialog {
+    private static final long serialVersionUID = 1L;
     private final Assembly assembly;
     private final PWSTransition transition;
-    private final Consumer<SMProposition> onApply;
-    private final Map<String, List<String>> machineStates = new LinkedHashMap<>();
-    private final java.util.List<GuardLinePanel> guardLines = new ArrayList<>();
+    private final transient Consumer<SMProposition> onApply;
+    private final LinkedHashMap<String, List<String>> machineStates = new LinkedHashMap<>();
+    private final java.util.ArrayList<GuardLinePanel> guardLines = new ArrayList<>();
     private final JPanel guardLinesPanel;
     private final JLabel previewLabel;
 
@@ -283,7 +285,8 @@ public class GuardEditorDialog extends JDialog {
     }
 
     private class GuardLinePanel extends JPanel {
-        private final List<MachineConstraintChip> chips = new ArrayList<>();
+        private static final long serialVersionUID = 1L;
+        private final ArrayList<MachineConstraintChip> chips = new ArrayList<>();
 
         GuardLinePanel(Map<String, String> initialSelections) {
             setLayout(new BorderLayout(4, 4));
@@ -364,6 +367,7 @@ public class GuardEditorDialog extends JDialog {
     }
 
     private class MachineConstraintChip extends JPanel {
+        private static final long serialVersionUID = 1L;
         private final GuardLinePanel owner;
         private final String machineId;
         private final JComboBox<String> stateCombo;

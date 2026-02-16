@@ -18,20 +18,22 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 
 /** Swing editor frame for a state machine and its canvas. */
+@SuppressWarnings("this-escape")
 public class StateMachineEditor extends JFrame {
+    private static final long serialVersionUID = 1L;
 
     protected StateMachine stateMachine;
     protected StateMachinePanel statePanel;
     protected Assembly assembly;
-    private Runnable closeCallback = null;
-    private Runnable modelChangedCallback = null;
+    private transient Runnable closeCallback = null;
+    private transient Runnable modelChangedCallback = null;
     private JCheckBoxMenuItem editModeItem;
     private JCheckBoxMenuItem showGridItem;
     private JMenuItem undoItem;
     private JMenuItem redoItem;
     private static final int MAX_UNDO = 100;
-    private final Deque<String> undoStack = new ArrayDeque<>();
-    private final Deque<String> redoStack = new ArrayDeque<>();
+    private final ArrayDeque<String> undoStack = new ArrayDeque<>();
+    private final ArrayDeque<String> redoStack = new ArrayDeque<>();
     private String currentSnapshot;
     private boolean suppressDirtyNotifications = false;
     private boolean undoRecordingSuspended = false;

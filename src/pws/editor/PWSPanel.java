@@ -17,7 +17,9 @@ import java.awt.datatransfer.Transferable;
 import java.util.Map;
 
 /** Panel for browsing assembly machines and opening editors. */
+@SuppressWarnings("this-escape")
 public class PWSPanel extends JPanel {
+    private static final long serialVersionUID = 1L;
 
     private Assembly assembly;
     private DefaultListModel<String> listModel;
@@ -142,6 +144,7 @@ public class PWSPanel extends JPanel {
     }
 
     private class AssemblyReorderTransferHandler extends TransferHandler {
+        private static final long serialVersionUID = 1L;
         private int dragIndex = -1;
         private String dragValue = null;
 
@@ -261,7 +264,7 @@ public class PWSPanel extends JPanel {
                    .replace(">", "&gt;");
     }
 
-    private MachineSelectionListener selectionListener = null;
+    private transient MachineSelectionListener selectionListener = null;
 
     /**
      * Sets the selection listener.

@@ -6,9 +6,10 @@ import java.util.List;
 
 /** State node with position and incoming/outgoing transitions. */
 public class State implements StateInterface {
+    private static final long serialVersionUID = 1L;
     private String name;
-    private List<TransitionInterface> outgoingTransitions;
-    private List<TransitionInterface> incomingTransitions;
+    private ArrayList<TransitionInterface> outgoingTransitions;
+    private ArrayList<TransitionInterface> incomingTransitions;
 
     private Point position;
     private boolean failState = false;

@@ -6,6 +6,7 @@ import assembly.AssemblyInterface;
  * Rappresenta la disgiunzione logica (OR) di due SMProposition.
  */
 public class OrProposition implements SMProposition {
+    private static final long serialVersionUID = 1L;
     private final SMProposition left;
     private final SMProposition right;
 

@@ -53,7 +53,9 @@ import java.awt.BasicStroke;
 import java.awt.Stroke;
 
 /** PWS-specific canvas with guard, action, and semantics annotations. */
+@SuppressWarnings("this-escape")
 public class PWSStateMachinePanel extends StateMachinePanel {
+    private static final long serialVersionUID = 1L;
     /** Whether to render state‐semantics annotations at all */
     private boolean showStateAnnotations = false;
     private static final Color FAIL_STATE_BORDER_COLOR = new Color(204, 170, 0);
@@ -86,23 +88,23 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     private static final Color SELECTION_RECT_FILL = new Color(27, 88, 166, 48);
     private static final int EXPORT_SELECTION_MARGIN = 16;
 
-    private final Set<StateInterface> selectedStates = new LinkedHashSet<>();
-    private final Set<Integer> selectedPseudoAliases = new LinkedHashSet<>();
-    private final Set<Component> selectedComponents = Collections.newSetFromMap(new IdentityHashMap<>());
-    private final Set<TransitionInterface> selectedTransitions = new LinkedHashSet<>();
+    private final LinkedHashSet<StateInterface> selectedStates = new LinkedHashSet<>();
+    private final LinkedHashSet<Integer> selectedPseudoAliases = new LinkedHashSet<>();
+    private final LinkedHashSet<Component> selectedComponents = new LinkedHashSet<>();
+    private final LinkedHashSet<TransitionInterface> selectedTransitions = new LinkedHashSet<>();
     private boolean selectionBoxActive = false;
     private Point selectionBoxAnchor = null;
     private Rectangle selectionBoxRect = null;
-    private final Set<StateInterface> selectionBoxBaseStates = new LinkedHashSet<>();
-    private final Set<Integer> selectionBoxBaseAliases = new LinkedHashSet<>();
-    private final Set<Component> selectionBoxBaseComponents = Collections.newSetFromMap(new IdentityHashMap<>());
-    private final Set<TransitionInterface> selectionBoxBaseTransitions = new LinkedHashSet<>();
+    private final LinkedHashSet<StateInterface> selectionBoxBaseStates = new LinkedHashSet<>();
+    private final LinkedHashSet<Integer> selectionBoxBaseAliases = new LinkedHashSet<>();
+    private final LinkedHashSet<Component> selectionBoxBaseComponents = new LinkedHashSet<>();
+    private final LinkedHashSet<TransitionInterface> selectionBoxBaseTransitions = new LinkedHashSet<>();
     private boolean selectionDragActive = false;
     private Point selectionDragAnchor = null;
-    private final Map<StateInterface, Point> selectionDragStateOrigins = new HashMap<>();
-    private final Map<Integer, Point> selectionDragAliasOrigins = new HashMap<>();
-    private final Map<Component, Rectangle> selectionDragComponentOrigins = new IdentityHashMap<>();
-    private final Map<TransitionInterface, Point> selectionDragTransitionControlOrigins = new HashMap<>();
+    private final HashMap<StateInterface, Point> selectionDragStateOrigins = new HashMap<>();
+    private final HashMap<Integer, Point> selectionDragAliasOrigins = new HashMap<>();
+    private final IdentityHashMap<Component, Rectangle> selectionDragComponentOrigins = new IdentityHashMap<>();
+    private final HashMap<TransitionInterface, Point> selectionDragTransitionControlOrigins = new HashMap<>();
     private boolean renderSelectionHighlights = true;
 
     public PWSStateMachinePanel(PWSStateMachine stateMachine) {

@@ -4,6 +4,7 @@ import java.io.Serializable;
 
 /** Action emitted by a machine, identified by machine id and event name. */
 public class Action implements Serializable {
+    private static final long serialVersionUID = 1L;
     private String id;
     private String event;
 

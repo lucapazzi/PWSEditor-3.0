@@ -28,7 +28,9 @@ import java.util.List;
  * Each issue category corresponds to red visual indicators on the diagram.
  * Future: Will also report LTL formula satisfaction.
  */
+@SuppressWarnings("this-escape")
 public class ControllerReportDialog extends JDialog {
+    private static final long serialVersionUID = 1L;
     
     // Text styles
     private static final String STYLE_TITLE = "title";

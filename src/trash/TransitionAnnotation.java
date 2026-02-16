@@ -5,7 +5,9 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
+@SuppressWarnings("this-escape")
 public class TransitionAnnotation extends JComponent {
+    private static final long serialVersionUID = 1L;
     private String annotationText;
     private Point dragOffset;
 

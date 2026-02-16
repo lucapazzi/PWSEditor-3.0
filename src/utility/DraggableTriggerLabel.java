@@ -8,7 +8,9 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
 /** Draggable label used to reposition transition trigger text. */
+@SuppressWarnings("this-escape")
 public class DraggableTriggerLabel extends JLabel {
+    private static final long serialVersionUID = 1L;
     private Point initialClick;
     private TransitionInterface associatedTransition;
     private transient boolean delegatedToPanelSelection = false;

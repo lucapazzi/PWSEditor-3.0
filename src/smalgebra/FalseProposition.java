@@ -4,6 +4,7 @@ import assembly.AssemblyInterface;
 
 /** Proposition that always evaluates to false. */
 public class FalseProposition implements SMProposition {
+    private static final long serialVersionUID = 1L;
 
     /** Creates a false proposition. */
     public FalseProposition() {

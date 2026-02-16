@@ -15,13 +15,15 @@ import serializer.JsonModelSerializer;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 /** Panel for listing and importing machines in the library. */
+@SuppressWarnings("this-escape")
 public class MachineLibraryPanel extends JPanel {
+    private static final long serialVersionUID = 1L;
 
     private final Assembly assembly;
     private final DefaultListModel<String> listModel = new DefaultListModel<>();
     private final JList<String> list;
-    private Runnable beforeSaveLibrary = null;
-    private Runnable libraryChangedCallback = null;
+    private transient Runnable beforeSaveLibrary = null;
+    private transient Runnable libraryChangedCallback = null;
 
     /** Listener for library selection and lifecycle events. */
     public interface LibrarySelectionListener {
@@ -51,7 +53,7 @@ public class MachineLibraryPanel extends JPanel {
         void libraryLoaded(String key);
     }
 
-    private LibrarySelectionListener listener = null;
+    private transient LibrarySelectionListener listener = null;
 
     /**
      * Creates a panel bound to the given assembly.

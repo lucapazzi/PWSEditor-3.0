@@ -29,9 +29,11 @@ import machinery.StateMachine;
 import machinery.TransitionInterface;
 
 /** Annotation widget for editing guard propositions. */
+@SuppressWarnings("this-escape")
 public class GuardAnnotation extends Annotation<SMProposition> {
+    private static final long serialVersionUID = 1L;
     private Assembly assembly;
-    private Consumer<SMProposition> updateCallback;
+    private transient Consumer<SMProposition> updateCallback;
     private TransitionInterface associatedTransition;
     
     // Problem status for coloring
@@ -417,8 +419,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 popup.add(removeItem);
                 popup.addSeparator();
             }
-            List list = assembly.getAssemblyGuards();
-            List<SMProposition> guards = (List<SMProposition>) list;
+            List<? extends SMProposition> guards = assembly.getAssemblyGuards();
 
             // If associatedTransition and source has semantics, filter guards appropriately.
             // For TRUE autonomous transitions (not initial) use reactiveSemantics (ExitZone targets).
@@ -525,8 +526,7 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             popup.addSeparator();
             
             // Get all available guards
-            List list = assembly.getAssemblyGuards();
-            List<SMProposition> guards = (List<SMProposition>) list;
+            List<? extends SMProposition> guards = assembly.getAssemblyGuards();
             
             // Check if this is a TRUE autonomous transition (not initial from pseudo-state)
             // Initial transitions from pseudo-state are event-triggered with "_init"

@@ -9,8 +9,9 @@ import java.util.*;
 
 /** Represents a configuration as a set of basic state propositions. */
 public class Configuration implements Serializable {
+    private static final long serialVersionUID = 1L;
     private String assemblyId;
-    private List<BasicStateProposition> propositions;
+    private ArrayList<BasicStateProposition> propositions;
 
     /**
      * Creates an empty configuration for the given assembly.

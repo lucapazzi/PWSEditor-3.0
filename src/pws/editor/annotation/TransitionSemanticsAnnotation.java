@@ -8,6 +8,7 @@ import java.awt.*;
 import java.awt.event.MouseEvent;
 
 public class TransitionSemanticsAnnotation extends Annotation<Semantics> {
+    private static final long serialVersionUID = 1L;
     public TransitionSemanticsAnnotation(Semantics content) {
         super(content);
     }

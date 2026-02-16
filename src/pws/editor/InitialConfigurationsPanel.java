@@ -16,12 +16,15 @@ import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /** Simple panel that renders initial configurations for the current assembly. */
+@SuppressWarnings("this-escape")
 public class InitialConfigurationsPanel extends JPanel {
+    private static final long serialVersionUID = 1L;
     private static final Color PLACEHOLDER_COLOR = new Color(120, 120, 120);
     private static final Color SECTION_COLOR = new Color(150, 150, 150);
     private static final Color TEXT_GREEN = Color.GREEN.darker();
@@ -145,15 +148,16 @@ public class InitialConfigurationsPanel extends JPanel {
     }
 
     private final class ClosureTable extends JComponent {
+        private static final long serialVersionUID = 1L;
         private static final int TABLE_PADDING_X = 8;
         private static final int TABLE_PADDING_Y = 6;
         private static final int COL_GAP = 10;
         private static final int ROW_GAP = 4;
 
-        private List<Configuration> configs = Collections.emptyList();
-        private List<String> machineIds = Collections.emptyList();
-        private Map<Configuration, Boolean> coverageMap = Collections.emptyMap();
-        private final List<HitArea> hitAreas = new ArrayList<>();
+        private ArrayList<Configuration> configs = new ArrayList<>();
+        private ArrayList<String> machineIds = new ArrayList<>();
+        private LinkedHashMap<Configuration, Boolean> coverageMap = new LinkedHashMap<>();
+        private final ArrayList<HitArea> hitAreas = new ArrayList<>();
         private String placeholderText = "No closure configurations.";
         private boolean showPlaceholder = true;
 
@@ -175,9 +179,9 @@ public class InitialConfigurationsPanel extends JPanel {
                     list.add(c);
                 }
             }
-            this.configs = list;
-            this.machineIds = (machineIds != null) ? new ArrayList<>(machineIds) : Collections.emptyList();
-            this.coverageMap = computeCoverage(list, machine);
+            this.configs = new ArrayList<>(list);
+            this.machineIds = (machineIds != null) ? new ArrayList<>(machineIds) : new ArrayList<>();
+            this.coverageMap = new LinkedHashMap<>(computeCoverage(list, machine));
             this.showPlaceholder = list.isEmpty();
             revalidate();
             repaint();
@@ -186,7 +190,7 @@ public class InitialConfigurationsPanel extends JPanel {
         private void setPlaceholder(String text) {
             this.placeholderText = text != null ? text : "";
             this.showPlaceholder = true;
-            this.coverageMap = Collections.emptyMap();
+            this.coverageMap = new LinkedHashMap<>();
             revalidate();
             repaint();
         }
@@ -375,6 +379,7 @@ public class InitialConfigurationsPanel extends JPanel {
     }
 
     private static final class RoundedLineBorder extends AbstractBorder {
+        private static final long serialVersionUID = 1L;
         private final Color color;
         private final int radius;
         private final int thickness;

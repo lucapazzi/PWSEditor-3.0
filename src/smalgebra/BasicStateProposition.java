@@ -14,6 +14,7 @@ import java.util.Objects;
  * Represents an elementary state proposition of the form "machineId.stateName".
  */
 public class BasicStateProposition implements SMProposition {
+    private static final long serialVersionUID = 1L;
     private final String machineId;
     private final String stateName;
 

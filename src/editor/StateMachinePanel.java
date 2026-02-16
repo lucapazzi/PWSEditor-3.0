@@ -25,7 +25,9 @@ import java.util.Map;
 import java.util.Set;
 
 /** Canvas panel for drawing and editing state machines. */
+@SuppressWarnings("this-escape")
 public class StateMachinePanel extends JPanel implements MouseListener, MouseMotionListener {
+    private static final long serialVersionUID = 1L;
 
     protected StateMachine stateMachine;
     protected StateInterface selectedState = null;
@@ -143,11 +145,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     private static final float[] COMPONENT_FAIL_STATE_DASH = new float[] {6f, 4f};
 
     // Map to hold trigger labels for transitions
-    protected Map<TransitionInterface, DraggableTriggerLabel> triggerLabels = new HashMap<>();
+    protected HashMap<TransitionInterface, DraggableTriggerLabel> triggerLabels = new HashMap<>();
 
     // Pseudostate alias support (UI-only)
-    protected final List<Point> pseudoStateAliases = new ArrayList<>();
-    protected final Map<TransitionInterface, Integer> pseudoAliasByTransition = new HashMap<>();
+    protected final ArrayList<Point> pseudoStateAliases = new ArrayList<>();
+    protected final HashMap<TransitionInterface, Integer> pseudoAliasByTransition = new HashMap<>();
     protected int hitPseudoAliasIndex = -1;
     protected int selectedPseudoAliasIndex = -1;
     protected int menuPseudoAliasIndex = -1;
@@ -170,26 +172,26 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     private static final Color SELECTION_RECT_STROKE = new Color(27, 88, 166);
     private static final Color SELECTION_RECT_FILL = new Color(27, 88, 166, 48);
     private static final int EXPORT_SELECTION_MARGIN = 16;
-    private final Set<StateInterface> selectedStates = new LinkedHashSet<>();
-    private final Set<Integer> selectedPseudoAliases = new LinkedHashSet<>();
-    private final Set<Component> selectedComponents = Collections.newSetFromMap(new IdentityHashMap<>());
-    private final Set<TransitionInterface> selectedTransitions = new LinkedHashSet<>();
+    private final LinkedHashSet<StateInterface> selectedStates = new LinkedHashSet<>();
+    private final LinkedHashSet<Integer> selectedPseudoAliases = new LinkedHashSet<>();
+    private final LinkedHashSet<Component> selectedComponents = new LinkedHashSet<>();
+    private final LinkedHashSet<TransitionInterface> selectedTransitions = new LinkedHashSet<>();
     private boolean selectionBoxActive = false;
     private Point selectionBoxAnchor = null;
     private Rectangle selectionBoxRect = null;
-    private final Set<StateInterface> selectionBoxBaseStates = new LinkedHashSet<>();
-    private final Set<Integer> selectionBoxBaseAliases = new LinkedHashSet<>();
-    private final Set<Component> selectionBoxBaseComponents = Collections.newSetFromMap(new IdentityHashMap<>());
-    private final Set<TransitionInterface> selectionBoxBaseTransitions = new LinkedHashSet<>();
+    private final LinkedHashSet<StateInterface> selectionBoxBaseStates = new LinkedHashSet<>();
+    private final LinkedHashSet<Integer> selectionBoxBaseAliases = new LinkedHashSet<>();
+    private final LinkedHashSet<Component> selectionBoxBaseComponents = new LinkedHashSet<>();
+    private final LinkedHashSet<TransitionInterface> selectionBoxBaseTransitions = new LinkedHashSet<>();
     private boolean selectionDragActive = false;
     private Point selectionDragAnchor = null;
-    private final Map<StateInterface, Point> selectionDragStateOrigins = new HashMap<>();
-    private final Map<Integer, Point> selectionDragAliasOrigins = new HashMap<>();
-    private final Map<Component, Rectangle> selectionDragComponentOrigins = new IdentityHashMap<>();
-    private final Map<TransitionInterface, Point> selectionDragTransitionControlOrigins = new HashMap<>();
+    private final HashMap<StateInterface, Point> selectionDragStateOrigins = new HashMap<>();
+    private final HashMap<Integer, Point> selectionDragAliasOrigins = new HashMap<>();
+    private final IdentityHashMap<Component, Rectangle> selectionDragComponentOrigins = new IdentityHashMap<>();
+    private final HashMap<TransitionInterface, Point> selectionDragTransitionControlOrigins = new HashMap<>();
     private boolean renderSelectionHighlights = true;
     private boolean exportSelectionOnlyActive = false;
-    private final Map<Component, Boolean> exportSelectionComponentVisibility = new IdentityHashMap<>();
+    private final IdentityHashMap<Component, Boolean> exportSelectionComponentVisibility = new IdentityHashMap<>();
 
     public static class AliasData {
         public final List<Point> pseudoAliases = new ArrayList<>();

@@ -23,7 +23,9 @@ import java.util.*;
  * Provides comprehensive analysis including constraint semantics, computed semantics,
  * exit zones with origin information, coverage status, and deadlock analysis.
  */
+@SuppressWarnings("this-escape")
 public class ExtendedDashboardDialog extends JDialog {
+    private static final long serialVersionUID = 1L;
 
     private final PWSState state;
     private final PWSStateMachine stateMachine;
@@ -398,14 +400,14 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText(" = covered (handled by PWS transition), ", STYLE_GRAY);
             appendText("RED", STYLE_RED);
             appendText(" = uncovered or orphan (needs attention), ", STYLE_GRAY);
-            appendText("T|", STYLE_ORANGE);
+            appendText("overflow|m.s", STYLE_ORANGE);
             appendText(" = incoming transition codomain overflow marker\n\n", STYLE_GRAY);
         } else {
             appendText("ORANGE", STYLE_ORANGE);
             appendText(" = coverage not required (fail state), ", STYLE_GRAY);
             appendText("RED", STYLE_RED);
             appendText(" = orphan (needs attention), ", STYLE_GRAY);
-            appendText("T|", STYLE_ORANGE);
+            appendText("overflow|m.s", STYLE_ORANGE);
             appendText(" = incoming transition codomain overflow marker\n\n", STYLE_GRAY);
         }
 
@@ -448,17 +450,15 @@ public class ExtendedDashboardDialog extends JDialog {
             }
 
             appendText("    Exit Zone: ", STYLE_BOLD);
-            if (isOverflow) {
-                appendText("T|", STYLE_ORANGE);
-            }
+            String exitZoneLabel = isOverflow ? formatOverflowLabel(ez) : ez.toString();
             if (isOrphan) {
-                appendText(ez.toString() + "\n", STYLE_RED);
+                appendText(exitZoneLabel + "\n", STYLE_RED);
             } else if (isInternal) {
-                appendText(ez.toString() + "\n", STYLE_GRAY);
+                appendText(exitZoneLabel + "\n", STYLE_GRAY);
             } else if (!coverageRequired) {
-                appendText(ez.toString() + "\n", STYLE_ORANGE);
+                appendText(exitZoneLabel + "\n", STYLE_ORANGE);
             } else {
-                appendText(ez.toString() + "\n", isCovered ? STYLE_GREEN : STYLE_RED);
+                appendText(exitZoneLabel + "\n", isCovered ? STYLE_GREEN : STYLE_RED);
             }
             
             appendText("      Machine:     ", STYLE_GRAY);
@@ -958,6 +958,25 @@ public class ExtendedDashboardDialog extends JDialog {
             return machineName;
         }
         return machineId + " (" + machineName + ")";
+    }
+
+    private static String formatOverflowLabel(ExitZone ez) {
+        return "overflow|" + formatOverflowTarget(ez != null ? ez.getTarget() : null);
+    }
+
+    private static String formatOverflowTarget(BasicStateProposition target) {
+        if (target == null) {
+            return "?";
+        }
+        String machineId = target.getMachineId();
+        String stateName = target.getStateName();
+        if (machineId == null || machineId.isBlank()) {
+            return (stateName == null || stateName.isBlank()) ? "?" : stateName;
+        }
+        if (stateName == null || stateName.isBlank()) {
+            return machineId;
+        }
+        return machineId + "." + stateName;
     }
 
     private void appendText(String text, String styleName) {

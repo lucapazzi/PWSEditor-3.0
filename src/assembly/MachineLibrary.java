@@ -13,11 +13,11 @@ public class MachineLibrary implements Serializable {
 
     private static final long serialVersionUID = -1532645742427132404L;
 
-    private Map<String, StateMachine> machines = new LinkedHashMap<>();
+    private LinkedHashMap<String, StateMachine> machines = new LinkedHashMap<>();
     // Map machine name -> key to enforce unique names and allow lookup by name
-    private Map<String, String> nameToKey = new LinkedHashMap<>();
+    private LinkedHashMap<String, String> nameToKey = new LinkedHashMap<>();
     // Optional alias data for each machine (UI-only metadata)
-    private Map<String, StateMachinePanel.AliasData> aliasDataByKey = new LinkedHashMap<>();
+    private LinkedHashMap<String, StateMachinePanel.AliasData> aliasDataByKey = new LinkedHashMap<>();
 
     /**
      * Creates an empty machine library.

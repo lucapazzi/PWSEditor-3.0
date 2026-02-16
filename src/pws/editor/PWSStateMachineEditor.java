@@ -6,7 +6,9 @@ import pws.PWSStateMachine;
 import java.awt.*;
 
 /** PWS-specific editor frame that wires the custom state machine panel. */
+@SuppressWarnings("this-escape")
 public class PWSStateMachineEditor extends StateMachineEditor {
+    private static final long serialVersionUID = 1L;
 
     public PWSStateMachineEditor(PWSStateMachine stateMachine, String title) {
         super(stateMachine, title);

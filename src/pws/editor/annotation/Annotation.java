@@ -13,9 +13,11 @@ import editor.StateMachinePanel;
  *
  * @param <T> type of the annotated content
  */
+@SuppressWarnings("this-escape")
 public class Annotation<T> extends JComponent implements Serializable {
+    private static final long serialVersionUID = 1L;
     /** Model content displayed by the annotation. */
-    protected T content;
+    protected transient T content;
     /** Mouse drag offset used while repositioning the annotation. */
     protected Point dragOffset;
     private transient boolean delegatedToPanelSelection = false;

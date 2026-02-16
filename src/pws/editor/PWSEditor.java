@@ -37,13 +37,14 @@ import javax.swing.JCheckBoxMenuItem;
 
 /** Main Swing application window for the PWS editor. */
 public class PWSEditor extends JFrame {
+    private static final long serialVersionUID = 1L;
     private static final int INDEFINITE_TOOLTIP_DISMISS_DELAY_MS = Integer.MAX_VALUE;
 
     // private Assembly assembly;
     private PWSStateMachine pwsStateMachine;
     // Document and file manager for classic file operations
-    private PWSDocument currentDocument;
-    private PWSFileManager fileManager;
+    private transient PWSDocument currentDocument;
+    private transient PWSFileManager fileManager;
     private StateMachineEditor baseEditor;  // Editor for the current state machine
     private PWSPanel assemblyPanel;         // Panel to manage the Assembly
     private MachineLibraryPanel libraryPanel; // inline library panel (exposed to menu actions)
@@ -82,12 +83,12 @@ public class PWSEditor extends JFrame {
     private LTLChecksDialog ltlChecksDialog;
     private JDialog infoDialog;
     // Track current semantics recalculation worker for debouncing
-    private SwingWorker<Void, Void> currentSemanticsWorker = null;
+    private transient SwingWorker<Void, Void> currentSemanticsWorker = null;
     private JMenuItem undoItem;
     private JMenuItem redoItem;
-    private final Deque<EditorSnapshot> undoStack = new ArrayDeque<>();
-    private final Deque<EditorSnapshot> redoStack = new ArrayDeque<>();
-    private EditorSnapshot currentSnapshot = null;
+    private final ArrayDeque<EditorSnapshot> undoStack = new ArrayDeque<>();
+    private final ArrayDeque<EditorSnapshot> redoStack = new ArrayDeque<>();
+    private transient EditorSnapshot currentSnapshot = null;
     private boolean undoRecordingSuspended = false;
     private boolean suppressDirtyNotifications = false;
     private static final int MAX_UNDO = 100;
@@ -100,17 +101,11 @@ public class PWSEditor extends JFrame {
      *
      * @param machine state machine to edit
      */
+    @SuppressWarnings("this-escape")
     public PWSEditor(PWSStateMachine machine) {
         super("PWSEditor");
         configureTooltipBehavior();
-        // Use the specialized PWSStateMachine:
-        if (machine instanceof PWSStateMachine) {
-            this.pwsStateMachine = ((PWSStateMachine) machine).clone();
-        } else if (machine != null) {
-            this.pwsStateMachine = new PWSStateMachine(machine.getName());
-        } else {
-            this.pwsStateMachine = null;
-        }
+        this.pwsStateMachine = machine != null ? machine.clone() : null;
         // By default we start WITHOUT showing the controller editor; it will be
         // enabled when the user issues New/Open from the File menu.
         this.controllerEditorVisible = false;
@@ -1423,7 +1418,7 @@ public class PWSEditor extends JFrame {
             protected Void doInBackground() throws Exception {
                 if (isCancelled()) return null;
                 try {
-                    ((pws.PWSStateMachine) PWSEditor.this.pwsStateMachine).recalculateSemantics();
+                    PWSEditor.this.pwsStateMachine.recalculateSemantics();
                 } catch (Exception ex) {
                     throw ex;
                 }
@@ -1549,7 +1544,7 @@ public class PWSEditor extends JFrame {
                 protected Void doInBackground() throws Exception {
                     try {
                         if (PWSEditor.this.pwsStateMachine != null) {
-                            ((pws.PWSStateMachine) PWSEditor.this.pwsStateMachine).recalculateSemantics();
+                            PWSEditor.this.pwsStateMachine.recalculateSemantics();
                         }
                     } catch (Exception ex) {
                         // propagate to done()
@@ -1831,8 +1826,8 @@ public class PWSEditor extends JFrame {
     }
 
     private void runLTLChecks(boolean showDialog) {
-        if (!(pwsStateMachine instanceof PWSStateMachine)) return;
-        List<LTLCheckResult> results = LTLChecker.check((PWSStateMachine) pwsStateMachine);
+        if (pwsStateMachine == null) return;
+        List<LTLCheckResult> results = LTLChecker.check(pwsStateMachine);
         boolean hasFailures = false;
         for (LTLCheckResult r : results) {
             if (r.getStatus() == LTLCheckResult.Status.FAIL || r.getStatus() == LTLCheckResult.Status.ERROR) {

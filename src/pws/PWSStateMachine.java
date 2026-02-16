@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /** PWS state machine with assembly-level semantics helpers. */
+@SuppressWarnings("this-escape")
 public class PWSStateMachine extends StateMachine {
     // Field to hold the Assembly that belongs to this PWSStateMachine.
     private Assembly assembly;
@@ -560,9 +561,6 @@ public class PWSStateMachine extends StateMachine {
         return computeTransitionContribution(t, base);
     }
 
-    /**
-     * Compute semantics for a triggerable or initial transition.
-     */
 //    private Semantics computeTriggerableSemantics(PWSTransition t) {
 //        // Get the source state for this transition
 //        PWSState src = (PWSState) t.getSource();

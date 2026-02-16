@@ -11,14 +11,15 @@ import java.util.*;
 
 /** Represents a PWS assembly and its state machines, guards, actions, and formulas. */
 public class Assembly implements AssemblyInterface {
+    private static final long serialVersionUID = 1L;
     private String assemblyId;
-    private Map<String, StateMachine> stateMachines;
+    private LinkedHashMap<String, StateMachine> stateMachines;
     // Repository of reusable machines (machineKey -> StateMachine)
     private MachineLibrary machineLibrary = new MachineLibrary();
     // Optional storage for LTL formulas associated with this assembly
-    private java.util.List<LTLFormula> ltlFormulas = new java.util.ArrayList<>();
+    private java.util.ArrayList<LTLFormula> ltlFormulas = new java.util.ArrayList<>();
     // Optional UI-only alias data for assembly-local machines (machineId -> alias data)
-    private Map<String, StateMachinePanel.AliasData> aliasDataByMachineId = new LinkedHashMap<>();
+    private LinkedHashMap<String, StateMachinePanel.AliasData> aliasDataByMachineId = new LinkedHashMap<>();
 
     /**
      * Creates an assembly with the given identifier.

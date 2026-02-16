@@ -9,7 +9,9 @@ import java.awt.*;
 import java.util.Map;
 
 /** Panel for viewing and editing an assembly's machines. */
+@SuppressWarnings("this-escape")
 public class AssemblyPanel extends JPanel {
+    private static final long serialVersionUID = 1L;
     private AssemblyInterface assembly;
     private DefaultListModel<String> listModel;
     private JList<String> stateMachineList;

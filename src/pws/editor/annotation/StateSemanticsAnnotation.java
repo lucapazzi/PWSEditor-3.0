@@ -20,7 +20,9 @@ import smalgebra.BasicStateProposition;
 import java.awt.Color;
 import assembly.Assembly;
 
+@SuppressWarnings("this-escape")
 public class StateSemanticsAnnotation extends Annotation<PWSState> {
+    private static final long serialVersionUID = 1L;
     private Assembly assembly;
     private PWSStateMachinePanel panel;
     
@@ -35,10 +37,10 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     private static final Color STATUS_ISSUE_COLOR = new Color(180, 0, 0);
     private static final Color STATUS_UNREACHABLE_COLOR = new Color(204, 170, 0);
     private static final String UNREACHABLE_ISSUE_TEXT = "State is unreachable (no configurations).";
-    private final java.util.List<HitArea> configHitAreas = new ArrayList<>();
-    private final java.util.List<HitArea> constraintHitAreas = new ArrayList<>();
-    private final java.util.List<HitArea> exitZoneHitAreas = new ArrayList<>();
-    private HitArea headerHitArea = null;
+    private final transient java.util.ArrayList<HitArea> configHitAreas = new ArrayList<>();
+    private final transient java.util.ArrayList<HitArea> constraintHitAreas = new ArrayList<>();
+    private final transient java.util.ArrayList<HitArea> exitZoneHitAreas = new ArrayList<>();
+    private transient HitArea headerHitArea = null;
     private boolean csOnlyWarningActive = false;
 
     private static class HitArea {
@@ -996,7 +998,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 boolean isCsOnly = csOnly != null && csOnly.contains(ez);
                 boolean isIncomingOverflow = incomingOverflow != null && incomingOverflow.contains(ez);
                 if (isIncomingOverflow) {
-                    txt = "T|" + getExitZoneTargetKey(ez);
+                    txt = buildIncomingOverflowInlineLabel(ez);
                 }
                 Color ezColor;
                 if (isCsOnly) {
@@ -1051,7 +1053,6 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                         coverage = "Coverage: uncovered";
                     }
                     tooltip = "<html>Exit zone " + txt + "<br>"
-                            + buildIncomingOverflowOrigin(ez, state, pwsMachine, asm) + "<br>"
                             + coverage + "</html>";
                 } else {
                     tooltip = "Exit zone " + txt + " - " + status;
@@ -1240,65 +1241,24 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         return covered;
     }
 
-    private String buildIncomingOverflowOrigin(ExitZone ez, PWSState state, PWSStateMachine sm, Assembly asm) {
-        if (ez == null || ez.getTarget() == null || state == null || sm == null || asm == null) {
-            return "Incoming codomain overflow from: unknown";
-        }
-        Semantics cs = state.getConstraintsSemantics();
-        if (cs == null) {
-            return "Incoming codomain overflow from: unknown";
-        }
-        Semantics csComplement;
-        Semantics targetSem;
-        try {
-            csComplement = cs.NOT(asm);
-            targetSem = ez.getTarget().toSemantics(asm);
-        } catch (Exception ex) {
-            return "Incoming codomain overflow from: unknown";
-        }
-        if (targetSem == null || targetSem.ISEMPTY()) {
-            return "Incoming codomain overflow from: unknown";
-        }
+    private String buildIncomingOverflowInlineLabel(ExitZone ez) {
+        return "overflow|" + getIncomingOverflowTargetKey(ez);
+    }
 
-        List<String> producers = new ArrayList<>();
-        for (machinery.TransitionInterface ti : sm.getTransitions()) {
-            if (!(ti instanceof pws.PWSTransition pt) || !pt.isEnabled() || pt.getTarget() != state) {
-                continue;
-            }
-            if (!(pt.getSource() instanceof pws.PWSState srcState)) {
-                continue;
-            }
-            Semantics srcSem = srcState.getStateSemantics();
-            if (srcSem == null || srcSem.ISEMPTY()) {
-                continue;
-            }
-            Semantics contrib = sm.computeTransitionContribution(pt, srcSem);
-            if (contrib == null || contrib.ISEMPTY()) {
-                continue;
-            }
-            Semantics overflow = contrib.AND(csComplement);
-            if (overflow == null || overflow.ISEMPTY()) {
-                continue;
-            }
-            Semantics targetOverflow = overflow.AND(targetSem);
-            if (targetOverflow == null || targetOverflow.ISEMPTY()) {
-                continue;
-            }
-            String srcName = pt.getSource() != null ? pt.getSource().getName() : "?";
-            String tgtName = pt.getTarget() != null ? pt.getTarget().getName() : "?";
-            String actionText = (pt.getActionList() == null || pt.getActionList().isEmpty())
-                    ? "<no actions>"
-                    : pt.getActionList().toString();
-            producers.add(srcName + "->" + tgtName + " via " + actionText);
+    private static String getIncomingOverflowTargetKey(ExitZone ez) {
+        if (ez == null || ez.getTarget() == null) {
+            return "?";
         }
-        if (producers.isEmpty()) {
-            return "Incoming codomain overflow from: unknown";
+        BasicStateProposition target = ez.getTarget();
+        String machineId = target.getMachineId();
+        String stateName = target.getStateName();
+        if (machineId == null || machineId.isBlank()) {
+            return (stateName == null || stateName.isBlank()) ? "?" : stateName;
         }
-        String first = producers.get(0);
-        if (producers.size() == 1) {
-            return "Incoming codomain overflow from: " + first;
+        if (stateName == null || stateName.isBlank()) {
+            return machineId;
         }
-        return "Incoming codomain overflow from: " + first + " (+" + (producers.size() - 1) + " more)";
+        return machineId + "." + stateName;
     }
 
     private java.util.List<String> findComponentDeadlocks(pws.editor.semantics.Configuration cfg, Assembly asm) {
@@ -1487,7 +1447,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             String label = zoneLabels.get(i);
             if (label == null) continue;
             if (incomingOverflow != null && i < zones.size() && incomingOverflow.contains(zones.get(i))) {
-                label = "T|" + getExitZoneTargetKey(zones.get(i));
+                label = buildIncomingOverflowInlineLabel(zones.get(i));
             }
             exitMaxWidth = Math.max(exitMaxWidth, fm.stringWidth(label));
         }

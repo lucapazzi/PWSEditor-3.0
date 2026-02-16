@@ -16,6 +16,7 @@ import java.io.Serializable;
 
 /** PWS transition with guard, actions, and semantics annotations. */
 public class PWSTransition extends Transition implements Serializable {
+    private static final long serialVersionUID = 1L;
     public static final String INIT_TRIGGER_EVENT = "_init";
     // Nuovi campi semantici
     private Assembly assembly;

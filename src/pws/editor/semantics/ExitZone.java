@@ -31,6 +31,7 @@ import java.util.Objects;
  */
 
 public class ExitZone implements Serializable {
+    private static final long serialVersionUID = 1L;
     private String stateMachineId = null;
     private Transition transition = null;
     private BasicStateProposition source = null;

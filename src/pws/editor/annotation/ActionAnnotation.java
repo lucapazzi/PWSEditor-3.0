@@ -24,15 +24,17 @@ import smalgebra.SMProposition;
 import machinery.StateMachine;
 
 /** Annotation widget for editing a list of actions. */
+@SuppressWarnings("this-escape")
 public class ActionAnnotation extends Annotation<ActionList> {
+    private static final long serialVersionUID = 1L;
     private AssemblyInterface assembly;
-    private Consumer<ActionList> updateCallback; // Callback per aggiornare il modello
+    private transient Consumer<ActionList> updateCallback; // Callback per aggiornare il modello
     // Optional associated transition (when this annotation is attached to a transition)
     private machinery.TransitionInterface associatedTransition;
     
     // Problem status for coloring
     private boolean hasOrphanActions = false;
-    private List<String> orphanActionReasons = new ArrayList<>();
+    private ArrayList<String> orphanActionReasons = new ArrayList<>();
 
     /**
      * Creates an action annotation.

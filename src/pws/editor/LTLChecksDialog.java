@@ -5,12 +5,14 @@ import java.awt.*;
 import java.util.List;
 
 /** Non-modal window showing LTL check results. */
+@SuppressWarnings("this-escape")
 public class LTLChecksDialog extends JDialog {
+    private static final long serialVersionUID = 1L;
     private final DefaultListModel<LTLCheckResult> resultsModel = new DefaultListModel<>();
     private final JList<LTLCheckResult> resultsList = new JList<>(resultsModel);
     private final JLabel summaryLabel = new JLabel("No checks run yet.");
-    private Runnable onOpenEditor;
-    private Runnable onRecheck;
+    private transient Runnable onOpenEditor;
+    private transient Runnable onRecheck;
 
     public LTLChecksDialog(Window owner) {
         super(owner, "LTL Checks", ModalityType.MODELESS);

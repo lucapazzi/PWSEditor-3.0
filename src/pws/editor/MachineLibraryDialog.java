@@ -10,7 +10,9 @@ import java.awt.*;
 import java.io.Serializable;
 
 /** Modal dialog for selecting machines from the library. */
+@SuppressWarnings("this-escape")
 public class MachineLibraryDialog extends JDialog implements Serializable {
+    private static final long serialVersionUID = 1L;
 
     private String selectedKey = null;
     private final Assembly assembly;
