@@ -14,6 +14,8 @@ import java.io.IOException;
  * PNGExporter: exports Swing panels into PNG images.
  */
 public class PNGExporter {
+    private static final int PNG_EXPORT_SCALE = 2;
+
     /** Utility class; do not instantiate. */
     private PNGExporter() {
     }
@@ -40,12 +42,33 @@ public class PNGExporter {
     public static void exportPanelToPNG(JPanel panel, File file, Rectangle region) throws IOException {
         if (panel == null) throw new IllegalArgumentException("panel is null");
         if (file == null) throw new IllegalArgumentException("file is null");
+        BufferedImage image = renderPanelToImage(panel, region);
+        if (!ImageIO.write(image, "png", file)) {
+            throw new IOException("No PNG writer is available.");
+        }
+    }
 
+    /**
+     * Export a region of a JPanel and place the resulting PNG in the system clipboard.
+     *
+     * @param panel panel to export
+     * @param region panel-space region to export; null exports the full panel
+     * @throws IOException if the PNG cannot be generated or clipboard update fails
+     */
+    public static void exportPanelToClipboard(JPanel panel, Rectangle region) throws IOException {
+        if (panel == null) throw new IllegalArgumentException("panel is null");
+        BufferedImage image = renderPanelToImage(panel, region);
+        PNGClipboard.putPNGOnSystemClipboard(image);
+    }
+
+    private static BufferedImage renderPanelToImage(JPanel panel, Rectangle region) {
         Rectangle exportRect = resolveExportRect(panel, region);
         int width = exportRect.width;
         int height = exportRect.height;
+        int scaledWidth = Math.max(1, width * PNG_EXPORT_SCALE);
+        int scaledHeight = Math.max(1, height * PNG_EXPORT_SCALE);
 
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        BufferedImage image = new BufferedImage(scaledWidth, scaledHeight, BufferedImage.TYPE_INT_RGB);
         Graphics2D g2 = image.createGraphics();
         boolean oldDoubleBuffered = panel.isDoubleBuffered();
         try {
@@ -53,17 +76,15 @@ public class PNGExporter {
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
             g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
             g2.setColor(Color.WHITE);
-            g2.fillRect(0, 0, width, height);
+            g2.fillRect(0, 0, scaledWidth, scaledHeight);
             panel.setDoubleBuffered(false);
+            g2.scale(PNG_EXPORT_SCALE, PNG_EXPORT_SCALE);
             g2.translate(-exportRect.x, -exportRect.y);
             panel.printAll(g2);
+            return image;
         } finally {
             panel.setDoubleBuffered(oldDoubleBuffered);
             g2.dispose();
-        }
-
-        if (!ImageIO.write(image, "png", file)) {
-            throw new IOException("No PNG writer is available.");
         }
     }
 

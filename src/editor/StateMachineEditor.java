@@ -173,33 +173,39 @@ public class StateMachineEditor extends JFrame {
         JMenuItem exportPDFItem = new JMenuItem("Export as PDF");
         exportPDFItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, menuMask | InputEvent.SHIFT_DOWN_MASK));
         exportPDFItem.addActionListener(e -> {
+            StateMachinePanel panel = statePanel;
+            if (panel == null) {
+                JOptionPane.showMessageDialog(StateMachineEditor.this,
+                        "State machine panel is not available.",
+                        "Not Available", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (showGridItem != null && panel.isShowGrid() != showGridItem.isSelected()) {
+                panel.setShowGrid(showGridItem.isSelected());
+            }
+
             utility.PDFExportDialog.Result exportTarget = utility.PDFExportDialog.showSaveDialog(StateMachineEditor.this);
             if (exportTarget.destination() == utility.PDFExportDialog.Destination.CANCEL) {
                 return;
             }
 
+            boolean selectionOnlyExport = false;
             try {
-                Rectangle exportRegion = (statePanel != null && statePanel.hasObjectSelection())
-                        ? statePanel.getSelectionBoundsForExport()
+                Rectangle exportRegion = panel.hasObjectSelection()
+                        ? panel.getSelectionBoundsForExport()
                         : null;
-                if (statePanel == null) {
-                    JOptionPane.showMessageDialog(StateMachineEditor.this,
-                            "State machine panel is not available.",
-                            "Not Available", JOptionPane.WARNING_MESSAGE);
-                    return;
-                }
                 if (exportRegion != null) {
-                    statePanel.beginSelectionOnlyExport();
+                    selectionOnlyExport = panel.beginSelectionOnlyExport();
                 }
-                statePanel.setRenderSelectionHighlights(false);
+                panel.setRenderSelectionHighlights(false);
                 if (exportTarget.destination() == utility.PDFExportDialog.Destination.CLIPBOARD) {
-                    utility.PDFExporter.exportPanelToClipboard(statePanel, exportRegion);
+                    utility.PDFExporter.exportPanelToClipboard(panel, exportRegion);
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
                             (exportRegion != null)
                                     ? "PDF copied to clipboard (selected objects)."
                                     : "PDF copied to clipboard.");
                 } else {
-                    utility.PDFExporter.exportPanelToPDF(statePanel, exportTarget.file(), exportRegion);
+                    utility.PDFExporter.exportPanelToPDF(panel, exportTarget.file(), exportRegion);
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
                             (exportRegion != null)
                                     ? "PDF file successfully saved (selected objects)."
@@ -216,56 +222,70 @@ public class StateMachineEditor extends JFrame {
                         "Error exporting PDF: " + ex.getMessage(),
                         "Error", JOptionPane.ERROR_MESSAGE);
             } finally {
-                if (statePanel != null) {
-                    statePanel.endSelectionOnlyExport();
-                    statePanel.setRenderSelectionHighlights(true);
-                    statePanel.repaint();
+                if (panel != null) {
+                    if (selectionOnlyExport) {
+                        panel.endSelectionOnlyExport();
+                    }
+                    panel.setRenderSelectionHighlights(true);
+                    panel.repaint();
                 }
             }
         });
         fileMenu.add(exportPDFItem);
 
         JMenuItem saveAsPNGItem = new JMenuItem("Export as PNG");
-        saveAsPNGItem.setEnabled(false);
+        saveAsPNGItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, menuMask));
         saveAsPNGItem.addActionListener(e -> {
-            JFileChooser fileChooser = new JFileChooser();
-            fileChooser.setFileFilter(
-                    new javax.swing.filechooser.FileNameExtensionFilter("PNG Image", "png"));
+            StateMachinePanel panel = statePanel;
+            if (panel == null) {
+                JOptionPane.showMessageDialog(StateMachineEditor.this,
+                        "State machine panel is not available.",
+                        "Not Available", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (showGridItem != null && panel.isShowGrid() != showGridItem.isSelected()) {
+                panel.setShowGrid(showGridItem.isSelected());
+            }
 
-            if (fileChooser.showSaveDialog(StateMachineEditor.this)
-                    == JFileChooser.APPROVE_OPTION) {
+            utility.PNGExportDialog.Result exportTarget = utility.PNGExportDialog.showSaveDialog(StateMachineEditor.this);
+            if (exportTarget.destination() == utility.PNGExportDialog.Destination.CANCEL) {
+                return;
+            }
 
-                File file = fileChooser.getSelectedFile();
-                if (!file.getName().toLowerCase().endsWith(".png")) {
-                    file = new File(file.getAbsolutePath() + ".png");
+            boolean selectionOnlyExport = false;
+            try {
+                Rectangle exportRegion = panel.hasObjectSelection()
+                        ? panel.getSelectionBoundsForExport()
+                        : null;
+                if (exportRegion != null) {
+                    selectionOnlyExport = panel.beginSelectionOnlyExport();
                 }
-
-                try {
-                    Rectangle exportRegion = (statePanel != null && statePanel.hasObjectSelection())
-                            ? statePanel.getSelectionBoundsForExport()
-                            : null;
-                    if (statePanel == null) {
-                        JOptionPane.showMessageDialog(StateMachineEditor.this,
-                                "State machine panel is not available.",
-                                "Not Available", JOptionPane.WARNING_MESSAGE);
-                        return;
-                    }
-                    statePanel.setRenderSelectionHighlights(false);
-                    utility.PNGExporter.exportPanelToPNG(statePanel, file, exportRegion);
+                panel.setRenderSelectionHighlights(false);
+                if (exportTarget.destination() == utility.PNGExportDialog.Destination.CLIPBOARD) {
+                    utility.PNGExporter.exportPanelToClipboard(panel, exportRegion);
+                    JOptionPane.showMessageDialog(StateMachineEditor.this,
+                            (exportRegion != null)
+                                    ? "PNG copied to clipboard (selected objects)."
+                                    : "PNG copied to clipboard.");
+                } else {
+                    utility.PNGExporter.exportPanelToPNG(panel, exportTarget.file(), exportRegion);
                     JOptionPane.showMessageDialog(StateMachineEditor.this,
                             (exportRegion != null)
                                     ? "PNG file successfully saved (selected objects)."
                                     : "PNG file successfully saved.");
-                } catch (IOException ex) {
-                    ex.printStackTrace();
-                    JOptionPane.showMessageDialog(StateMachineEditor.this,
-                            "Error saving PNG: " + ex.getMessage(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
-                } finally {
-                    if (statePanel != null) {
-                        statePanel.setRenderSelectionHighlights(true);
-                        statePanel.repaint();
+                }
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                JOptionPane.showMessageDialog(StateMachineEditor.this,
+                        "Error exporting PNG: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
+            } finally {
+                if (panel != null) {
+                    if (selectionOnlyExport) {
+                        panel.endSelectionOnlyExport();
                     }
+                    panel.setRenderSelectionHighlights(true);
+                    panel.repaint();
                 }
             }
         });

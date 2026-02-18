@@ -33,10 +33,11 @@ These commands are intentionally separate from `Shift + Left` selection gestures
 ## 4. Export Behavior
 
 - `File -> Export as PDF` (`Cmd/Ctrl + Shift + E`)
-- `File -> Export as PNG` is currently disabled in both editors.
-- In the PDF save dialog, use `Save` to write a `.pdf` file or `Save to Clipboard` to copy the exported PDF to the system clipboard.
+- `File -> Export as PNG`
+- Export first asks for destination (`Save to File` or `Save to Clipboard`).
+- If `Save to File` is chosen, a standard system save dialog opens.
 
-If one or more objects are selected, PDF export renders only selected objects and
+If one or more objects are selected, PDF and PNG export render only selected objects and
 does not include nearby unselected objects.  
 If nothing is selected, export uses the full canvas.
 
@@ -60,6 +61,7 @@ Controller editor (`PWSEditor`):
 - `Cmd/Ctrl + Shift + S`: Save As
 - `Cmd/Ctrl + W`: Close
 - `Cmd/Ctrl + Shift + E`: Export as PDF
+- `Cmd/Ctrl + P`: Export as PNG
 - `Cmd/Ctrl + Q`: Exit
 
 Controlled editor (`StateMachineEditor`):
@@ -67,3 +69,4 @@ Controlled editor (`StateMachineEditor`):
 - `Cmd/Ctrl + S`: Save Single Machine
 - `Cmd/Ctrl + W`: Close Editor
 - `Cmd/Ctrl + Shift + E`: Export as PDF
+- `Cmd/Ctrl + P`: Export as PNG

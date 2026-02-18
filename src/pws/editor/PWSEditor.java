@@ -94,6 +94,7 @@ public class PWSEditor extends JFrame {
     private static final int MAX_UNDO = 100;
     private static final String ACTIVE_PANEL_TRACKING_PROPERTY = "pws.activePanelTracking";
     private StateMachinePanel lastActiveStateMachinePanel;
+    private transient java.awt.event.AWTEventListener globalActivePanelMouseTracker;
 
     // The main PWSEditor window uses a fixed title, e.g. "PWSEditor"
     /**
@@ -597,6 +598,7 @@ public class PWSEditor extends JFrame {
 
         refreshInitialConfigurationsPanel();
         installUndoRedoKeyBindings();
+        installGlobalActivePanelMouseTracking();
     }
 
     private JMenuBar createMenuBar() {
@@ -743,11 +745,6 @@ public class PWSEditor extends JFrame {
         exportPDFItem = new JMenuItem("Export as PDF");
         exportPDFItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, menuMask | InputEvent.SHIFT_DOWN_MASK));
         exportPDFItem.addActionListener(e -> {
-            utility.PDFExportDialog.Result exportTarget = utility.PDFExportDialog.showSaveDialog(PWSEditor.this);
-            if (exportTarget.destination() == utility.PDFExportDialog.Destination.CANCEL) {
-                return;
-            }
-
             StateMachinePanel panel = resolveActiveStateMachinePanel();
             if (panel == null) {
                 JOptionPane.showMessageDialog(PWSEditor.this,
@@ -755,6 +752,12 @@ public class PWSEditor extends JFrame {
                         "Not Available", JOptionPane.WARNING_MESSAGE);
                 return;
             }
+
+            utility.PDFExportDialog.Result exportTarget = utility.PDFExportDialog.showSaveDialog(PWSEditor.this);
+            if (exportTarget.destination() == utility.PDFExportDialog.Destination.CANCEL) {
+                return;
+            }
+
             Rectangle exportRegion = null;
             boolean selectionOnlyExport = false;
             if (panel.hasObjectSelection()) {
@@ -799,55 +802,54 @@ public class PWSEditor extends JFrame {
         fileMenu.add(exportPDFItem);
 
         saveAsPNGItem = new JMenuItem("Export as PNG");
-        saveAsPNGItem.setEnabled(false);
+        saveAsPNGItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, menuMask));
         saveAsPNGItem.addActionListener(e -> {
-            JFileChooser fileChooser = new JFileChooser();
-            fileChooser.setFileFilter(
-                    new javax.swing.filechooser.FileNameExtensionFilter("PNG Image", "png"));
+            StateMachinePanel panel = resolveActiveStateMachinePanel();
+            if (panel == null) {
+                JOptionPane.showMessageDialog(PWSEditor.this,
+                        "Active editor panel is not available.",
+                        "Not Available", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
 
-            if (fileChooser.showSaveDialog(PWSEditor.this)
-                    == JFileChooser.APPROVE_OPTION) {
+            utility.PNGExportDialog.Result exportTarget = utility.PNGExportDialog.showSaveDialog(PWSEditor.this);
+            if (exportTarget.destination() == utility.PNGExportDialog.Destination.CANCEL) {
+                return;
+            }
 
-                File file = fileChooser.getSelectedFile();
-                if (!file.getName().toLowerCase().endsWith(".png")) {
-                    file = new File(file.getAbsolutePath() + ".png");
-                }
+            Rectangle exportRegion = null;
+            boolean selectionOnlyExport = false;
+            if (panel.hasObjectSelection()) {
+                exportRegion = panel.getSelectionBoundsForExport();
+                selectionOnlyExport = panel.beginSelectionOnlyExport();
+            }
+            panel.setRenderSelectionHighlights(false);
 
-                StateMachinePanel panel =
-                        ((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
-                PWSStateMachinePanel pwsPanel = (panel instanceof PWSStateMachinePanel p) ? p : null;
-                Rectangle exportRegion = null;
-                if (pwsPanel != null && pwsPanel.hasObjectSelection()) {
-                    exportRegion = pwsPanel.getSelectionBoundsForExport();
-                }
-
-                if (panel == null) {
+            try {
+                if (exportTarget.destination() == utility.PNGExportDialog.Destination.CLIPBOARD) {
+                    utility.PNGExporter.exportPanelToClipboard(panel, exportRegion);
                     JOptionPane.showMessageDialog(PWSEditor.this,
-                            "Controller panel is not available.",
-                            "Not Available", JOptionPane.WARNING_MESSAGE);
-                    return;
-                }
-                if (pwsPanel != null) {
-                    pwsPanel.setRenderSelectionHighlights(false);
-                }
-
-                try {
-                    utility.PNGExporter.exportPanelToPNG(panel, file, exportRegion);
+                            (exportRegion != null)
+                                    ? "PNG copied to clipboard (selected objects)."
+                                    : "PNG copied to clipboard.");
+                } else {
+                    utility.PNGExporter.exportPanelToPNG(panel, exportTarget.file(), exportRegion);
                     JOptionPane.showMessageDialog(PWSEditor.this,
                             (exportRegion != null)
                                     ? "PNG file saved successfully (selected objects)."
                                     : "PNG file saved successfully.");
-                } catch (IOException ex) {
-                    ex.printStackTrace();
-                    JOptionPane.showMessageDialog(PWSEditor.this,
-                            "Error saving PNG: " + ex.getMessage(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
-                } finally {
-                    if (pwsPanel != null) {
-                        pwsPanel.setRenderSelectionHighlights(true);
-                        pwsPanel.repaint();
-                    }
                 }
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                JOptionPane.showMessageDialog(PWSEditor.this,
+                        "Error exporting PNG: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
+            } finally {
+                if (selectionOnlyExport && panel != null) {
+                    panel.endSelectionOnlyExport();
+                }
+                panel.setRenderSelectionHighlights(true);
+                panel.repaint();
             }
         });
         fileMenu.add(saveAsPNGItem);
@@ -1185,6 +1187,62 @@ public class PWSEditor extends JFrame {
         return embeddedPanel;
     }
 
+    private void installGlobalActivePanelMouseTracking() {
+        if (globalActivePanelMouseTracker != null) return;
+        globalActivePanelMouseTracker = event -> {
+            if (!(event instanceof java.awt.event.MouseEvent me)) {
+                return;
+            }
+            if (me.getID() != java.awt.event.MouseEvent.MOUSE_PRESSED) {
+                return;
+            }
+            Object source = me.getSource();
+            if (!(source instanceof Component component)) {
+                return;
+            }
+
+            StateMachinePanel embeddedPanel = getEmbeddedStateMachinePanel();
+            StateMachinePanel controllerPanel = getControllerStateMachinePanel();
+            if (embeddedPanel != null && SwingUtilities.isDescendingFrom(component, embeddedPanel)) {
+                lastActiveStateMachinePanel = embeddedPanel;
+                if (editModeItem != null) {
+                    editModeItem.setSelected(embeddedPanel.isEditMode());
+                }
+                return;
+            }
+            if (controllerPanel != null && SwingUtilities.isDescendingFrom(component, controllerPanel)) {
+                lastActiveStateMachinePanel = controllerPanel;
+                if (editModeItem != null) {
+                    editModeItem.setSelected(controllerPanel.isEditMode());
+                }
+            }
+        };
+        try {
+            Toolkit.getDefaultToolkit().addAWTEventListener(
+                    globalActivePanelMouseTracker,
+                    AWTEvent.MOUSE_EVENT_MASK);
+        } catch (SecurityException ignored) {
+            globalActivePanelMouseTracker = null;
+        }
+    }
+
+    private void uninstallGlobalActivePanelMouseTracking() {
+        if (globalActivePanelMouseTracker == null) return;
+        try {
+            Toolkit.getDefaultToolkit().removeAWTEventListener(globalActivePanelMouseTracker);
+        } catch (SecurityException ignored) {
+            // Ignore listener removal failures.
+        } finally {
+            globalActivePanelMouseTracker = null;
+        }
+    }
+
+    @Override
+    public void dispose() {
+        uninstallGlobalActivePanelMouseTracking();
+        super.dispose();
+    }
+
     private void registerActivePanelTracking(StateMachinePanel panel) {
         if (panel == null) return;
         if (Boolean.TRUE.equals(panel.getClientProperty(ACTIVE_PANEL_TRACKING_PROPERTY))) return;
@@ -1248,7 +1306,7 @@ public class PWSEditor extends JFrame {
         if (closeItem != null) closeItem.setEnabled(hasDoc);
 
         if (exportPDFItem != null) exportPDFItem.setEnabled(ctrl);
-        if (saveAsPNGItem != null) saveAsPNGItem.setEnabled(false);
+        if (saveAsPNGItem != null) saveAsPNGItem.setEnabled(ctrl);
 
         if (editModeItem != null) editModeItem.setEnabled(ctrl);
         if (selectAllItem != null) selectAllItem.setEnabled(ctrl);

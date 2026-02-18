@@ -6,9 +6,9 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.Component;
 import java.io.File;
 
-/** Shared PDF export destination chooser with file and clipboard options. */
-public final class PDFExportDialog {
-    private PDFExportDialog() {
+/** Shared PNG export destination chooser with file and clipboard options. */
+public final class PNGExportDialog {
+    private PNGExportDialog() {
     }
 
     public enum Destination {
@@ -56,7 +56,7 @@ public final class PDFExportDialog {
         int choice = JOptionPane.showOptionDialog(
                 parent,
                 "Choose the export destination.",
-                "Export as PDF",
+                "Export as PNG",
                 JOptionPane.DEFAULT_OPTION,
                 JOptionPane.QUESTION_MESSAGE,
                 null,
@@ -70,7 +70,7 @@ public final class PDFExportDialog {
     private static File chooseFile(Component parent) {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogType(JFileChooser.SAVE_DIALOG);
-        chooser.setFileFilter(new FileNameExtensionFilter("PDF File", "pdf"));
+        chooser.setFileFilter(new FileNameExtensionFilter("PNG Image", "png"));
 
         while (true) {
             int option = chooser.showSaveDialog(parent);
@@ -78,7 +78,7 @@ public final class PDFExportDialog {
                 return null;
             }
 
-            File selectedFile = normalizePdfExtension(chooser.getSelectedFile());
+            File selectedFile = normalizePngExtension(chooser.getSelectedFile());
             if (selectedFile == null) {
                 JOptionPane.showMessageDialog(
                         parent,
@@ -114,10 +114,10 @@ public final class PDFExportDialog {
         }
     }
 
-    private static File normalizePdfExtension(File file) {
+    private static File normalizePngExtension(File file) {
         if (file == null) return null;
-        if (!file.getName().toLowerCase().endsWith(".pdf")) {
-            file = new File(file.getAbsolutePath() + ".pdf");
+        if (!file.getName().toLowerCase().endsWith(".png")) {
+            file = new File(file.getAbsolutePath() + ".png");
         }
         return file;
     }

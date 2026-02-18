@@ -1157,13 +1157,15 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 
 **Export as PDF:**
 1. Go to **File → Export as PDF**
-2. Choose location and filename
-3. A **vector PDF** of the current diagram is created
+2. Choose destination (**Save to File** or **Save to Clipboard**)
+3. If saving to file, choose location and filename in the standard save dialog
+4. A **vector PDF** of the current diagram is created or copied to clipboard
 
 **Export as PNG:**
 1. Go to **File → Export as PNG**
-2. Choose location and filename
-3. A **PNG snapshot** of the current diagram is created
+2. Choose destination (**Save to File** or **Save to Clipboard**)
+3. If saving to file, choose location and filename in the standard save dialog
+4. A **PNG snapshot** of the current diagram is created or copied to clipboard
 
 ---
 
@@ -1375,6 +1377,8 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 | Shortcut | Action |
 |----------|--------|
 | **W/A/S/D** | Pan the diagram |
+| **Cmd/Ctrl + Shift + E** | Export as PDF |
+| **Cmd/Ctrl + P** | Export as PNG |
 | **Cmd/Ctrl + Drag (from state)** | Create a guard-triggered transition to the release target |
 | **Cmd/Ctrl + Shift + Drag (from state)** | Create an event-triggered transition with default event `ev` |
 | **Cmd/Ctrl + Drag (from pseudo-state/alias)** | Create an initial transition (hidden `_init`) |
