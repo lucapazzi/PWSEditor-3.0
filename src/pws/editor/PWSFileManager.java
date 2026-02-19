@@ -21,6 +21,8 @@ public class PWSFileManager {
     public void newDocument() {
         MachineLibrary preservedLibrary = editor.getCurrentLibrary();
         PWSStateMachine model = new PWSStateMachine("Untitled");
+        // New documents start with default testing semantics for exit-zone internality.
+        PWSStateMachine.setConstraintAwareExitZoneInternalityEnabled(false);
         applyPreservedLibrary(model, preservedLibrary);
         PWSDocument doc = new PWSDocument(model, model.getAssembly().getMachineLibrary());
         // New documents should start clean (no unsaved changes)

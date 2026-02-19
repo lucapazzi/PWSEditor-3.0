@@ -788,6 +788,9 @@ public final class JsonModelSerializer {
         if (data.showExitZoneMachineIds != null) {
             map.put("showExitZoneMachineIds", data.showExitZoneMachineIds);
         }
+        if (data.constraintAwareExitZoneInternality != null) {
+            map.put("constraintAwareExitZoneInternality", data.constraintAwareExitZoneInternality);
+        }
         if (data.stateDiameter != null) {
             map.put("stateDiameter", data.stateDiameter);
         }
@@ -888,6 +891,8 @@ public final class JsonModelSerializer {
         if (map != null && map.containsKey("showExitZoneMachineIds")) {
             data.showExitZoneMachineIds = getBoolean(map, "showExitZoneMachineIds", true);
         }
+        // Default OFF for documents that don't store this setting.
+        data.constraintAwareExitZoneInternality = getBoolean(map, "constraintAwareExitZoneInternality", false);
         if (map != null) {
             Integer diam = getNullableInt(map, "stateDiameter");
             Double border = getNullableDouble(map, "stateBorderThickness");

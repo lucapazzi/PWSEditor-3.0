@@ -3525,6 +3525,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         public final java.util.List<Point> pseudoAliases = new java.util.ArrayList<>();
         public final java.util.Map<String, Integer> pseudoAliasByTransition = new java.util.LinkedHashMap<>();
         public Boolean showExitZoneMachineIds;
+        public Boolean constraintAwareExitZoneInternality;
         public Integer stateDiameter;
         public Float stateBorderThickness;
         public Float stateFontSize;
@@ -3557,6 +3558,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     public AnnotationData exportAnnotations() {
         AnnotationData data = new AnnotationData();
         data.showExitZoneMachineIds = StateSemanticsAnnotation.isShowExitZoneMachineIds();
+        data.constraintAwareExitZoneInternality =
+                PWSStateMachine.isConstraintAwareExitZoneInternalityEnabled();
         data.stateDiameter = getStateDiameter();
         data.stateBorderThickness = getStateBorderThickness();
         data.stateFontSize = getStateFontSize();
@@ -3654,6 +3657,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         if (data == null) return;
         if (data.showExitZoneMachineIds != null) {
             StateSemanticsAnnotation.setShowExitZoneMachineIds(data.showExitZoneMachineIds);
+        }
+        if (data.constraintAwareExitZoneInternality != null) {
+            PWSStateMachine.setConstraintAwareExitZoneInternalityEnabled(
+                    data.constraintAwareExitZoneInternality);
         }
         if (data.stateDiameter != null) {
             setStateDiameter(data.stateDiameter);

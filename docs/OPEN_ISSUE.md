@@ -1,46 +1,59 @@
-# Open Issue: Exit Zones from Constraint Semantics (CS)
+# Open Issue: Exit-Zone Internality vs Constraints
 
-## Context
-Reactive exit zones (EZs) are currently computed from **both** state semantics (SS) and constraint semantics (CS). CS can be *partial* (e.g., `m1.Ready`), which implicitly allows any states of other machines, but **only explicitly mentioned machines contribute EZs**. This leads to cases where a partial CS allows `m2.Ready`, yet `m2` autonomous transitions do **not** generate EZs.
+## Status
+Implemented as a testing option (default remains unchanged).
 
-## Current Behavior (Code)
-- Exit zones are computed via `findExitZones(baseSemantics)` and then merged:
-  - `findExitZones(ps.getStateSemantics())`
-  - `findExitZones(ps.getConstraintsSemantics())`
-- Reactive semantics = union of CS and SS exit zones.
-- `findExitZones` requires:
-  1) `source ∧ baseSemantics` is **not empty**
-  2) `target ∧ baseSemantics` is **empty**
+## Background
+Reactive exit-zones are generated from state semantics (SS). A zone is considered
+"internal" when its target is already reachable in the source state's semantics.
 
-Because partial CS does **not** explicitly include other machines’ source states, EZs for those machines are not generated.
+This caused confusion in cases where:
+- target is allowed by constraints (CS),
+- but target is not yet present in SS.
 
-## Problem / Question
-Should **partial CS** be used to generate EZs **as if it were implicitly expanded** to all machines, or should EZs be generated **only for explicitly mentioned machines** (current behavior)?
+Example:
+- SS contains `(cover.Open, laser.Off)`
+- CS allows both `(cover.Open, laser.Off)` and `(cover.Closed, laser.Off)`
+- autonomous `cover: Open -> Closed` still appears as an exit-zone (non-internal)
+  under SS-only internality.
 
-## Why It Matters
-- **Pro current behavior (conservative):**
-  - Partial CS is concise and expresses “I don’t care about other machines.”
-  - EZ preview remains limited to explicitly constrained machines.
-- **Pro expanded behavior (preview-focused):**
-  - Gives early visibility of all potential boundary conditions, even before SS is computed.
-  - Aligns with the semantics of partial constraints (“all combinations allowed”).
-- **Risks of expansion:**
-  - Could produce many EZs (noise / clutter).
-  - Might feel inconsistent with a user’s intent to ignore some machines.
+## New Testing Option
+Menu:
+- `Testing -> Treat CS-covered targets as internal exit zones`
 
-## Options
-1) **Keep current behavior (conservative):**
-   - CS produces EZs only for explicitly mentioned machines.
-2) **Expand CS for EZ computation only:**
-   - Preserve concise CS input but compute EZs against the fully expanded semantics.
-3) **Add a toggle / mode:**
-   - “Compute EZs from CS (expanded)” vs “CS explicit only.”
+Behavior:
+- `OFF` (default): internality checked against `SS` only.
+- `ON`: internality checked against `SS ∪ explicit CS`.
 
-## Decision Needed
-Pick the intended semantics for CS-derived exit zones and update `findExitZones` / CS handling accordingly.
+Notes:
+- "Explicit CS" means non-`ANY` constraints.
+- This option changes:
+  - internal/uncovered classification and guard validation,
+  - and (new) fixed-point semantics growth via internal-closure.
 
-## Related Code Locations
-- `src/pws/PWSStateMachine.java`
-  - `recalculateSemantics()` (CS/SS exit-zone union)
-  - `updateExitZonesForState()`
-  - `findExitZones(Semantics baseSemantics)`
+## LFP Effect In Testing Mode
+When the option is `ON`, state semantics is closed under internal autonomous
+exit-zones during fixed-point iteration:
+- internality base = `SS ∪ explicit CS`,
+- internal codomain is OR-ed into SS,
+- codomain is clipped by explicit CS when present.
+
+So this testing mode can add configurations to computed state semantics and
+therefore can change the least fixed point.
+
+## Implemented Code Paths
+- Policy flag and helper:
+  - `src/pws/PWSStateMachine.java`
+    - `isConstraintAwareExitZoneInternalityEnabled()`
+    - `setConstraintAwareExitZoneInternalityEnabled(boolean)`
+    - `isExitZoneInternal(...)`
+    - `closeStateSemanticsWithInternalExitZones(...)`
+- Testing menu wiring:
+  - `src/pws/editor/PWSEditor.java`
+- Fixed-point integration:
+  - `src/pws/editor/semantics/SemanticsVisitor.java`
+- Internality consumers updated to use the shared helper:
+  - `src/pws/editor/annotation/StateSemanticsAnnotation.java`
+  - `src/pws/editor/annotation/GuardAnnotation.java`
+  - `src/pws/editor/ExtendedDashboardDialog.java`
+  - `src/pws/editor/ControllerReportDialog.java`

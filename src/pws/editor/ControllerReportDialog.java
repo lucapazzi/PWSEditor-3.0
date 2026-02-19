@@ -517,7 +517,6 @@ public class ControllerReportDialog extends JDialog {
             return targets;
         }
 
-        Semantics stateSem = srcState.getStateSemantics();
         Set<ExitZone> reactive = srcState.getReactiveSemantics();
         Set<ExitZone> csOnly = srcState.getCsOnlyExitZones();
         List<ExitZone> zones = new ArrayList<>();
@@ -536,15 +535,8 @@ public class ControllerReportDialog extends JDialog {
             if (zone == null || zone.getTarget() == null) continue;
             BasicStateProposition target = zone.getTarget();
             boolean isCsOnly = csOnly != null && csOnly.contains(zone);
-            if (!isCsOnly && assembly != null && stateSem != null) {
-                try {
-                    Semantics targetAndSem = target.toSemantics(assembly).AND(stateSem);
-                    if (!targetAndSem.ISEMPTY()) {
-                        continue; // internal (gray) exit zone
-                    }
-                } catch (Exception ignored) {
-                    // If semantics calculation fails, don't classify as internal.
-                }
+            if (!isCsOnly && PWSStateMachine.isExitZoneInternal(srcState, zone, assembly)) {
+                continue; // internal (gray) exit zone
             }
             targets.add(target.toString());
         }
@@ -600,8 +592,6 @@ public class ControllerReportDialog extends JDialog {
             
             HashSet<ExitZone> reactive = ps.getReactiveSemantics();
             if (reactive == null || reactive.isEmpty()) continue;
-            Semantics ss = ps.getStateSemantics();
-            
             // Collect guards from autonomous transitions leaving this state
             Set<String> coveredGuards = new HashSet<>();
             for (TransitionInterface ti : stateMachine.getTransitions()) {
@@ -616,11 +606,7 @@ public class ControllerReportDialog extends JDialog {
             List<ExitZoneProblem> stateProblems = new ArrayList<>();
             for (ExitZone ez : reactive) {
                 if (ez.isOrphanSource(assembly)) continue;
-                boolean isInternal = false;
-                if (ss != null && assembly != null && ez.getTarget() != null) {
-                    Semantics targetAndSem = ez.getTarget().toSemantics(assembly).AND(ss);
-                    isInternal = !targetAndSem.ISEMPTY();
-                }
+                boolean isInternal = PWSStateMachine.isExitZoneInternal(ps, ez, assembly);
                 if (isInternal) {
                     continue;
                 }

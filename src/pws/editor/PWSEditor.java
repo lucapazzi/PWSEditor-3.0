@@ -72,6 +72,8 @@ public class PWSEditor extends JFrame {
     private JMenuItem selectAllItem;
     private JCheckBoxMenuItem showStateAnn;
     private JCheckBoxMenuItem showExitZoneMachineIdsItem;
+    private JCheckBoxMenuItem disableExitZoneComputationItem;
+    private JCheckBoxMenuItem constraintAwareExitZoneInternalityItem;
     private JCheckBoxMenuItem showGridItem;
     private JCheckBoxMenuItem snapToGridItem;
     private JMenuItem gridSizeItem;
@@ -1124,6 +1126,29 @@ public class PWSEditor extends JFrame {
         updateUndoRedoMenuItems();
 
         menuBar.add(viewMenu);
+        JMenu testingMenu = new JMenu("Testing");
+        disableExitZoneComputationItem = new JCheckBoxMenuItem(
+                "Disable exit-zone computation",
+                pwsStateMachine != null && !pwsStateMachine.isExitZoneComputationEnabled());
+        disableExitZoneComputationItem.addActionListener(e -> {
+            if (pwsStateMachine == null) return;
+            boolean disabled = disableExitZoneComputationItem.isSelected();
+            pwsStateMachine.setExitZoneComputationEnabled(!disabled);
+            scheduleSemanticsRecalculation(false);
+        });
+        testingMenu.add(disableExitZoneComputationItem);
+
+        constraintAwareExitZoneInternalityItem = new JCheckBoxMenuItem(
+                "Treat CS-covered targets as internal exit zones",
+                PWSStateMachine.isConstraintAwareExitZoneInternalityEnabled());
+        constraintAwareExitZoneInternalityItem.addActionListener(e -> {
+            PWSStateMachine.setConstraintAwareExitZoneInternalityEnabled(
+                    constraintAwareExitZoneInternalityItem.isSelected());
+            markDocumentDirty();
+            scheduleSemanticsRecalculation(false);
+        });
+        testingMenu.add(constraintAwareExitZoneInternalityItem);
+        menuBar.add(testingMenu);
         JMenu infoMenu = new JMenu("Info");
         JMenuItem showInfoItem = new JMenuItem("Show Info");
         showInfoItem.addActionListener(e -> showInfoWindow());
@@ -1312,6 +1337,8 @@ public class PWSEditor extends JFrame {
         if (selectAllItem != null) selectAllItem.setEnabled(ctrl);
         if (showStateAnn != null) showStateAnn.setEnabled(ctrl);
         if (showExitZoneMachineIdsItem != null) showExitZoneMachineIdsItem.setEnabled(ctrl);
+        if (disableExitZoneComputationItem != null) disableExitZoneComputationItem.setEnabled(ctrl);
+        if (constraintAwareExitZoneInternalityItem != null) constraintAwareExitZoneInternalityItem.setEnabled(ctrl);
         if (showGridItem != null) showGridItem.setEnabled(ctrl);
         if (snapToGridItem != null) snapToGridItem.setEnabled(ctrl);
         if (gridSizeItem != null) gridSizeItem.setEnabled(ctrl);
@@ -1344,6 +1371,14 @@ public class PWSEditor extends JFrame {
         }
         if (showExitZoneMachineIdsItem != null) {
             showExitZoneMachineIdsItem.setSelected(StateSemanticsAnnotation.isShowExitZoneMachineIds());
+        }
+        if (disableExitZoneComputationItem != null) {
+            disableExitZoneComputationItem.setSelected(
+                    pwsStateMachine != null && !pwsStateMachine.isExitZoneComputationEnabled());
+        }
+        if (constraintAwareExitZoneInternalityItem != null) {
+            constraintAwareExitZoneInternalityItem.setSelected(
+                    PWSStateMachine.isConstraintAwareExitZoneInternalityEnabled());
         }
 
         if (stateSizeMenu != null) {
@@ -1457,7 +1492,12 @@ public class PWSEditor extends JFrame {
 
     /** Schedule an asynchronous semantics recalculation for the current model. */
     public void scheduleSemanticsRecalculation() {
+        scheduleSemanticsRecalculation(true);
+    }
+
+    private void scheduleSemanticsRecalculation(boolean markDocumentDirtyAfterRecalc) {
         if (this.pwsStateMachine == null) return;
+        final boolean markDirtyAfterRecalc = markDocumentDirtyAfterRecalc;
 
         // Keep initial configurations panel in sync with assembly changes
         SwingUtilities.invokeLater(this::refreshInitialConfigurationsPanel);
@@ -1494,7 +1534,7 @@ public class PWSEditor extends JFrame {
                         }
                     } catch (Exception ignore) {}
                     refreshInitialConfigurationsPanel();
-                    if (currentDocument != null) currentDocument.setDirty(true);
+                    if (markDirtyAfterRecalc && currentDocument != null) currentDocument.setDirty(true);
                     updateWindowTitle();
                     runLTLChecks(false);
                 } catch (java.util.concurrent.CancellationException ce) {

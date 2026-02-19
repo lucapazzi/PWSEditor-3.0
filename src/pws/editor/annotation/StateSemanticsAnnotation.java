@@ -971,7 +971,6 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             Set<ExitZone> csOnly = state.getCsOnlyExitZones();
             Set<ExitZone> ssOnly = state.getSsOnlyExitZones();
             Set<ExitZone> incomingOverflow = state.getIncomingTransitionOverflowExitZones();
-            Semantics ss = state.getStateSemantics();
             Color failCoverageColor = new Color(180, 140, 0);
             // Prepare list of exit-zones (SS first, then CS-only warnings)
             List<ExitZone> zones = new ArrayList<>(state.getReactiveSemantics());
@@ -989,11 +988,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 ExitZone ez = zones.get(i);
                 String txt = zoneLabels.get(i);
                 boolean isOrphan = ez.isOrphanSource(asm);
-                boolean isInternal = false;
-                if (ss != null && asm != null && ez.getTarget() != null) {
-                    Semantics targetAndSem = ez.getTarget().toSemantics(asm).AND(ss);
-                    isInternal = !targetAndSem.ISEMPTY();
-                }
+                boolean isInternal = PWSStateMachine.isExitZoneInternal(state, ez, asm);
                 boolean isCovered = coverageRequired && !isOrphan && !isInternal && coveredGuards.contains(ez.getTarget());
                 boolean isCsOnly = csOnly != null && csOnly.contains(ez);
                 boolean isIncomingOverflow = incomingOverflow != null && incomingOverflow.contains(ez);
@@ -1163,18 +1158,13 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         boolean hasOrphan = false;
         boolean hasUncovered = false;
         boolean coverageRequired = !state.isFailState();
-        Semantics ssCheck = state.getStateSemantics();
         if (state.getReactiveSemantics() != null) {
             for (ExitZone ez : state.getReactiveSemantics()) {
                 if (ez.isOrphanSource(asm)) {
                     hasOrphan = true;
                     continue;
                 }
-                boolean isInternal = false;
-                if (ssCheck != null && asm != null && ez.getTarget() != null) {
-                    Semantics targetAndSem = ez.getTarget().toSemantics(asm).AND(ssCheck);
-                    isInternal = !targetAndSem.ISEMPTY();
-                }
+                boolean isInternal = PWSStateMachine.isExitZoneInternal(state, ez, asm);
                 if (coverageRequired && !isInternal && !coveredGuards.contains(ez.getTarget())) {
                     hasUncovered = true;
                 }

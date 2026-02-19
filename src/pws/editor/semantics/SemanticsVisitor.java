@@ -111,6 +111,7 @@ public class SemanticsVisitor {
 
                 Semantics oldSem = semMap.get(tgt);
                 Semantics combined = oldSem.OR(accepted);
+                combined = machine.closeStateSemanticsWithInternalExitZones(tgt, combined);
                 if (!combined.equals(oldSem)) {
                     semMap.put(tgt, combined);
                     worklist.add(tgt);

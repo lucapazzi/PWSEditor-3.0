@@ -21,6 +21,7 @@ import java.util.StringJoiner;
 import java.util.function.Consumer;
 import pws.PWSTransition;
 import pws.PWSState;
+import pws.PWSStateMachine;
 import pws.editor.GuardEditorDialog;
 import pws.editor.semantics.Configuration;
 import pws.editor.semantics.ExitZone;
@@ -719,7 +720,6 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 coveredByOthers.add(bsp.toString());
             }
         }
-        Semantics stateSem = srcState.getStateSemantics();
         Set<ExitZone> reactive = srcState.getReactiveSemantics();
         Set<ExitZone> csOnly = srcState.getCsOnlyExitZones();
         List<ExitZone> zones = new ArrayList<>();
@@ -742,15 +742,8 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             String targetStr = target.toString();
             if (coveredByOthers.contains(targetStr)) continue;
             boolean isCsOnly = csOnly != null && csOnly.contains(zone);
-            if (!isCsOnly && assembly != null && stateSem != null) {
-                try {
-                    Semantics targetAndSem = target.toSemantics(assembly).AND(stateSem);
-                    if (!targetAndSem.ISEMPTY()) {
-                        continue; // internal (gray) exit zone
-                    }
-                } catch (Exception ignored) {
-                    // If semantics calculation fails, don't classify as internal.
-                }
+            if (!isCsOnly && PWSStateMachine.isExitZoneInternal(srcState, zone, assembly)) {
+                continue; // internal (gray) exit zone
             }
             eligible.add(targetStr);
         }
@@ -767,7 +760,6 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             return targets;
         }
 
-        Semantics stateSem = srcState.getStateSemantics();
         Set<ExitZone> reactive = srcState.getReactiveSemantics();
         Set<ExitZone> csOnly = srcState.getCsOnlyExitZones();
         List<ExitZone> zones = new ArrayList<>();
@@ -786,15 +778,8 @@ public class GuardAnnotation extends Annotation<SMProposition> {
             if (zone == null || zone.getTarget() == null) continue;
             BasicStateProposition target = zone.getTarget();
             boolean isCsOnly = csOnly != null && csOnly.contains(zone);
-            if (!isCsOnly && assembly != null && stateSem != null) {
-                try {
-                    Semantics targetAndSem = target.toSemantics(assembly).AND(stateSem);
-                    if (!targetAndSem.ISEMPTY()) {
-                        continue; // internal (gray) exit zone
-                    }
-                } catch (Exception ignored) {
-                    // If semantics calculation fails, don't classify as internal.
-                }
+            if (!isCsOnly && PWSStateMachine.isExitZoneInternal(srcState, zone, assembly)) {
+                continue; // internal (gray) exit zone
             }
             targets.add(target.toString());
         }

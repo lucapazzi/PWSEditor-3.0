@@ -32,6 +32,9 @@ public class PWSStateMachine extends StateMachine {
     private Assembly assembly;
 
     private static final long serialVersionUID = 1L;
+    private boolean exitZoneComputationEnabled = true;
+    // Testing option: when true, treat targets covered by explicit constraints as internal.
+    private static boolean constraintAwareExitZoneInternalityEnabled = false;
 
     // Constructor that accepts a name.
     public PWSStateMachine(String name) {
@@ -49,6 +52,162 @@ public class PWSStateMachine extends StateMachine {
     // Setter for the assembly.
     public void setAssembly(Assembly assembly) {
         this.assembly = assembly;
+    }
+
+    /**
+     * Returns whether exit-zone computation is enabled.
+     */
+    public boolean isExitZoneComputationEnabled() {
+        return exitZoneComputationEnabled;
+    }
+
+    /**
+     * Enables or disables exit-zone computation.
+     */
+    public void setExitZoneComputationEnabled(boolean enabled) {
+        this.exitZoneComputationEnabled = enabled;
+    }
+
+    /**
+     * Returns whether exit-zone internality also considers explicit constraints (SS ∪ CS).
+     */
+    public static boolean isConstraintAwareExitZoneInternalityEnabled() {
+        return constraintAwareExitZoneInternalityEnabled;
+    }
+
+    /**
+     * Enables or disables SS ∪ CS internality checks for exit-zones.
+     */
+    public static void setConstraintAwareExitZoneInternalityEnabled(boolean enabled) {
+        constraintAwareExitZoneInternalityEnabled = enabled;
+    }
+
+    /**
+     * Returns true if an exit-zone target should be considered internal for the given state.
+     *
+     * Default behavior checks against State Semantics only.
+     * Testing mode optionally checks against SS ∪ explicit CS.
+     */
+    public boolean isExitZoneInternal(PWSState state, ExitZone ez) {
+        return isExitZoneInternal(state, ez, assembly);
+    }
+
+    /**
+     * Static helper variant for callers that only have state/assembly.
+     */
+    public static boolean isExitZoneInternal(PWSState state, ExitZone ez, Assembly asm) {
+        if (state == null || ez == null || ez.getTarget() == null || asm == null) {
+            return false;
+        }
+
+        Semantics internalBase = state.getStateSemantics();
+        if (constraintAwareExitZoneInternalityEnabled && hasExplicitConstraintsForInternality(state)) {
+            Semantics cs = state.getConstraintsSemantics();
+            if (cs != null) {
+                internalBase = internalBase == null ? cs : internalBase.OR(cs);
+            }
+        }
+        return isExitZoneInternal(ez, internalBase, asm);
+    }
+
+    /**
+     * Returns true if the exit-zone target intersects the provided internality base semantics.
+     */
+    public static boolean isExitZoneInternal(ExitZone ez, Semantics internalBase, Assembly asm) {
+        if (ez == null || ez.getTarget() == null || internalBase == null || internalBase.ISEMPTY() || asm == null) {
+            return false;
+        }
+        try {
+            Semantics targetAndSem = ez.getTarget().toSemantics(asm).AND(internalBase);
+            return !targetAndSem.ISEMPTY();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static boolean hasExplicitConstraintsForInternality(PWSState ps) {
+        if (ps == null || ps.isPseudoState()) return false;
+        String raw = ps.getRawConstraintText();
+        if (raw != null && !raw.isBlank()) {
+            return !"ANY".equalsIgnoreCase(raw.trim());
+        }
+        Semantics cs = ps.getConstraintsSemantics();
+        return cs != null && !cs.getConfigurations().isEmpty();
+    }
+
+    /**
+     * Testing mode: closes a state's semantics under internal autonomous exit-zones.
+     *
+     * When constraint-aware internality is enabled, a zone is considered internal
+     * against SS ∪ explicit CS. Internal codomain is OR-ed into state semantics and
+     * clipped by CS when explicit constraints exist.
+     */
+    public Semantics closeStateSemanticsWithInternalExitZones(PWSState state, Semantics initial) {
+        if (!constraintAwareExitZoneInternalityEnabled
+                || !exitZoneComputationEnabled
+                || state == null
+                || state.isPseudoState()
+                || initial == null
+                || initial.ISEMPTY()
+                || assembly == null) {
+            return initial;
+        }
+
+        Semantics closure = initial.clone();
+        Semantics cs = hasExplicitConstraints(state) ? state.getConstraintsSemantics() : null;
+        int maxIterations = 1000;
+        for (int i = 0; i < maxIterations; i++) {
+            java.util.Set<ExitZone> zones = findExitZones(closure);
+            if (zones == null || zones.isEmpty()) {
+                break;
+            }
+
+            Semantics internalBase = closure;
+            if (cs != null) {
+                internalBase = internalBase.OR(cs);
+            }
+
+            Semantics next = closure;
+            for (ExitZone ez : zones) {
+                if (ez == null || ez.getSource() == null || ez.getTarget() == null || ez.getTransition() == null) {
+                    continue;
+                }
+                if (!isExitZoneInternal(ez, internalBase, assembly)) {
+                    continue;
+                }
+
+                String machineId = ez.getStateMachineId();
+                if (machineId == null || machineId.isBlank()) {
+                    machineId = ez.getSource().getMachineId();
+                }
+                if (machineId == null || machineId.isBlank()) {
+                    continue;
+                }
+                String sourceState = ez.getSource().getStateName();
+                String targetState = ez.getTarget().getStateName();
+                if (sourceState == null || targetState == null) {
+                    continue;
+                }
+
+                Semantics codomain = closure.computeCodomain(machineId, assembly, sourceState, targetState);
+                if (codomain == null || codomain.ISEMPTY()) {
+                    continue;
+                }
+                if (cs != null) {
+                    codomain = codomain.AND(cs);
+                }
+                if (codomain != null && !codomain.ISEMPTY()) {
+                    next = next.OR(codomain);
+                }
+            }
+
+            if (next.equals(closure)) {
+                break;
+            }
+            closure = next;
+        }
+
+        return closure;
     }
 
     /**
@@ -110,11 +269,15 @@ public class PWSStateMachine extends StateMachine {
         // ----------------------------------------------------------------------
         for (StateInterface si : getStates()) {
             if (si instanceof PWSState ps && si != pseudoState) {
-                HashSet<ExitZone> incomingOverflow = findIncomingTransitionOverflowExitZones(ps);
+                HashSet<ExitZone> incomingOverflow = exitZoneComputationEnabled
+                        ? findIncomingTransitionOverflowExitZones(ps)
+                        : new HashSet<>();
                 ps.setIncomingTransitionOverflowExitZones(incomingOverflow);
-                HashSet<ExitZone> ssZones = new HashSet<>(this.findExitZones(ps.getStateSemantics()));
+                HashSet<ExitZone> ssZones = exitZoneComputationEnabled
+                        ? new HashSet<>(this.findExitZones(ps.getStateSemantics()))
+                        : new HashSet<>();
                 HashSet<ExitZone> csZones = new HashSet<>();
-                if (hasExplicitConstraints(ps)) {
+                if (exitZoneComputationEnabled && hasExplicitConstraints(ps)) {
                     csZones.addAll(this.findProvisionalExitZones(ps));
                 }
 
@@ -192,12 +355,16 @@ public class PWSStateMachine extends StateMachine {
      */
     public void updateExitZonesForState(PWSState ps) {
         if (ps == null || ps == pseudoState) return;
-        HashSet<ExitZone> incomingOverflow = findIncomingTransitionOverflowExitZones(ps);
+        HashSet<ExitZone> incomingOverflow = exitZoneComputationEnabled
+                ? findIncomingTransitionOverflowExitZones(ps)
+                : new HashSet<>();
         ps.setIncomingTransitionOverflowExitZones(incomingOverflow);
         
-        HashSet<ExitZone> ssZones = new HashSet<>(this.findExitZones(ps.getStateSemantics()));
+        HashSet<ExitZone> ssZones = exitZoneComputationEnabled
+                ? new HashSet<>(this.findExitZones(ps.getStateSemantics()))
+                : new HashSet<>();
         HashSet<ExitZone> csZones = new HashSet<>();
-        if (hasExplicitConstraints(ps)) {
+        if (exitZoneComputationEnabled && hasExplicitConstraints(ps)) {
             csZones.addAll(this.findProvisionalExitZones(ps));
         }
 
@@ -707,7 +874,7 @@ public class PWSStateMachine extends StateMachine {
      */
     private Semantics computeIncomingOverflowGuardContribution(PWSState constrainedState, SMProposition guardProp) {
         Semantics result = Semantics.bottom(assembly.getAssemblyId());
-        if (constrainedState == null || guardProp == null || assembly == null) {
+        if (!exitZoneComputationEnabled || constrainedState == null || guardProp == null || assembly == null) {
             return result;
         }
         if (!hasExplicitConstraints(constrainedState)) {
@@ -763,7 +930,7 @@ public class PWSStateMachine extends StateMachine {
 
     private HashSet<ExitZone> findIncomingTransitionOverflowExitZones(PWSState targetState) {
         HashSet<ExitZone> zones = new HashSet<>();
-        if (targetState == null || targetState.isPseudoState() || assembly == null) {
+        if (!exitZoneComputationEnabled || targetState == null || targetState.isPseudoState() || assembly == null) {
             return zones;
         }
         if (!hasExplicitConstraints(targetState)) {
@@ -838,7 +1005,7 @@ public class PWSStateMachine extends StateMachine {
 
     private HashSet<ExitZone> findProvisionalExitZones(PWSState ps) {
         HashSet<ExitZone> zones = new HashSet<>();
-        if (ps == null || assembly == null) {
+        if (!exitZoneComputationEnabled || ps == null || assembly == null) {
             return zones;
         }
 
@@ -1111,6 +1278,9 @@ public class PWSStateMachine extends StateMachine {
      */
     public HashSet<ExitZone> findExitZones(Semantics baseSemantics) {
         HashSet<ExitZone> reactiveSem = new HashSet<>();
+        if (!exitZoneComputationEnabled || baseSemantics == null || assembly == null || baseSemantics.ISEMPTY()) {
+            return reactiveSem;
+        }
         Map<String, StateMachine> stateMachines = assembly.getStateMachines();
         if (stateMachines != null) {
             for (Map.Entry<String, StateMachine> entry : stateMachines.entrySet()) {

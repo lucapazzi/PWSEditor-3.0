@@ -383,8 +383,6 @@ public class ExtendedDashboardDialog extends JDialog {
             }
         }
 
-        Semantics ss = state.getStateSemantics();
-
         if (reactiveZones == null || reactiveZones.isEmpty()) {
             appendText("  No exit zones detected for this state.\n", STYLE_GRAY);
             appendText("  (No enabled autonomous component transitions from current semantics.)\n\n", STYLE_GRAY);
@@ -423,11 +421,7 @@ public class ExtendedDashboardDialog extends JDialog {
 
         for (ExitZone ez : reactiveZones) {
             boolean isOrphan = ez.isOrphanSource(assembly);
-            boolean isInternal = false;
-            if (ss != null && assembly != null && ez.getTarget() != null) {
-                Semantics targetAndSem = ez.getTarget().toSemantics(assembly).AND(ss);
-                isInternal = !targetAndSem.ISEMPTY();
-            }
+            boolean isInternal = PWSStateMachine.isExitZoneInternal(state, ez, assembly);
             boolean isCovered = coverageRequired && !isOrphan && !isInternal && coveredGuards.contains(ez.getTarget());
             boolean isCsOnly = csOnlyZones != null && csOnlyZones.contains(ez);
             boolean isSsOnly = ssOnlyZones != null && ssOnlyZones.contains(ez);
