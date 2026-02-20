@@ -645,9 +645,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 continue;
             }
             if (pt.getSource() == state) {
-                if (pt.isEnabled()) {
+                if (pt.isEnabled() && pt.getTarget() != state) {
                     outgoingEnabled.add(pt);
-                } else {
+                } else if (!pt.isEnabled()) {
                     outgoingDisabled++;
                 }
             }
@@ -661,7 +661,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         }
 
         Map<PWSTransition, Integer> coveredByTransition = new HashMap<>();
-        Set<String> coveredCfgs = new LinkedHashSet<>();
+        Set<String> directCoveredCfgs = new LinkedHashSet<>();
         for (Configuration cfg : configs) {
             if (cfg == null) {
                 continue;
@@ -674,14 +674,27 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 }
             }
             if (covered) {
-                coveredCfgs.add(cfg.toString());
+                directCoveredCfgs.add(cfg.toString());
             }
         }
+        Set<String> escapeCoveredCfgs = StateSemanticsAnnotation.computeCoveredCfgStrs(state, sm);
 
-        int trueDeadlocks = 0;
-        for (String cfgStr : internallyStuckCfgs) {
-            if (!coveredCfgs.contains(cfgStr)) {
-                trueDeadlocks++;
+        Set<String> primaryDeadlockCfgs = new LinkedHashSet<>();
+        if (!state.isFailState()) {
+            for (Configuration cfg : configs) {
+                if (cfg != null && !escapeCoveredCfgs.contains(cfg.toString())) {
+                    primaryDeadlockCfgs.add(cfg.toString());
+                }
+            }
+        }
+        int primaryDeadlocks = primaryDeadlockCfgs.size();
+
+        int secondaryDeadlocks = 0;
+        if (!state.isFailState()) {
+            for (String cfgStr : internallyStuckCfgs) {
+                if (!escapeCoveredCfgs.contains(cfgStr)) {
+                    secondaryDeadlocks++;
+                }
             }
         }
 
@@ -708,13 +721,20 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 evolvingConfigNames.add(cfgName);
             }
         }
-        List<String> coveredConfigNames = new ArrayList<>();
-        List<String> uncoveredConfigNames = new ArrayList<>();
+        List<String> directCoveredConfigNames = new ArrayList<>();
+        List<String> directUncoveredConfigNames = new ArrayList<>();
+        List<String> escapeCoveredConfigNames = new ArrayList<>();
+        List<String> noEscapeConfigNames = new ArrayList<>();
         for (String cfgName : configNames) {
-            if (coveredCfgs.contains(cfgName)) {
-                coveredConfigNames.add(cfgName);
+            if (directCoveredCfgs.contains(cfgName)) {
+                directCoveredConfigNames.add(cfgName);
             } else {
-                uncoveredConfigNames.add(cfgName);
+                directUncoveredConfigNames.add(cfgName);
+            }
+            if (escapeCoveredCfgs.contains(cfgName)) {
+                escapeCoveredConfigNames.add(cfgName);
+            } else {
+                noEscapeConfigNames.add(cfgName);
             }
         }
 
@@ -726,8 +746,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         tip.append("<b>").append(escapeHtml(state.getName())).append("</b><br>");
         if (totalConfigs == 0) {
             tip.append("Status: unreachable (no configurations).<br>");
-        } else if (trueDeadlocks > 0) {
-            tip.append("Status: true deadlock configurations present.<br>");
+        } else if (secondaryDeadlocks > 0) {
+            tip.append("Status: secondary (internal) deadlock configurations present.<br>");
+        } else if (primaryDeadlocks > 0) {
+            tip.append("Status: primary deadlock configurations present.<br>");
         } else if (statusIssues.isEmpty()) {
             tip.append("Status: well-formed under strict action semantics.<br>");
         } else {
@@ -768,27 +790,44 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                         .append(".");
             }
             tip.append("<br>");
-            tip.append("Strict transition coverage: ")
-                    .append(coveredCfgs.size())
+            tip.append("Strict transition coverage (direct): ")
+                    .append(directCoveredCfgs.size())
                     .append("/")
                     .append(totalConfigs)
                     .append(" covered by outgoing transitions.");
-            if (!coveredConfigNames.isEmpty()) {
+            if (!directCoveredConfigNames.isEmpty()) {
                 tip.append(" Covered: ")
-                        .append(escapeHtml(joinLimited(coveredConfigNames, 3)))
+                        .append(escapeHtml(joinLimited(directCoveredConfigNames, 3)))
                         .append(".");
             }
-            if (!uncoveredConfigNames.isEmpty()) {
+            if (!directUncoveredConfigNames.isEmpty()) {
                 tip.append(" Uncovered: ")
-                        .append(escapeHtml(joinLimited(uncoveredConfigNames, 3)))
+                        .append(escapeHtml(joinLimited(directUncoveredConfigNames, 3)))
                         .append(".");
             }
             tip.append("<br>");
-            tip.append("True deadlocks: ").append(trueDeadlocks).append("<br>");
+            tip.append("Escape coverage (internal evolution + outgoing transition): ")
+                    .append(escapeCoveredCfgs.size())
+                    .append("/")
+                    .append(totalConfigs)
+                    .append(" have an exit path.");
+            if (!escapeCoveredConfigNames.isEmpty()) {
+                tip.append(" Escape path: ")
+                        .append(escapeHtml(joinLimited(escapeCoveredConfigNames, 3)))
+                        .append(".");
+            }
+            if (!noEscapeConfigNames.isEmpty()) {
+                tip.append(" No escape path: ")
+                        .append(escapeHtml(joinLimited(noEscapeConfigNames, 3)))
+                        .append(".");
+            }
+            tip.append("<br>");
+            tip.append("Primary deadlocks: ").append(primaryDeadlocks).append("<br>");
+            tip.append("Secondary (internal) deadlocks: ").append(secondaryDeadlocks).append("<br>");
         }
 
         if (state.isFailState()) {
-            tip.append("Fail state: exit-zone coverage not required.<br>");
+            tip.append("Fail state: exit-zone and deadlock checks are masked.<br>");
         }
         if (!componentFailStates.isEmpty()) {
             tip.append("Contains component Fail states: ")
@@ -843,7 +882,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             tip.append(", ").append(incomingDisabled).append(" disabled");
         }
         tip.append(".<br>");
-        tip.append("Definitions follow Deadlock Framework: internal stuckness + strict action coverage.");
+        tip.append("Definitions follow Deadlock Framework: primary deadlock = no escape path (internal evolution + outgoing transition); secondary deadlock = primary + internally stuck.");
         tip.append("</html>");
         return tip.toString();
     }
@@ -2544,7 +2583,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     // Do not allow transitions to pseudo-state
                 } else {
                     Transition tr = (Transition) draggingEndpointTransition;
-                    if (draggingEndpointStart && tr.getSource() != hit) {
+                    if (draggingEndpointStart && tr.getTarget() == hit) {
+                        JOptionPane.showMessageDialog(this, "Self-loop transitions are not supported.");
+                    } else if (draggingEndpointEnd && tr.getSource() == hit) {
+                        JOptionPane.showMessageDialog(this, "Self-loop transitions are not supported.");
+                    } else if (draggingEndpointStart && tr.getSource() != hit) {
                         tr.setSource(hit);
                         changed = true;
                     } else if (draggingEndpointEnd && tr.getTarget() != hit) {
@@ -2879,6 +2922,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 // Prevent pseudostate as target
                 if (clickedState instanceof PWSState p && p.isPseudoState()) {
                     JOptionPane.showMessageDialog(this, "Cannot create transition to PseudoState.");
+                    linkMode = false;
+                    transitionSourceState = null;
+                    transitionSourcePseudoAliasIndex = -1;
+                    return;
+                }
+                if (clickedState == transitionSourceState) {
+                    JOptionPane.showMessageDialog(this, "Self-loop transitions are not supported.");
                     linkMode = false;
                     transitionSourceState = null;
                     transitionSourcePseudoAliasIndex = -1;

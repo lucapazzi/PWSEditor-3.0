@@ -1,93 +1,40 @@
-# Deadlock Framework (Draft)
+# Deadlock Framework
 
-This document captures the current deadlock notions for PWSEditor under **strict action semantics**. It is intended as a compact reference to guide implementation details and UI wording.
+This note defines deadlock terms used by PWSEditor under **strict action semantics**.
 
-**Scope**
-- Applies to PWS controller semantics and their component machines.
-- Assumes **strict action semantics**: controller actions are concrete events that must be enabled to apply.
+## Scope
+- Applies to controller-state semantics and component machines.
+- Coverage uses strict semantics: a transition covers a configuration only if guard and all actions are fireable.
+- **Self-loops are not considered exits** for deadlock coverage.
 
-## 1) Core Concepts
+## Core terms
+- **Configuration**: one concrete state per component machine, e.g. `(eng.On, brake.Ok)`.
+- **Internal evolution**: only autonomous transitions inside component machines.
+- **Internally stuck configuration**: no autonomous internal evolution is possible from that configuration.
 
-**Configuration**
-- A concrete assignment of one state per component machine (e.g., `(eng.On, brake.Ok)`).
+## Component-level deadlock
+- **Component deadlock (sink)**: a component state with no enabled outgoing transitions.
+- This is local to the component and should usually be modeled/treated as failure.
 
-**Controller State Semantics**
-- The set of configurations associated with a controller state.
+## Controller-level deadlocks
+- **Primary deadlock configuration**: a controller-state configuration that has **no escape path** to any enabled outgoing controller transition (excluding self-loops). Escape path means:
+  - direct transition coverage from the configuration, or
+  - internal autonomous evolution to another configuration that is directly covered.
+- **Secondary (internal) deadlock configuration**: a primary deadlock configuration that is also internally stuck.
 
-**Internal Evolution**
-- Evolution via **autonomous component transitions only**.
-- Controller-triggered actions are **not** internal evolution.
+Relation:
+- Secondary implies primary.
+- Primary does not imply secondary.
 
-## 2) Component-Level Deadlock
+## Fail-state masking
+- When a controller state is flagged as **Fail state**, primary and secondary deadlock checks are masked for that state.
+- Exit-zone coverage is also not required for fail states.
 
-**Component deadlock (sink)**
-- A component state with **no enabled outgoing transitions** (triggered or autonomous).
-- Implication: a component in such a state **cannot evolve at all** on its own.
-- Design intent: such a state should be treated as **failure**. If it is not explicitly modeled as a Fail state, it should be flagged as a modeling error.
+## Why this split matters
+- A state can be primary-deadlocked even when configurations still evolve internally (example: no outgoing controller exits, but internal autonomous cycles exist).
+- Secondary deadlocks identify the stricter case where there is neither controller way out nor internal evolution.
 
-**Recoverable Fail**
-- A Fail state **may** have outgoing transitions (recovery), so not all Fail states are deadlocked.
-
-## 3) Configuration-Level Deadlock (Internal)
-
-A configuration is **internally stuck** if it **cannot evolve internally** via autonomous component transitions.
-- This is a property of the *configuration*, not just a single component.
-- Internal evolution ignores controller actions.
-- **Special case (zero component machines):** the empty configuration `()` is internally stuck by definition, because there are no component machines and therefore no autonomous component transition can fire.
-- This special case is **not** a component deadlock (there is no component state involved); it is structural absence of internal evolution.
-
-## 4) Controller-Level Deadlock
-
-A configuration in a controller state is a **true deadlock** if **both** hold:
-1. It is **internally stuck**, and
-2. It is **not covered** by any outgoing controller transition under **strict action semantics**.
-
-**Coverage under strict action semantics**
-- A configuration is covered by a controller transition only if:
-  - The transition guard is satisfied, and
-  - Every action `m.event` on the transition is **enabled** from that configuration.
-- If any action cannot fire, the configuration **does not** transfer to the target state and is **not** covered.
-
-## 5) Fail States in Controller Semantics
-
-If a controller state’s semantics include component Fail states:
-- This should be **visible** as a warning, since failure is part of the controller state’s meaning.
-- It does **not** automatically imply a controller deadlock.
-
-## 6) Relationship Between Levels
-
-- **Component deadlock** contributes to internal stuckness but does **not** automatically mean controller deadlock.
-- **Controller deadlock** requires *both* internal stuckness *and* lack of strict-coverage by controller transitions.
-- With strict action semantics, a transition that *looks* like a way out is **not** a way out unless its actions are enabled in that configuration.
-
-## 7) Summary Checklist
-
-- Component sink state: treat as **failure** (or flag if not marked Fail).
-- Configuration internally stuck: no autonomous component evolution.
-- Zero-component assembly: `()` is internally stuck by definition (no components => no autonomous evolution).
-- Controller true deadlock: internally stuck **and** not strictly covered by any outgoing controller transition.
-
-## 8) Example: Engine May Fail to Start
-
-**Component machine `eng`**
-- States: `Off`, `On`, `Fail`
-- Triggered transitions:
-  - `Off --(on)--> On`
-  - `Off --(on)--> Fail` (engine fails to start)
-- Optional recovery:
-  - `Fail --(reset)--> Off` (if modeled)
-
-**Controller**
-- State `Go` semantics: `{(eng.On), (eng.Fail)}`
-- Transition `Go -> Stop2` with action `<eng.off>`
-- State `Stop2` has **no outgoing transitions** in this example.
-
-**Mapping to the framework**
-- `eng.Fail` is a **Fail state**. If it has no outgoing transitions, it is also a **component deadlock (sink)**.
-- Configuration `(eng.Fail)` is **internally stuck** if there are no autonomous transitions out of `Fail`.
-- Under **strict action semantics**, `<eng.off>` can only fire when `eng` is in `On`.  
-  Therefore:
-  - `(eng.On)` is **covered** by the transition.
-  - `(eng.Fail)` is **not covered** (action cannot fire), so it remains in `Go` and does **not** transfer to `Stop2`.
-- If `(eng.Fail)` is internally stuck **and** not covered by any other outgoing controller transition, it is a **true controller deadlock**.
-- In `Stop2`, the only configuration is `(eng.Off)`. With **no outgoing transitions**, if `eng.Off` has no autonomous evolution then `(eng.Off)` is internally stuck and **Stop2 is a true deadlock state** in this example.
+## Quick checklist
+- No escape path (direct coverage or via internal evolution) => primary deadlock.
+- Primary + internally stuck => secondary deadlock.
+- Fail state => deadlock checks masked.

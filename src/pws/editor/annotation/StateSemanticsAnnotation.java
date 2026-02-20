@@ -37,6 +37,8 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     private static final Color STATUS_ISSUE_COLOR = new Color(180, 0, 0);
     private static final Color STATUS_UNREACHABLE_COLOR = new Color(204, 170, 0);
     private static final String UNREACHABLE_ISSUE_TEXT = "State is unreachable (no configurations).";
+    private static final String PRIMARY_DEADLOCK_ISSUE_TEXT = "Primary deadlock configurations exist.";
+    private static final String SECONDARY_DEADLOCK_ISSUE_TEXT = "Secondary (internal) deadlock configurations exist.";
     private final transient java.util.ArrayList<HitArea> configHitAreas = new ArrayList<>();
     private final transient java.util.ArrayList<HitArea> constraintHitAreas = new ArrayList<>();
     private final transient java.util.ArrayList<HitArea> exitZoneHitAreas = new ArrayList<>();
@@ -674,14 +676,11 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         }
 
         // Precompute coverage/deadlock sets for drawing and status.
-        Set<String> coveredCfgStrs = computeCoveredCfgStrs(state, pwsMachine);
-        Set<String> deadlockCfgStrs = new HashSet<>();
-        Set<pws.editor.semantics.Configuration> deadlocks = state.getDeadlockConfigurations();
-        if (deadlocks != null) {
-            for (pws.editor.semantics.Configuration dc : deadlocks) {
-                deadlockCfgStrs.add(dc.toString());
-            }
-        }
+        Set<String> escapeCoveredCfgStrs = computeCoveredCfgStrs(state, pwsMachine);
+        Set<String> deadlockCfgStrs = collectInternallyStuckCfgStrs(state);
+        Set<String> primaryDeadlockCfgStrs = computePrimaryDeadlockCfgStrs(state, pwsMachine, escapeCoveredCfgStrs);
+        Set<String> secondaryDeadlockCfgStrs = computeSecondaryDeadlockCfgStrs(
+                state, pwsMachine, escapeCoveredCfgStrs, deadlockCfgStrs);
         Set<smalgebra.BasicStateProposition> coveredGuards = new HashSet<>();
         if (pwsMachine != null) {
             for (machinery.TransitionInterface ti : pwsMachine.getTransitions()) {
@@ -717,7 +716,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         g2d.drawString(stateName, nameX, nameY);
         String headerTip;
         if (allOk) {
-            headerTip = "Green: state is well-formed (constraints satisfied, exit zones covered, no true deadlocks).";
+            headerTip = "Green: state is well-formed (constraints satisfied, exit zones covered, no primary/secondary deadlocks).";
         } else if (unreachableIssue) {
             headerTip = "Yellow: state is unreachable (no configurations).";
             if (statusIssues.size() > 1) {
@@ -727,7 +726,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             headerTip = "Red: " + (statusIssues.isEmpty() ? "state has issues." : String.join("; ", statusIssues));
         }
         if (state.isFailState()) {
-            headerTip += " Fail state: exit-zone coverage not required.";
+            headerTip += " Fail state: exit-zone and primary/secondary deadlock checks are masked.";
         }
         if (!componentFailStates.isEmpty()) {
             headerTip += " Warning: includes component fail states (" + String.join(", ", componentFailStates) + ").";
@@ -844,13 +843,13 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             String s = cfg.toString();
             boolean isEmptyConfig = cfg.getBasicStatePropositions().isEmpty();
             boolean isDeadlock = deadlockCfgStrs.contains(s);
-            boolean isCovered = coveredCfgStrs.contains(s);
             boolean canEvolve = !isDeadlock && !isEmptyConfig;
             boolean satisfiesConstraint = anyConstraint;
             if (!satisfiesConstraint && constraintsSem != null) {
                 satisfiesConstraint = cfg.implies(constraintsSem);
             }
-            boolean isTrueDeadlock = isDeadlock && !isCovered;
+            boolean isPrimaryDeadlock = primaryDeadlockCfgStrs.contains(s);
+            boolean isSecondaryDeadlock = secondaryDeadlockCfgStrs.contains(s);
             java.util.List<String> componentDeadlocks = findComponentDeadlocks(cfg, asm);
             boolean hasComponentDeadlock = !componentDeadlocks.isEmpty();
 
@@ -881,7 +880,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
 
             if (rowWidth > 0) {
-                if (isTrueDeadlock) {
+                if (isSecondaryDeadlock) {
                     g2d.setColor(Color.RED);
                     g2d.drawLine(rowStart, y + 1, rowStart + rowWidth, y + 1);
                 } else if (hasComponentDeadlock) {
@@ -896,10 +895,13 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             StringBuilder tip = new StringBuilder();
             if (isEmptyConfig) {
                 tip.append("No component machines configured.");
-            } else if (isTrueDeadlock) {
-                tip.append("True deadlock: cannot evolve internally and not covered by any transition.");
+            } else if (isSecondaryDeadlock) {
+                tip.append("Secondary (internal) deadlock: cannot evolve internally and has no escape path to an outgoing transition.");
             } else if (canEvolve) {
                 tip.append("Can evolve internally.");
+                if (isPrimaryDeadlock) {
+                    tip.append(" Primary deadlock: no escape path to an outgoing transition.");
+                }
                 String evolutionHint = buildEvolutionHint(cfg, state, asm);
                 if (evolutionHint != null && !evolutionHint.isBlank()) {
                     tip.append(" ").append(evolutionHint);
@@ -1121,14 +1123,8 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         boolean hasCs = constraintsSem != null && !constraintsSem.getConfigurations().isEmpty();
         boolean anyConstraint = state.isPseudoState() || rawAny || (!hasRaw && !hasCs);
 
-        Set<String> coveredCfgStrs = computeCoveredCfgStrs(state, sm);
-        Set<String> deadlockCfgStrs = new HashSet<>();
-        Set<pws.editor.semantics.Configuration> deadlocks = state.getDeadlockConfigurations();
-        if (deadlocks != null) {
-            for (pws.editor.semantics.Configuration dc : deadlocks) {
-                deadlockCfgStrs.add(dc.toString());
-            }
-        }
+        Set<String> escapeCoveredCfgStrs = computeCoveredCfgStrs(state, sm);
+        Set<String> deadlockCfgStrs = collectInternallyStuckCfgStrs(state);
         Set<smalgebra.BasicStateProposition> coveredGuards = new HashSet<>();
         for (machinery.TransitionInterface ti : sm.getTransitions()) {
             if (ti instanceof pws.PWSTransition pt) {
@@ -1176,10 +1172,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         if (hasOrphan) {
             issues.add("Orphan exit zones — no matching source state.");
         }
-        for (String deadlockStr : deadlockCfgStrs) {
-            if (!coveredCfgStrs.contains(deadlockStr)) {
-                issues.add("True deadlock configurations exist.");
-                break;
+        if (!state.isFailState()) {
+            Set<String> primaryDeadlockCfgStrs = computePrimaryDeadlockCfgStrs(state, sm, escapeCoveredCfgStrs);
+            if (!primaryDeadlockCfgStrs.isEmpty()) {
+                issues.add(PRIMARY_DEADLOCK_ISSUE_TEXT);
+            }
+            Set<String> secondaryDeadlockCfgStrs = computeSecondaryDeadlockCfgStrs(
+                    state, sm, escapeCoveredCfgStrs, deadlockCfgStrs);
+            if (!secondaryDeadlockCfgStrs.isEmpty()) {
+                issues.add(SECONDARY_DEADLOCK_ISSUE_TEXT);
             }
         }
         return issues;
@@ -1210,25 +1211,192 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         return false;
     }
 
-    private static Set<String> computeCoveredCfgStrs(PWSState state, PWSStateMachine sm) {
+    public static Set<String> computeCoveredCfgStrs(PWSState state, PWSStateMachine sm) {
+        return computeEscapeCoveredCfgStrs(state, sm);
+    }
+
+    public static Set<String> computeDirectCoveredCfgStrs(PWSState state, PWSStateMachine sm) {
         Set<String> covered = new HashSet<>();
         if (state == null || sm == null || state.getStateSemantics() == null) {
             return covered;
         }
+        java.util.List<pws.PWSTransition> outgoing = collectEnabledOutgoingNonSelfTransitions(state, sm);
         for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
             if (!(cfgObj instanceof pws.editor.semantics.Configuration cfg)) {
                 continue;
             }
-            for (machinery.TransitionInterface ti : sm.getTransitions()) {
-                if (ti instanceof pws.PWSTransition pt && pt.isEnabled() && pt.getSource() == state) {
-                    if (sm.transitionCoversConfiguration(pt, cfg)) {
-                        covered.add(cfg.toString());
-                        break;
-                    }
-                }
+            if (isDirectlyCovered(cfg, outgoing, sm)) {
+                covered.add(cfg.toString());
             }
         }
         return covered;
+    }
+
+    public static Set<String> computeEscapeCoveredCfgStrs(PWSState state, PWSStateMachine sm) {
+        Set<String> covered = new HashSet<>();
+        if (state == null || sm == null || state.getStateSemantics() == null) {
+            return covered;
+        }
+        java.util.List<pws.PWSTransition> outgoing = collectEnabledOutgoingNonSelfTransitions(state, sm);
+        if (outgoing.isEmpty()) {
+            return covered;
+        }
+        Assembly asm = sm.getAssembly();
+        for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
+            if (!(cfgObj instanceof pws.editor.semantics.Configuration cfg)) {
+                continue;
+            }
+            if (hasEscapePathToOutgoingTransition(cfg, outgoing, sm, asm)) {
+                covered.add(cfg.toString());
+            }
+        }
+        return covered;
+    }
+
+    private static java.util.List<pws.PWSTransition> collectEnabledOutgoingNonSelfTransitions(PWSState state, PWSStateMachine sm) {
+        java.util.List<pws.PWSTransition> outgoing = new ArrayList<>();
+        if (state == null || sm == null) {
+            return outgoing;
+        }
+        for (machinery.TransitionInterface ti : sm.getTransitions()) {
+            if (ti instanceof pws.PWSTransition pt
+                    && pt.isEnabled()
+                    && pt.getSource() == state
+                    && pt.getTarget() != state) {
+                outgoing.add(pt);
+            }
+        }
+        return outgoing;
+    }
+
+    private static boolean isDirectlyCovered(pws.editor.semantics.Configuration cfg,
+                                             java.util.List<pws.PWSTransition> outgoing,
+                                             PWSStateMachine sm) {
+        if (cfg == null || outgoing == null || outgoing.isEmpty() || sm == null) {
+            return false;
+        }
+        for (pws.PWSTransition pt : outgoing) {
+            if (sm.transitionCoversConfiguration(pt, cfg)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasEscapePathToOutgoingTransition(pws.editor.semantics.Configuration startCfg,
+                                                             java.util.List<pws.PWSTransition> outgoing,
+                                                             PWSStateMachine sm,
+                                                             Assembly asm) {
+        if (startCfg == null || outgoing == null || outgoing.isEmpty() || sm == null) {
+            return false;
+        }
+        if (isDirectlyCovered(startCfg, outgoing, sm)) {
+            return true;
+        }
+        if (asm == null || asm.getStateMachines() == null || asm.getStateMachines().isEmpty()) {
+            return false;
+        }
+
+        Set<pws.editor.semantics.Configuration> visited = new HashSet<>();
+        Deque<pws.editor.semantics.Configuration> worklist = new ArrayDeque<>();
+        visited.add(startCfg);
+        worklist.add(startCfg);
+
+        while (!worklist.isEmpty()) {
+            pws.editor.semantics.Configuration current = worklist.poll();
+            for (Map.Entry<String, machinery.StateMachine> entry : asm.getStateMachines().entrySet()) {
+                String machineId = entry.getKey();
+                machinery.StateMachine machine = entry.getValue();
+                if (machine == null || machine.getTransitions() == null) {
+                    continue;
+                }
+                String currentStateName = current.getStateName(machineId);
+                if (currentStateName == null) {
+                    continue;
+                }
+                for (machinery.TransitionInterface ti : machine.getTransitions()) {
+                    if (!(ti instanceof machinery.Transition t)
+                            || !t.isEnabled()
+                            || !t.isAutonomous()
+                            || t.getSource() == null
+                            || t.getTarget() == null
+                            || !currentStateName.equals(t.getSource().getName())) {
+                        continue;
+                    }
+                    pws.editor.semantics.Configuration next = current.replaceConstraint(machineId, t.getTarget().getName());
+                    if (next == null || !visited.add(next)) {
+                        continue;
+                    }
+                    if (isDirectlyCovered(next, outgoing, sm)) {
+                        return true;
+                    }
+                    worklist.add(next);
+                }
+            }
+        }
+        return false;
+    }
+
+    public static Set<String> computePrimaryDeadlockCfgStrs(PWSState state, PWSStateMachine sm) {
+        return computePrimaryDeadlockCfgStrs(state, sm, computeCoveredCfgStrs(state, sm));
+    }
+
+    public static Set<String> computeSecondaryDeadlockCfgStrs(PWSState state, PWSStateMachine sm) {
+        Set<String> coveredCfgStrs = computeCoveredCfgStrs(state, sm);
+        Set<String> deadlockCfgStrs = collectInternallyStuckCfgStrs(state);
+        return computeSecondaryDeadlockCfgStrs(state, sm, coveredCfgStrs, deadlockCfgStrs);
+    }
+
+    private static Set<String> computePrimaryDeadlockCfgStrs(PWSState state,
+                                                             PWSStateMachine sm,
+                                                             Set<String> escapeCoveredCfgStrs) {
+        Set<String> primary = new LinkedHashSet<>();
+        if (state == null || sm == null || state.isFailState() || state.getStateSemantics() == null) {
+            return primary;
+        }
+        for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
+            if (cfgObj instanceof pws.editor.semantics.Configuration cfg) {
+                String cfgStr = cfg.toString();
+                if (!escapeCoveredCfgStrs.contains(cfgStr)) {
+                    primary.add(cfgStr);
+                }
+            }
+        }
+        return primary;
+    }
+
+    private static Set<String> computeSecondaryDeadlockCfgStrs(PWSState state,
+                                                               PWSStateMachine sm,
+                                                               Set<String> escapeCoveredCfgStrs,
+                                                               Set<String> deadlockCfgStrs) {
+        Set<String> secondary = new LinkedHashSet<>();
+        if (state == null || sm == null || state.isFailState()) {
+            return secondary;
+        }
+        Set<String> primaryDeadlocks = computePrimaryDeadlockCfgStrs(state, sm, escapeCoveredCfgStrs);
+        for (String cfg : deadlockCfgStrs) {
+            if (primaryDeadlocks.contains(cfg)) {
+                secondary.add(cfg);
+            }
+        }
+        return secondary;
+    }
+
+    private static Set<String> collectInternallyStuckCfgStrs(PWSState state) {
+        Set<String> deadlockCfgStrs = new LinkedHashSet<>();
+        if (state == null) {
+            return deadlockCfgStrs;
+        }
+        Set<pws.editor.semantics.Configuration> deadlocks = state.getDeadlockConfigurations();
+        if (deadlocks == null) {
+            return deadlockCfgStrs;
+        }
+        for (pws.editor.semantics.Configuration dc : deadlocks) {
+            if (dc != null) {
+                deadlockCfgStrs.add(dc.toString());
+            }
+        }
+        return deadlockCfgStrs;
     }
 
     private String buildIncomingOverflowInlineLabel(ExitZone ez) {

@@ -249,15 +249,16 @@ public class ExtendedDashboardDialog extends JDialog {
         boolean hasCs = cs != null && !cs.getConfigurations().isEmpty();
         boolean anyConstraint = state.isPseudoState() || rawAny || (!hasRaw && !hasCs);
         
-        // Get covered configurations from outgoing transitions
-        Set<String> coveredCfgStrs = new HashSet<>();
+        // Get direct and escape coverage from outgoing transitions.
+        Set<String> directCoveredCfgStrs = new HashSet<>();
+        Set<String> escapeCoveredCfgStrs = StateSemanticsAnnotation.computeCoveredCfgStrs(state, stateMachine);
         Map<String, java.util.List<PWSTransition>> coveredByTransition = new HashMap<>();
         if (ss != null && stateMachine != null && assembly != null) {
             for (Configuration cfg : ss.getConfigurations()) {
                 java.util.List<PWSTransition> covering = findCoveringTransitions(cfg);
                 if (!covering.isEmpty()) {
                     String cfgStr = cfg.toString();
-                    coveredCfgStrs.add(cfgStr);
+                    directCoveredCfgStrs.add(cfgStr);
                     coveredByTransition.put(cfgStr, covering);
                 }
             }
@@ -293,10 +294,10 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText(" = internally stuck due to component deadlock (listed below)\n", STYLE_GRAY);
             appendText("        ", STYLE_GRAY);
             appendText("RED underline", STYLE_RED_UNDERLINE);
-            appendText(" = true deadlock (internally stuck and not covered by outgoing PWS transitions)\n", STYLE_GRAY);
+            appendText(" = secondary (internal) deadlock (internally stuck and no escape path to outgoing PWS transitions)\n", STYLE_GRAY);
             appendText("        NO underline = internally stuck, but at least one enabled outgoing PWS transition can still fire\n", STYLE_GRAY);
-            appendText("          (there is still an exit path, so this is not a true deadlock)\n", STYLE_GRAY);
-            appendText("    Note: true deadlocks are explicitly labeled below and appear with a red underline in the dashboard.\n\n", STYLE_GRAY);
+            appendText("          (there is still an exit path, so this is not a secondary deadlock)\n", STYLE_GRAY);
+            appendText("    Note: primary deadlocks have no escape path (internal evolution + outgoing transition); secondary deadlocks are primary + internally stuck.\n\n", STYLE_GRAY);
             
             for (Configuration cfg : ss.getConfigurations()) {
                 String cfgStr = cfg.toString();
@@ -306,17 +307,19 @@ public class ExtendedDashboardDialog extends JDialog {
                 
                 boolean satisfiesConstraint = anyConstraint
                         || (cs != null && cfg.implies(cs));
-                boolean isCovered = coveredCfgStrs.contains(cfgStr);
+                boolean isDirectlyCovered = directCoveredCfgStrs.contains(cfgStr);
+                boolean hasEscapePath = escapeCoveredCfgStrs.contains(cfgStr);
                 boolean isDeadlock = deadlockStrs.contains(cfgStr);
+                boolean isPrimaryDeadlock = !state.isFailState() && !hasEscapePath;
                 boolean canEvolve = !isDeadlock && !isEmptyConfig; // Empty config can't evolve
-                boolean isTrueDeadlock = isDeadlock && !isCovered;
+                boolean isSecondaryDeadlock = isDeadlock && isPrimaryDeadlock;
                 java.util.List<String> componentDeadlocks = findComponentDeadlocks(cfg);
                 
                 // Determine style matching the dashboard:
                 // Text color = constraint satisfaction (green/red).
                 // Underline = internal evolution status:
                 //   - Underline: can evolve internally
-                //   - No underline: internally stuck (covered or true deadlock)
+                //   - No underline: internally stuck (covered or secondary deadlock)
                 String style;
                 String indicator;
                 
@@ -329,9 +332,9 @@ public class ExtendedDashboardDialog extends JDialog {
                     style = satisfiesConstraint ? STYLE_GREEN_UNDERLINE : STYLE_RED_UNDERLINE;
                     indicator = " ↻";
                 } else {
-                    // Internally stuck (covered or true deadlock)
+                    // Internally stuck (covered or secondary deadlock)
                     style = satisfiesConstraint ? STYLE_GREEN : STYLE_RED;
-                    if (isTrueDeadlock) {
+                    if (isSecondaryDeadlock) {
                         indicator = " ⛔";
                     } else {
                         indicator = " ✓";
@@ -347,8 +350,11 @@ public class ExtendedDashboardDialog extends JDialog {
                         isEmptyConfig,
                         satisfiesConstraint,
                         canEvolve,
-                        isTrueDeadlock,
+                        hasEscapePath,
+                        isPrimaryDeadlock,
+                        isSecondaryDeadlock,
                         coveringTransitions,
+                        isDirectlyCovered,
                         componentDeadlocks);
             }
         } else {
@@ -631,47 +637,68 @@ public class ExtendedDashboardDialog extends JDialog {
         appendText("│ DEADLOCK ANALYSIS                                           │\n", STYLE_SUBHEADING);
         appendText("└─────────────────────────────────────────────────────────────┘\n", STYLE_SUBHEADING);
 
-        Set<Configuration> deadlocks = state.getDeadlockConfigurations();
-        
-        if (deadlocks == null || deadlocks.isEmpty()) {
-            appendText("  No internally stuck configurations detected.\n", STYLE_GREEN);
-            appendText("  All configurations can evolve internally.\n\n", STYLE_GRAY);
+        if (state.isFailState()) {
+            appendText("  Fail state: primary/secondary deadlock checks are masked.\n", STYLE_ORANGE);
+            appendText("  Deadlock diagnostics are informational only for this state.\n\n", STYLE_GRAY);
             return;
         }
 
-        // Get covered configurations
-        Set<String> coveredCfgStrs = new HashSet<>();
+        // Escape coverage (direct or after internal evolution).
+        Set<String> coveredCfgStrs = StateSemanticsAnnotation.computeCoveredCfgStrs(state, stateMachine);
         Semantics ss = state.getStateSemantics();
-        if (stateMachine != null && ss != null) {
+
+        Set<Configuration> deadlocks = state.getDeadlockConfigurations();
+        Set<String> primaryDeadlocks = new LinkedHashSet<>();
+        if (ss != null) {
             for (Configuration cfg : ss.getConfigurations()) {
-                if (!findCoveringTransitions(cfg).isEmpty()) {
-                    coveredCfgStrs.add(cfg.toString());
+                if (cfg != null && !coveredCfgStrs.contains(cfg.toString())) {
+                    primaryDeadlocks.add(cfg.toString());
                 }
             }
         }
 
-        appendText("  Internally stuck configurations (cannot evolve internally):\n\n", STYLE_GRAY);
+        if ((deadlocks == null || deadlocks.isEmpty()) && primaryDeadlocks.isEmpty()) {
+            appendText("  No primary or secondary deadlocks detected.\n", STYLE_GREEN);
+            appendText("  All configurations have an escape path to an outgoing controller transition.\n\n", STYLE_GRAY);
+            return;
+        }
 
-        int trueDeadlocks = 0;
+        if (!primaryDeadlocks.isEmpty()) {
+            appendText("  Primary deadlock configurations (no escape path to outgoing transition):\n\n", STYLE_GRAY);
+            for (String cfgStr : primaryDeadlocks) {
+                appendText("    " + cfgStr + "\n", STYLE_ORANGE);
+            }
+            appendText("\n", STYLE_NORMAL);
+        }
+
+        if (deadlocks == null || deadlocks.isEmpty()) {
+            appendText("  No internally stuck configurations detected.\n", STYLE_GREEN);
+            appendText("  Secondary (internal) deadlocks: 0\n\n", STYLE_GRAY);
+            return;
+        }
+
+        appendText("  Internally stuck configurations:\n\n", STYLE_GRAY);
+
+        int secondaryDeadlocks = 0;
         for (Configuration cfg : deadlocks) {
             String cfgStr = cfg.toString();
-            boolean isCovered = coveredCfgStrs.contains(cfgStr);
+            boolean isSecondary = primaryDeadlocks.contains(cfgStr);
             
-            appendText("    " + cfgStr, isCovered ? STYLE_ORANGE : STYLE_RED);
-            if (isCovered) {
-                appendText(" - Has way out via transition\n", STYLE_ORANGE);
+            appendText("    " + cfgStr, isSecondary ? STYLE_RED : STYLE_ORANGE);
+            if (isSecondary) {
+                appendText(" - SECONDARY (INTERNAL) DEADLOCK\n", STYLE_RED);
+                secondaryDeadlocks++;
             } else {
-                appendText(" - TRUE DEADLOCK (no way out!)\n", STYLE_RED);
-                trueDeadlocks++;
+                appendText(" - Has way out via transition\n", STYLE_ORANGE);
             }
         }
 
         appendText("\n  Summary: ", STYLE_BOLD);
-        if (trueDeadlocks == 0) {
-            appendText("No true deadlocks", STYLE_GREEN);
-            appendText(" (all potential deadlocks are covered by transitions)\n\n", STYLE_GRAY);
+        if (secondaryDeadlocks == 0) {
+            appendText("No secondary (internal) deadlocks", STYLE_GREEN);
+            appendText(" (internally stuck configurations are covered by transitions)\n\n", STYLE_GRAY);
         } else {
-            appendText(trueDeadlocks + " TRUE DEADLOCK(S)", STYLE_RED);
+            appendText(secondaryDeadlocks + " SECONDARY (INTERNAL) DEADLOCK(S)", STYLE_RED);
             appendText(" requiring attention\n\n", STYLE_NORMAL);
         }
     }
@@ -689,11 +716,12 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText("  ✓ STATE IS WELL-FORMED\n\n", STYLE_GREEN);
             appendText("    • All computed configurations satisfy constraints\n", STYLE_GREEN);
             if (state.isFailState()) {
-                appendText("    • Fail state: exit-zone coverage not required\n", STYLE_ORANGE);
+                appendText("    • Fail state: exit-zone and deadlock checks are masked\n", STYLE_ORANGE);
             } else {
                 appendText("    • All exit zones are covered by autonomous transitions\n", STYLE_GREEN);
+                appendText("    • No primary deadlock configurations\n", STYLE_GREEN);
             }
-            appendText("    • No true deadlock configurations\n", STYLE_GREEN);
+            appendText("    • No secondary (internal) deadlock configurations\n", STYLE_GREEN);
         } else {
             appendText("  ⚠ STATE HAS ISSUES\n\n", STYLE_RED);
             for (String issue : issues) {
@@ -709,7 +737,10 @@ public class ExtendedDashboardDialog extends JDialog {
             return covering;
         }
         for (TransitionInterface ti : stateMachine.getTransitions()) {
-            if (ti instanceof PWSTransition pt && pt.isEnabled() && pt.getSource() == state) {
+            if (ti instanceof PWSTransition pt
+                    && pt.isEnabled()
+                    && pt.getSource() == state
+                    && pt.getTarget() != state) {
                 if (stateMachine.transitionCoversConfiguration(pt, cfg)) {
                     covering.add(pt);
                 }
@@ -867,8 +898,11 @@ public class ExtendedDashboardDialog extends JDialog {
                                             boolean isEmptyConfig,
                                             boolean satisfiesConstraint,
                                             boolean canEvolve,
-                                            boolean isTrueDeadlock,
+                                            boolean hasEscapePath,
+                                            boolean isPrimaryDeadlock,
+                                            boolean isSecondaryDeadlock,
                                             java.util.List<PWSTransition> coveringTransitions,
+                                            boolean isDirectlyCovered,
                                             java.util.List<String> componentDeadlocks) {
         if (cfg == null) return;
         appendText("      1. ", STYLE_GRAY);
@@ -905,8 +939,12 @@ public class ExtendedDashboardDialog extends JDialog {
         if (coveringTransitions != null && !coveringTransitions.isEmpty()) {
             appendText("Covered by PWS transition: ", STYLE_GRAY);
             appendText(formatPwsTransitions(coveringTransitions) + "\n", STYLE_GREEN);
-        } else if (isTrueDeadlock) {
-            appendText("Not covered by any PWS transition (true deadlock).\n", STYLE_RED);
+        } else if (isSecondaryDeadlock) {
+            appendText("Not covered by any PWS transition (secondary/internal deadlock).\n", STYLE_RED);
+        } else if (isPrimaryDeadlock) {
+            appendText("No escape path to any outgoing PWS transition (primary deadlock).\n", STYLE_ORANGE);
+        } else if (!isDirectlyCovered && hasEscapePath) {
+            appendText("No direct PWS transition from this configuration, but escape path exists via internal evolution.\n", STYLE_GREEN);
         } else {
             appendText("Not covered by any PWS transition.\n", STYLE_GRAY);
         }

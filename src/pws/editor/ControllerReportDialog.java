@@ -6,6 +6,7 @@ import machinery.TransitionInterface;
 import pws.PWSState;
 import pws.PWSStateMachine;
 import pws.PWSTransition;
+import pws.editor.annotation.StateSemanticsAnnotation;
 import pws.editor.semantics.Configuration;
 import pws.editor.semantics.ExitZone;
 import pws.editor.semantics.Semantics;
@@ -55,7 +56,8 @@ public class ControllerReportDialog extends JDialog {
     private int exitZoneProblems = 0;
     private int orphanExitZoneProblems = 0;
     private int constraintProblems = 0;
-    private int deadlockProblems = 0;
+    private int primaryDeadlockProblems = 0;
+    private int secondaryDeadlockProblems = 0;
     private int unreachableProblems = 0;
     
     public ControllerReportDialog(Frame owner, PWSStateMachine stateMachine) {
@@ -163,7 +165,8 @@ public class ControllerReportDialog extends JDialog {
         Map<PWSState, List<ExitZoneProblem>> exitZoneProblemMap = collectExitZoneProblems();
         Map<PWSState, List<ExitZoneProblem>> orphanExitZoneProblemMap = collectOrphanExitZoneProblems();
         Map<PWSState, List<String>> constraintProblemMap = collectConstraintProblems();
-        Map<PWSState, Set<Configuration>> deadlockMap = collectDeadlockProblems();
+        Map<PWSState, Set<Configuration>> primaryDeadlockMap = collectPrimaryDeadlockProblems();
+        Map<PWSState, Set<Configuration>> secondaryDeadlockMap = collectSecondaryDeadlockProblems();
         List<PWSState> unreachableStates = collectUnreachableStates();
         
         guardProblems = guardProblemsList.size();
@@ -171,10 +174,11 @@ public class ControllerReportDialog extends JDialog {
         exitZoneProblems = exitZoneProblemMap.values().stream().mapToInt(List::size).sum();
         orphanExitZoneProblems = orphanExitZoneProblemMap.values().stream().mapToInt(List::size).sum();
         constraintProblems = constraintProblemMap.values().stream().mapToInt(List::size).sum();
-        deadlockProblems = deadlockMap.values().stream().mapToInt(Set::size).sum();
+        primaryDeadlockProblems = primaryDeadlockMap.values().stream().mapToInt(Set::size).sum();
+        secondaryDeadlockProblems = secondaryDeadlockMap.values().stream().mapToInt(Set::size).sum();
         unreachableProblems = unreachableStates.size();
         totalProblems = guardProblems + actionProblems + exitZoneProblems + orphanExitZoneProblems
-                + constraintProblems + deadlockProblems + unreachableProblems;
+                + constraintProblems + primaryDeadlockProblems + secondaryDeadlockProblems + unreachableProblems;
         
         // Summary section
         appendSummarySection();
@@ -200,8 +204,12 @@ public class ControllerReportDialog extends JDialog {
             appendConstraintProblemsSection(constraintProblemMap);
         }
         
-        if (deadlockProblems > 0) {
-            appendDeadlockProblemsSection(deadlockMap);
+        if (primaryDeadlockProblems > 0) {
+            appendPrimaryDeadlockProblemsSection(primaryDeadlockMap);
+        }
+        
+        if (secondaryDeadlockProblems > 0) {
+            appendSecondaryDeadlockProblemsSection(secondaryDeadlockMap);
         }
         
         if (unreachableProblems > 0) {
@@ -297,9 +305,13 @@ public class ControllerReportDialog extends JDialog {
                 appendText("    ✗ ", STYLE_RED);
                 appendText("Constraint violations: " + constraintProblems + "\n", STYLE_NORMAL);
             }
-            if (deadlockProblems > 0) {
+            if (primaryDeadlockProblems > 0) {
                 appendText("    ⚠ ", STYLE_ORANGE);
-                appendText("True deadlock configurations: " + deadlockProblems + "\n", STYLE_NORMAL);
+                appendText("Primary deadlock configurations: " + primaryDeadlockProblems + "\n", STYLE_NORMAL);
+            }
+            if (secondaryDeadlockProblems > 0) {
+                appendText("    ⚠ ", STYLE_ORANGE);
+                appendText("Secondary (internal) deadlock configurations: " + secondaryDeadlockProblems + "\n", STYLE_NORMAL);
             }
             if (unreachableProblems > 0) {
                 appendText("    ✗ ", STYLE_RED);
@@ -786,12 +798,41 @@ public class ControllerReportDialog extends JDialog {
     }
     
     // ==================== Deadlock Problems ====================
+
+    private Set<String> collectEscapeCoveredCfgStrs(PWSState state) {
+        return StateSemanticsAnnotation.computeCoveredCfgStrs(state, stateMachine);
+    }
     
-    private Map<PWSState, Set<Configuration>> collectDeadlockProblems() {
+    private Map<PWSState, Set<Configuration>> collectPrimaryDeadlockProblems() {
+        Map<PWSState, Set<Configuration>> problemMap = new LinkedHashMap<>();
+
+        for (StateInterface si : stateMachine.getStates()) {
+            if (!(si instanceof PWSState ps) || ps.isPseudoState() || ps.isFailState()) continue;
+
+            Semantics ss = ps.getStateSemantics();
+            if (ss == null || ss.getConfigurations().isEmpty()) continue;
+
+            Set<String> coveredCfgStrs = collectEscapeCoveredCfgStrs(ps);
+            Set<Configuration> primaryDeadlocks = new LinkedHashSet<>();
+            for (Configuration cfg : ss.getConfigurations()) {
+                if (!coveredCfgStrs.contains(cfg.toString())) {
+                    primaryDeadlocks.add(cfg);
+                }
+            }
+
+            if (!primaryDeadlocks.isEmpty()) {
+                problemMap.put(ps, primaryDeadlocks);
+            }
+        }
+
+        return problemMap;
+    }
+
+    private Map<PWSState, Set<Configuration>> collectSecondaryDeadlockProblems() {
         Map<PWSState, Set<Configuration>> problemMap = new LinkedHashMap<>();
         
         for (StateInterface si : stateMachine.getStates()) {
-            if (!(si instanceof PWSState ps) || ps.isPseudoState()) continue;
+            if (!(si instanceof PWSState ps) || ps.isPseudoState() || ps.isFailState()) continue;
             
             Set<Configuration> deadlocks = ps.getDeadlockConfigurations();
             if (deadlocks == null || deadlocks.isEmpty()) continue;
@@ -799,42 +840,31 @@ public class ControllerReportDialog extends JDialog {
             Semantics ss = ps.getStateSemantics();
             if (ss == null) continue;
             
-            // Check which deadlocks are covered by outgoing transitions
-            Set<String> coveredCfgStrs = new HashSet<>();
-            for (Configuration cfg : ss.getConfigurations()) {
-                for (TransitionInterface ti : stateMachine.getTransitions()) {
-                    if (ti instanceof PWSTransition pt && pt.isEnabled() && pt.getSource() == ps) {
-                        if (stateMachine.transitionCoversConfiguration(pt, cfg)) {
-                            coveredCfgStrs.add(cfg.toString());
-                            break;
-                        }
-                    }
-                }
-            }
+            Set<String> coveredCfgStrs = collectEscapeCoveredCfgStrs(ps);
             
-            // Find true deadlocks (not covered by any transition)
-            Set<Configuration> trueDeadlocks = new LinkedHashSet<>();
+            // Secondary deadlock = internally stuck and primary deadlock.
+            Set<Configuration> secondaryDeadlocks = new LinkedHashSet<>();
             for (Configuration cfg : deadlocks) {
                 if (!coveredCfgStrs.contains(cfg.toString())) {
-                    trueDeadlocks.add(cfg);
+                    secondaryDeadlocks.add(cfg);
                 }
             }
             
-            if (!trueDeadlocks.isEmpty()) {
-                problemMap.put(ps, trueDeadlocks);
+            if (!secondaryDeadlocks.isEmpty()) {
+                problemMap.put(ps, secondaryDeadlocks);
             }
         }
         
         return problemMap;
     }
     
-    private void appendDeadlockProblemsSection(Map<PWSState, Set<Configuration>> problemMap) {
+    private void appendPrimaryDeadlockProblemsSection(Map<PWSState, Set<Configuration>> problemMap) {
         appendText("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", STYLE_GRAY);
-        appendText("TRUE DEADLOCK CONFIGURATIONS\n", STYLE_SECTION);
+        appendText("PRIMARY DEADLOCK CONFIGURATIONS\n", STYLE_SECTION);
         appendText("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n", STYLE_GRAY);
         
-        appendText("  These configurations have no autonomous evolution path and are not\n", STYLE_NORMAL);
-        appendText("  covered by any outgoing transition. The system may get stuck.\n\n", STYLE_NORMAL);
+        appendText("  These configurations have no escape path to an enabled outgoing\n", STYLE_NORMAL);
+        appendText("  controller transition (directly or after internal evolution).\n\n", STYLE_NORMAL);
         
         for (Map.Entry<PWSState, Set<Configuration>> entry : problemMap.entrySet()) {
             PWSState state = entry.getKey();
@@ -852,7 +882,34 @@ public class ControllerReportDialog extends JDialog {
         
         appendText("  ", STYLE_NORMAL);
         appendText("Fix: ", STYLE_BOLD);
-        appendText("Add transitions that can fire from these configurations, or verify deadlock is intended.\n\n", STYLE_GRAY);
+        appendText("Add enabled outgoing transitions (excluding self-loops) that can fire either directly or after internal evolution.\n\n", STYLE_GRAY);
+    }
+    
+    private void appendSecondaryDeadlockProblemsSection(Map<PWSState, Set<Configuration>> problemMap) {
+        appendText("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", STYLE_GRAY);
+        appendText("SECONDARY (INTERNAL) DEADLOCK CONFIGURATIONS\n", STYLE_SECTION);
+        appendText("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n", STYLE_GRAY);
+        
+        appendText("  These configurations cannot evolve internally and have no escape\n", STYLE_NORMAL);
+        appendText("  path to any outgoing transition. The system may get stuck.\n\n", STYLE_NORMAL);
+        
+        for (Map.Entry<PWSState, Set<Configuration>> entry : problemMap.entrySet()) {
+            PWSState state = entry.getKey();
+            Set<Configuration> deadlocks = entry.getValue();
+            
+            appendText("  State: ", STYLE_BOLD);
+            appendText(state.getName() + "\n", STYLE_CODE);
+            
+            for (Configuration cfg : deadlocks) {
+                appendText("    ⚠ ", STYLE_ORANGE);
+                appendText(cfg.toString() + "\n", STYLE_CODE);
+            }
+            appendText("\n", STYLE_NORMAL);
+        }
+        
+        appendText("  ", STYLE_NORMAL);
+        appendText("Fix: ", STYLE_BOLD);
+        appendText("Add transitions that can fire from these configurations, or verify the sink behavior is intended.\n\n", STYLE_GRAY);
     }
     
     // ==================== Unreachable States ====================
@@ -919,12 +976,13 @@ public class ControllerReportDialog extends JDialog {
             appendText("    All guards are properly configured.\n", STYLE_GREEN);
             if (hasFailStates) {
                 appendText("    Exit-zone coverage is satisfied for non-fail states.\n", STYLE_GREEN);
-                appendText("    Fail states do not require exit-zone coverage.\n", STYLE_GREEN);
+                appendText("    Fail states mask primary/secondary deadlock checks.\n", STYLE_GREEN);
             } else {
                 appendText("    All exit zones are covered and none are orphan.\n", STYLE_GREEN);
             }
             appendText("    All configurations satisfy constraints.\n", STYLE_GREEN);
-            appendText("    No true deadlock configurations.\n", STYLE_GREEN);
+            appendText("    No primary deadlock configurations.\n", STYLE_GREEN);
+            appendText("    No secondary (internal) deadlock configurations.\n", STYLE_GREEN);
             appendText("    No unreachable states.\n\n", STYLE_GREEN);
         } else {
             appendText("  ⚠ CONTROLLER HAS " + totalProblems + " ISSUE" + (totalProblems > 1 ? "S" : "") + "\n\n", STYLE_RED);

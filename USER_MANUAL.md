@@ -110,7 +110,7 @@ Mini example:
 | **Assembly** | A collection of component machines forming a part-whole hierarchy |
 | **Machine Library** | A repository of reusable state machine templates |
 | **Exit Zone** | A boundary condition created by a component machine autonomous transition that would leave a state's allowed configurations |
-| **Deadlock Configuration** | A configuration that cannot evolve and has no way out via transitions |
+| **Deadlock Configuration** | A configuration with no escape path to an outgoing transition (primary deadlock); if it also cannot evolve internally, it is a secondary deadlock |
 
 ---
 
@@ -168,7 +168,7 @@ New states are created immediately with an auto-generated name (`S`, `S1`, `S2`,
 1. **Double-click** the state to rename it
 2. **Right-click** the state to see options:
    - **Show Dashboard / Hide Dashboard**
-   - **Fail state**: Marks the state as a fail-safe/incongruence. Fail states are drawn with a thicker **dashed yellow** border and do **not** require exit-zone coverage.
+  - **Fail state**: Marks the state as a fail-safe/incongruence. Fail states are drawn with a thicker **dashed yellow** border; exit-zone, primary-deadlock, and secondary-deadlock checks are masked.
    - **Delete**: Remove the state
 
 To edit constraint semantics, right-click the state's dashboard and choose **Edit Constraints Semantics**.
@@ -246,6 +246,8 @@ Gesture variants:
 - **Cmd/Ctrl + drag** from a normal state: creates a **guard-triggered** transition (no explicit event label)
 - **Cmd/Ctrl + Shift + drag** from a normal state: creates an **event-triggered** transition with default event name **`ev`**
 - **Cmd/Ctrl + drag** from the pseudo-state (or any alias): creates an **initial** transition with hidden **`_init`** trigger
+
+Transition endpoints must be different. **Self-loop transitions are not supported**.
 
 Alternative (existing workflow):
 
@@ -775,11 +777,11 @@ In the state annotation dashboard, each configuration row has two independent vi
 
 | Underline | Meaning |
 |-----------|---------|
-| **Green underline** | Configuration can evolve internally via autonomous transitions |
-| **Red underline** | True deadlock: cannot evolve internally **and** not covered by any outgoing transition |
+| **Green underline** | Configuration can evolve internally via autonomous transitions (may still be primary deadlock if no escape path exists) |
+| **Red underline** | Secondary (internal) deadlock: cannot evolve internally **and** has no escape path to any outgoing transition |
 | **No underline** | Internally stuck but **covered** by an outgoing transition |
 
-> **Tip:** Empty constraint boxes mean the constraint semantics are `ANY`, so every computed configuration satisfies them (green text). The underline, exit-zone list, and controller report still tell you whether each configuration can evolve or is a true deadlock.
+> **Tip:** Empty constraint boxes mean the constraint semantics are `ANY`, so every computed configuration satisfies them (green text). The underline, exit-zone list, and controller report still tell you whether each configuration can evolve and whether it is a primary/secondary deadlock.
 
 #### Combined Meanings
 
@@ -789,10 +791,10 @@ The text color and underline are **independent** — a configuration can have an
 |---------|------|-----------|---------|
 | `(m1.S)` | Green | Green underline | Satisfies constraints AND can evolve internally ✓ |
 | `(m1.S)` | Green | No underline | Satisfies constraints, internally stuck but covered ✓ |
-| `(m1.S)` | Green | Red underline | Satisfies constraints but is a **true deadlock** ✗ |
+| `(m1.S)` | Green | Red underline | Satisfies constraints but is a **secondary (internal) deadlock** ✗ |
 | `(m1.S)` | Red | Green underline | **Violates constraints** but can evolve internally ⚠ |
 | `(m1.S)` | Red | No underline | Violates constraints, internally stuck but covered ⚠ |
-| `(m1.S)` | Red | Red underline | Violates constraints AND is a **true deadlock** ✗ |
+| `(m1.S)` | Red | Red underline | Violates constraints AND is a **secondary (internal) deadlock** ✗ |
 
 **Example from screenshot**: State S1 has constraint `(m1.T)` but computed semantics `(m1.T) (m1.S)`:
 - `(m1.T)` is **green** (satisfies constraint) with **no underline** (internally stuck but covered)
@@ -815,7 +817,8 @@ The state name is shown in a colored band at the top of the dashboard; the band 
 - **Unreachable state**: Empty state semantics (no configurations) — the state cannot be reached
 - **Constraint violations**: Computed configurations that don't satisfy user-defined constraints
 - **Uncovered exit zones**: Exit zones not handled by any autonomous transition
-- **True deadlocks**: Internally stuck configurations with no way out
+- **Primary deadlocks**: Configurations with no escape path to an outgoing controller transition
+- **Secondary deadlocks**: Internally stuck configurations that are also primary deadlocks
 
 ### Unreachable States
 
@@ -837,18 +840,18 @@ A state is **unreachable** when its computed semantics is empty — meaning no c
 
 ### Overview
 
-**Deadlock detection** is a critical feature that identifies configurations where the system could get stuck with no way to evolve. PWSEditor automatically detects and highlights potential deadlock situations in the state semantics annotation.
+**Deadlock detection** identifies controller configurations that have no escape path out. PWSEditor distinguishes **primary** and **secondary (internal)** deadlocks in the state semantics annotation and reports.
 
 PWSEditor also flags **component-level deadlocks** inside the assembly machines themselves. These are local deadlocks that exist regardless of controller logic and should be resolved at the component level.
 
-### What is a Deadlock Configuration?
+### Primary vs Secondary Deadlock
 
-A configuration is considered a **true deadlock** if it meets BOTH of these conditions:
+1. **Primary deadlock configuration**: no escape path exists from the configuration to any enabled outgoing controller transition (excluding self-loops), either directly or after internal autonomous evolution.
+2. **Secondary (internal) deadlock configuration**: the configuration is primary deadlocked **and** cannot evolve internally via autonomous component transitions.
 
-1. **Cannot evolve internally**: The configuration has no autonomous transitions available — no component machine in the configuration can fire an autonomous transition from its current state
-2. **Not covered by any transition**: No outgoing transition (triggered or autonomous) can fire from this configuration under strict semantics (guard true and actions enabled)
-
-A configuration that cannot evolve internally but IS covered by an outgoing transition is NOT a **true deadlock**—it has a "way out" through the transition.
+Secondary deadlocks are stricter:
+- Secondary implies primary.
+- Primary does not imply secondary.
 
 ### How Deadlock Detection Works
 
@@ -873,14 +876,18 @@ A configuration is flagged as a potential deadlock if its **reachable set is emp
 
 **Note**: This is different from checking if a configuration can reach "all other configurations". A configuration that can reach *some* configurations (but not all) can still evolve and is NOT a deadlock.
 
-#### Step 3: Transition Coverage Check
+#### Step 3: Transition Coverage and Escape-Path Check
 
-Even if a configuration cannot evolve internally, it may still have a way out via an outgoing transition. PWSEditor checks:
+PWSEditor first evaluates direct transition coverage, then checks for escape paths through internal evolution.
+
+Direct coverage uses strict semantics:
 
 - **Triggered transitions**: The configuration is covered only if the guard is satisfied **and** all actions on the transition are enabled from that configuration
 - **Autonomous PWS transitions**: The configuration is covered only if guard and actions are jointly fireable under strict action semantics
 
-Only configurations that fail BOTH the internal evolution AND the transition coverage checks are marked as true deadlocks.
+Escape-path rule:
+- A configuration is considered to have a way out if it is directly covered, **or** if it can evolve internally to another configuration that is directly covered.
+- Configurations with no escape path are primary deadlocks. If they also fail internal evolution, they are secondary deadlocks.
 
 ### Component Deadlocks (Local to Assembly Machines)
 
@@ -898,10 +905,12 @@ In the state semantics annotation dashboard:
 
 | Visual | Meaning |
 |--------|---------|
-| **Red underline** | True deadlock: configuration cannot evolve AND is not covered by any transition |
+| **Red underline** | Secondary (internal) deadlock: configuration cannot evolve AND has no escape path to any outgoing transition |
 | **No underline** | Internally stuck but covered by an outgoing transition |
-| **Green underline** | Configuration can evolve internally (not a deadlock risk) |
+| **Green underline** | Configuration can evolve internally (may still be primary deadlock if no escape path exists) |
 | **Yellow underline** | Configuration contains a component deadlock state |
+
+Primary deadlocks can still show a **green underline** when internal evolution exists but does not lead to any outgoing controller transition.
 
 In component machine editors (assembly/library):
 
@@ -918,7 +927,12 @@ In component machine editors (assembly/library):
 **Examples**:
 1. If `(m1.A, m2.X)` can evolve to `(m1.B, m2.X)` via an autonomous transition in m1 → **OK** (green underline)
 2. If `(m1.A, m2.X)` cannot evolve but is covered by transition guard `[m1.A]` → **OK** (no underline)
-3. If `(m1.A, m2.X)` cannot evolve AND no transition covers it → **DEADLOCK** (red underline)
+3. If `(m1.A, m2.X)` cannot evolve AND no transition covers it → **SECONDARY DEADLOCK** (red underline)
+
+### Fail-State Masking
+
+If a controller state is marked as **Fail state**, primary and secondary deadlock checks are masked for that state.  
+Exit-zone coverage is also not required for fail states.
 
 ### Resolving Deadlocks
 
@@ -1274,10 +1288,17 @@ Lists states with **no computed configurations** (the state is unreachable). The
 
 **How to Fix:** Add or adjust incoming transitions/guards so the state can be reached, or remove the unused state.
 
-#### True Deadlock Configurations
-Lists configurations where the system can get stuck — no autonomous evolution and **not covered** by any outgoing transition. These are warnings that may indicate design issues.
+#### Primary Deadlock Configurations
+Lists configurations with **no escape path to an outgoing controller transition** under strict action semantics.
 
-**How to Fix:** Add transitions that can fire from these configurations, or verify that the deadlock is intentional (e.g., final/sink states).
+**How to Fix:** Add enabled outgoing transitions that can fire either directly from these configurations or after internal evolution (self-loops do not count as exits), or mark the state as Fail if sink behavior is intentional.
+
+#### Secondary (Internal) Deadlock Configurations
+Lists configurations that are both:
+- with no escape path to outgoing transitions, and
+- unable to evolve internally via autonomous component transitions.
+
+These are stricter deadlocks and are shown with red underlines in dashboards.
 
 #### LTL Formula Verification
 *(Coming soon)* Once LTL verification is implemented, this section will show which formulas are satisfied and which are violated.
@@ -1291,12 +1312,12 @@ The report correlates with visual indicators on the diagram:
 - **Red guard labels**: Problematic guards (FALSE, orphan)
 - **Red action labels**: Orphan actions (not reachable from source state semantics)
 - **Red text in dashboards**: Constraint violations
-- **Red underline in dashboards**: True deadlocks (internally stuck and not covered)
-- **True deadlocks also appear in the controller report’s “True deadlock configurations” section, even when no explicit constraint is specified.**
+- **Red underline in dashboards**: Secondary (internal) deadlocks
+- **Primary and secondary deadlocks appear in separate controller-report sections, even when no explicit constraint is specified.**
 - **Uncovered exit zones**: No visual indicator on transitions, but shown in state dashboards
 - **Orphan exit zones**: Shown in red in state dashboards and listed in the report
 - **Unreachable states**: Red dashboard with "State is unreachable (no configurations)"
-- **Dashed yellow state border**: Fail state — exit-zone coverage is not required
+- **Dashed yellow state border**: Fail state — exit-zone and deadlock checks are masked for that state
 
 Use the report to get a comprehensive overview, then use the diagram to locate and fix individual issues.
 
@@ -1312,7 +1333,7 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 4. **Name clearly**: Use descriptive names for states and machines for clarity
 5. **Align visually**: Use grid snapping and arrow keys to keep diagrams organized
 6. **Export documentation**: Use PDF export for vector output or PNG export for quick sharing
-7. **Monitor deadlocks**: Pay attention to red underlines—they indicate true deadlocks
+7. **Monitor deadlocks**: Pay attention to red underlines (secondary deadlocks) and report sections (primary + secondary)
 
 ### Understanding Visual Feedback
 
@@ -1323,8 +1344,8 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 | Blue text (top row) | Constraint semantics you defined |
 | Green text | Configuration satisfies constraints |
 | Red text | Configuration violates constraints |
-| Green underline | Configuration can evolve internally via autonomous transitions |
-| Red underline | True deadlock: internally stuck and not covered by any outgoing transition |
+| Green underline | Configuration can evolve internally via autonomous transitions (may still be primary deadlock if no escape path exists) |
+| Red underline | Secondary (internal) deadlock: internally stuck and has no escape path to any outgoing transition |
 | No underline | Internally stuck but covered by an outgoing transition |
 | Red (in exit zone list) | Exit zone is uncovered or orphan (no matching source state) |
 | Green (in exit zone list) | Exit zone is covered by a PWS autonomous transition |
@@ -1336,7 +1357,7 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 - Drag annotations to reorganize (they snap to grid)
 
 #### "Red text or red underline appears"
-- **Cause**: Constraint violations (red text) or true deadlocks (red underline)
+- **Cause**: Constraint violations (red text), primary deadlocks, or secondary deadlocks (red underline)
 - **Solution**: 
   - Add autonomous transitions in component machines
   - Add PWS transitions with guards covering the deadlock
@@ -1486,9 +1507,10 @@ For more information about Part-Whole Statecharts theory, see the project README
 - **New file format**: `.pws` extension for workspace files (backward compatible with `.bin`)
 
 #### Enhanced Deadlock Detection
-- **Refined logic**: A configuration is a deadlock if it cannot evolve at all (no autonomous transitions available) AND is not covered by any outgoing transition
+- **Primary deadlocks**: configurations with no escape path to an outgoing controller transition
+- **Secondary deadlocks**: primary deadlocks that also cannot evolve internally
 - **Correct single-config handling**: Configurations like `(m1.T)` are correctly identified as deadlocks when state T has no outgoing autonomous transitions
-- **Visual indicators**: Red underline for true deadlocks, green underline for configurations that can evolve internally, no underline for internally stuck but covered
+- **Visual indicators**: Red underline for secondary deadlocks, green underline for configurations that can evolve internally (possibly still primary deadlocks), no underline for internally stuck but covered
 - **Border feedback**: State annotation border color reflects overall state health
 
 #### Automatic Semantics Recalculation
