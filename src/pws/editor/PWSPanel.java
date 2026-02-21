@@ -67,7 +67,7 @@ public class PWSPanel extends JPanel {
         machineList.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) { // double-click
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) { // double-click
                     String selected = machineList.getSelectedValue();
                     if (selected != null) {
                         // Assume the format "id - Name"
@@ -94,22 +94,29 @@ public class PWSPanel extends JPanel {
                     }
                 }
             }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowContextMenu(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowContextMenu(e);
+            }
         });
 
-        // Button panel to add, edit, or remove machines
+        // Button panel to add, detach/clone, or remove machines
         JPanel buttonPanel = new JPanel();
         JButton addButton = new JButton("Add");
-        JButton editButton = new JButton("Edit");
         JButton detachButton = new JButton("Detach/Clone");
         JButton removeButton = new JButton("Remove");
 
         addButton.addActionListener(e -> onAdd());
-        editButton.addActionListener(e -> onEdit());
         detachButton.addActionListener(e -> onDetach());
         removeButton.addActionListener(e -> onRemove());
 
         buttonPanel.add(addButton);
-        buttonPanel.add(editButton);
         buttonPanel.add(detachButton);
         buttonPanel.add(removeButton);
 
@@ -384,17 +391,64 @@ public class PWSPanel extends JPanel {
         }
     }
 
-    private void onEdit() {
+    private void maybeShowContextMenu(MouseEvent e) {
+        if (!e.isPopupTrigger()) return;
+        int index = machineList.locationToIndex(e.getPoint());
+        if (index < 0) return;
+        Rectangle bounds = machineList.getCellBounds(index, index);
+        if (bounds == null || !bounds.contains(e.getPoint())) return;
+        machineList.setSelectedIndex(index);
+
         String selected = machineList.getSelectedValue();
-        if (selected == null) return;
-        String id = selected.split(" - ")[0];
-        AssemblyMachineEditDialog dlg = new AssemblyMachineEditDialog(SwingUtilities.getWindowAncestor(this), assembly, id);
-        dlg.setVisible(true);
-        if (dlg.isConfirmed()) {
-            refreshList();
-            if (selectionListener != null) {
-                selectionListener.machineEdited(id);
+        String id = parseMachineId(selected);
+        if (id == null || !assembly.getStateMachines().containsKey(id)) return;
+
+        JPopupMenu popup = new JPopupMenu();
+        JMenuItem renameIdItem = new JMenuItem("Edit identifier");
+        renameIdItem.addActionListener(a -> onRenameIdentifier(id));
+        popup.add(renameIdItem);
+        popup.show(machineList, e.getX(), e.getY());
+    }
+
+    private void onRenameIdentifier(String currentId) {
+        if (currentId == null) return;
+        String newId = JOptionPane.showInputDialog(this, "New identifier:", currentId);
+        if (newId == null) return;
+        newId = newId.trim();
+        if (newId.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                    "Identifier cannot be empty.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        if (newId.equals(currentId)) return;
+        if (assembly.getStateMachines().containsKey(newId)) {
+            JOptionPane.showMessageDialog(this,
+                    "Identifier already exists: " + newId,
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        Container win = SwingUtilities.getWindowAncestor(this);
+        if (win instanceof pws.editor.PWSEditor pe) {
+            pe.renameAssemblyMachineId(currentId, newId);
+        } else {
+            StateMachine machine = assembly.getStateMachines().remove(currentId);
+            if (machine != null) {
+                assembly.addStateMachine(newId, machine);
             }
+            if (assembly.getAliasData(currentId) != null) {
+                assembly.setAliasData(newId, assembly.getAliasData(currentId));
+                assembly.removeAliasData(currentId);
+            }
+        }
+
+        refreshList();
+        selectMachineById(newId);
+        if (selectionListener != null) {
+            selectionListener.machineEdited(newId);
         }
     }
 
