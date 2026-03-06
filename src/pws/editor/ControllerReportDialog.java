@@ -463,6 +463,21 @@ public class ControllerReportDialog extends JDialog {
         Semantics stateSemantics = ps.getStateSemantics();
         Semantics constraintSemantics = ps.getConstraintsSemantics();
         SMProposition guard = pt.getGuardProposition();
+        if (pt.isTriggerable()) {
+            if (stateSemantics != null && !stateSemantics.getConfigurations().isEmpty()) {
+                Semantics guardedSource = stateSemantics;
+                if (guard != null) {
+                    guardedSource = guardedSource.AND(guard.toSemantics(assembly));
+                }
+                collectValidActionsFromSemantics(guardedSource, validActions);
+                return;
+            }
+            // Fallback when state semantics is not available yet.
+            if (constraintSemantics != null) {
+                collectValidActionsFromSemantics(constraintSemantics, validActions);
+            }
+            return;
+        }
         if (pt.isAutonomous() && guard instanceof BasicStateProposition) {
             HashSet<ExitZone> reactiveZones = ps.getReactiveSemantics();
             boolean matchedZone = false;

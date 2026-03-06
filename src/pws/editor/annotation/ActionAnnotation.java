@@ -120,6 +120,21 @@ public class ActionAnnotation extends Annotation<ActionList> {
         Semantics stateSemantics = ps.getStateSemantics();
         Semantics constraintSemantics = ps.getConstraintsSemantics();
         SMProposition guard = pt.getGuardProposition();
+        if (pt.isTriggerable()) {
+            if (stateSemantics != null && !stateSemantics.getConfigurations().isEmpty()) {
+                Semantics guardedSource = stateSemantics;
+                if (guard != null && assembly instanceof Assembly asm) {
+                    guardedSource = guardedSource.AND(guard.toSemantics(asm));
+                }
+                collectValidActionsFromSemantics(guardedSource, validActions);
+                return;
+            }
+            // Fallback when state semantics is not available yet.
+            if (constraintSemantics != null) {
+                collectValidActionsFromSemantics(constraintSemantics, validActions);
+            }
+            return;
+        }
         if (pt.isAutonomous() && guard instanceof BasicStateProposition) {
             Assembly asm = (assembly instanceof Assembly) ? (Assembly) assembly : null;
             HashSet<ExitZone> reactiveZones = ps.getReactiveSemantics();

@@ -14,7 +14,7 @@ import java.io.IOException;
  * PNGExporter: exports Swing panels into PNG images.
  */
 public class PNGExporter {
-    private static final int PNG_EXPORT_SCALE = 2;
+    private static final int PNG_EXPORT_SCALE = 4;
 
     /** Utility class; do not instantiate. */
     private PNGExporter() {

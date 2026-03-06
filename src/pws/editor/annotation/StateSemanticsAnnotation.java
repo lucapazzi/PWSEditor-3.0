@@ -36,6 +36,11 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     private static final Color STATUS_OK_COLOR = new Color(0, 140, 0);
     private static final Color STATUS_ISSUE_COLOR = new Color(180, 0, 0);
     private static final Color STATUS_UNREACHABLE_COLOR = new Color(204, 170, 0);
+    private static final float CONFIG_UNDERLINE_THICKNESS = 3.0f;
+    private static final Stroke CONFIG_UNDERLINE_STROKE = new BasicStroke(
+            CONFIG_UNDERLINE_THICKNESS,
+            BasicStroke.CAP_ROUND,
+            BasicStroke.JOIN_ROUND);
     private static final String UNREACHABLE_ISSUE_TEXT = "State is unreachable (no configurations).";
     private static final String PRIMARY_DEADLOCK_ISSUE_TEXT = "Primary deadlock configurations exist.";
     private static final String SECONDARY_DEADLOCK_ISSUE_TEXT = "Secondary (internal) deadlock configurations exist.";
@@ -881,14 +886,11 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
 
             if (rowWidth > 0) {
                 if (isSecondaryDeadlock) {
-                    g2d.setColor(Color.RED);
-                    g2d.drawLine(rowStart, y + 1, rowStart + rowWidth, y + 1);
+                    drawConfigurationUnderline(g2d, rowStart, rowWidth, y + 1, Color.RED);
                 } else if (hasComponentDeadlock) {
-                    g2d.setColor(PARTIAL_DEADLOCK_COLOR);
-                    g2d.drawLine(rowStart, y + 1, rowStart + rowWidth, y + 1);
+                    drawConfigurationUnderline(g2d, rowStart, rowWidth, y + 1, PARTIAL_DEADLOCK_COLOR);
                 } else if (canEvolve) {
-                    g2d.setColor(Color.GREEN.darker());
-                    g2d.drawLine(rowStart, y + 1, rowStart + rowWidth, y + 1);
+                    drawConfigurationUnderline(g2d, rowStart, rowWidth, y + 1, Color.GREEN.darker());
                 }
             }
 
@@ -928,6 +930,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             }
             y += lineHeight;
         }
+
         if (!cfgList.isEmpty()) {
             y -= lineHeight;
         }
@@ -1087,6 +1090,22 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         } catch (Exception ignored) {
         }
         g2d.dispose();
+    }
+
+    private void drawConfigurationUnderline(Graphics2D g2d, int xStart, int width, int y, Color color) {
+        if (width <= 0 || g2d == null || color == null) {
+            return;
+        }
+        Stroke previousStroke = g2d.getStroke();
+        Color previousColor = g2d.getColor();
+        try {
+            g2d.setStroke(CONFIG_UNDERLINE_STROKE);
+            g2d.setColor(color);
+            g2d.drawLine(xStart, y, xStart + width, y);
+        } finally {
+            g2d.setStroke(previousStroke);
+            g2d.setColor(previousColor);
+        }
     }
     
     /**
