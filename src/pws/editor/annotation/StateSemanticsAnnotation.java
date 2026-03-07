@@ -426,6 +426,15 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         return sb.toString();
     }
 
+    private String buildInternalClosureDerivationHint(pws.editor.semantics.Configuration cfg, PWSState state) {
+        if (cfg == null || state == null) return null;
+        java.util.List<String> details = state.getInternalClosureDerivationDetails(cfg);
+        if (details == null || details.isEmpty()) {
+            return null;
+        }
+        return String.join(" ", details);
+    }
+
     private ExitZone findExitZoneForTransition(PWSState state,
                                                String machineId,
                                                machinery.Transition transition,
@@ -910,6 +919,11 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 }
             } else {
                 tip.append("Internally stuck but covered by an outgoing transition.");
+            }
+            String derivationHint = buildInternalClosureDerivationHint(cfg, state);
+            if (derivationHint != null && !derivationHint.isBlank()) {
+                if (tip.length() > 0) tip.append(" ");
+                tip.append(derivationHint);
             }
             if (!componentDeadlocks.isEmpty()) {
                 if (tip.length() > 0) tip.append(" ");

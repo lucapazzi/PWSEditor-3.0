@@ -10,7 +10,11 @@ import smalgebra.BasicStateProposition;
 
 import java.awt.*;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** PWS-specific state with semantics, constraints, and UI annotation. */
@@ -37,6 +41,8 @@ public class PWSState extends State {
     private String rawConstraintText;
     // Cached deadlock configurations (computed during semantics recalculation)
     private transient Set<Configuration> deadlockConfigurations = new HashSet<>();
+    // Provenance for configurations derived by internal exit-zone closure.
+    private transient Map<String, LinkedHashSet<String>> internalClosureDerivations = new LinkedHashMap<>();
 
     public PWSState(String name, Point position, Assembly assembly) {
         super(name, position);
@@ -186,5 +192,44 @@ public class PWSState extends State {
     /** Sets the cached deadlock configurations (called during semantics recalculation). */
     public void setDeadlockConfigurations(Set<Configuration> deadlocks) {
         this.deadlockConfigurations = deadlocks != null ? deadlocks : new HashSet<>();
+    }
+
+    /** Clears provenance for configurations derived via internal exit-zone closure. */
+    public void clearInternalClosureDerivations() {
+        getInternalClosureDerivations().clear();
+    }
+
+    /** Records one derivation detail for a configuration added by internal exit-zone closure. */
+    public void addInternalClosureDerivation(Configuration cfg, String detail) {
+        if (cfg == null || detail == null || detail.isBlank()) {
+            return;
+        }
+        getInternalClosureDerivations()
+                .computeIfAbsent(cfg.toString(), k -> new LinkedHashSet<>())
+                .add(detail);
+    }
+
+    /** Returns whether the configuration was derived via internal exit-zone closure. */
+    public boolean isDerivedByInternalClosure(Configuration cfg) {
+        if (cfg == null) return false;
+        return getInternalClosureDerivations().containsKey(cfg.toString());
+    }
+
+    /** Returns derivation details for a configuration added by internal exit-zone closure. */
+    public List<String> getInternalClosureDerivationDetails(Configuration cfg) {
+        if (cfg == null) return List.of();
+        LinkedHashSet<String> details = getInternalClosureDerivations().get(cfg.toString());
+        if (details == null || details.isEmpty()) {
+            return List.of();
+        }
+        return new ArrayList<>(details);
+    }
+
+    /** Returns all cached derivation details keyed by configuration string. */
+    public Map<String, LinkedHashSet<String>> getInternalClosureDerivations() {
+        if (internalClosureDerivations == null) {
+            internalClosureDerivations = new LinkedHashMap<>();
+        }
+        return internalClosureDerivations;
     }
 }

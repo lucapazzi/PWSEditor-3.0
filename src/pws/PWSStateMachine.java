@@ -197,6 +197,7 @@ public class PWSStateMachine extends StateMachine {
                     codomain = codomain.AND(cs);
                 }
                 if (codomain != null && !codomain.ISEMPTY()) {
+                    recordInternalClosureDerivations(state, closure, codomain, machineId, sourceState, targetState);
                     next = next.OR(codomain);
                 }
             }
@@ -208,6 +209,34 @@ public class PWSStateMachine extends StateMachine {
         }
 
         return closure;
+    }
+
+    private void recordInternalClosureDerivations(PWSState state,
+                                                  Semantics closure,
+                                                  Semantics acceptedCodomain,
+                                                  String machineId,
+                                                  String sourceState,
+                                                  String targetState) {
+        if (state == null || closure == null || acceptedCodomain == null || acceptedCodomain.ISEMPTY()) {
+            return;
+        }
+        java.util.Set<Configuration> existing = closure.getConfigurations();
+        java.util.Set<Configuration> accepted = acceptedCodomain.getConfigurations();
+        if (existing == null || accepted == null || accepted.isEmpty()) {
+            return;
+        }
+        for (Configuration cfg : existing) {
+            if (cfg == null || !cfg.contains(machineId) || !sourceState.equals(cfg.getStateName(machineId))) {
+                continue;
+            }
+            Configuration derived = cfg.replaceConstraint(machineId, targetState);
+            if (derived == null || existing.contains(derived) || !accepted.contains(derived)) {
+                continue;
+            }
+            state.addInternalClosureDerivation(
+                    derived,
+                    "Derived from " + cfg + " via internal exit-zone closure " + machineId + ":" + sourceState + "→" + targetState + ".");
+        }
     }
 
     /**
@@ -245,6 +274,11 @@ public class PWSStateMachine extends StateMachine {
         }
 
         // Compute fixed-point semantics for all states via SemanticsVisitor
+        for (StateInterface s : getStates()) {
+            if (s instanceof PWSState ps) {
+                ps.clearInternalClosureDerivations();
+            }
+        }
         Map<PWSState, Semantics> semMap = SemanticsVisitor.computeAllStateSemantics(this);
 
         // ----------------------------------------------------------------------

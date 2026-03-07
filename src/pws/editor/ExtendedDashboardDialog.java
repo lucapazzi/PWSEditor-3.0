@@ -346,7 +346,9 @@ public class ExtendedDashboardDialog extends JDialog {
                 appendText(indicator + "\n", STYLE_GRAY);
 
                 java.util.List<PWSTransition> coveringTransitions = coveredByTransition.getOrDefault(cfgStr, Collections.emptyList());
+                java.util.List<String> derivationDetails = state.getInternalClosureDerivationDetails(cfg);
                 appendConfigurationDetails(cfg,
+                        derivationDetails,
                         isEmptyConfig,
                         satisfiesConstraint,
                         canEvolve,
@@ -895,6 +897,7 @@ public class ExtendedDashboardDialog extends JDialog {
     }
 
     private void appendConfigurationDetails(Configuration cfg,
+                                            java.util.List<String> derivationDetails,
                                             boolean isEmptyConfig,
                                             boolean satisfiesConstraint,
                                             boolean canEvolve,
@@ -905,6 +908,12 @@ public class ExtendedDashboardDialog extends JDialog {
                                             boolean isDirectlyCovered,
                                             java.util.List<String> componentDeadlocks) {
         if (cfg == null) return;
+        if (derivationDetails != null && !derivationDetails.isEmpty()) {
+            appendText("      Derived via internal exit-zone closure:\n", STYLE_GRAY);
+            for (String detail : derivationDetails) {
+                appendText("        - " + detail + "\n", STYLE_GRAY);
+            }
+        }
         appendText("      1. ", STYLE_GRAY);
         if (isEmptyConfig) {
             appendText("No component machines configured.\n", STYLE_GRAY);

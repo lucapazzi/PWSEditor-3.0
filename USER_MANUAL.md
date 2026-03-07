@@ -15,9 +15,8 @@
 11. [Exit Zones](#exit-zones)
 12. [File Management](#file-management)
 13. [Menu Reference](#menu-reference)
-14. [Testing Features](#testing-features)
-15. [Controller Report](#controller-report)
-16. [Tips & Troubleshooting](#tips--troubleshooting)
+14. [Controller Report](#controller-report)
+15. [Tips & Troubleshooting](#tips--troubleshooting)
 
 ---
 
@@ -761,7 +760,7 @@ The same logic applies to **transition guards**. A guard expression like `[m1.A]
 
 Hover over dashboard elements to see:
 - **State name band**: Explains why the border is green/gold/red (reachable, unreachable, constraint violations, exit-zone coverage, deadlocks)
-- **Configuration rows**: Each row is one configuration; tooltips explain evolution. If it can evolve internally, the tooltip lists target configurations and/or exit zones (possibly multiple)
+- **Configuration rows**: Each row is one configuration; tooltips explain evolution. If it can evolve internally, the tooltip lists target configurations and/or exit zones (possibly multiple). If the row was added by internal exit-zone closure, the tooltip says which prior configuration and autonomous component transition produced it
 - **Exit zones**: Each line has a tooltip showing whether it is covered, uncovered, internal, orphan, or provisional
 
 ### Understanding Configuration Colors
@@ -975,10 +974,10 @@ Both families are shown in the dashboard exit-zone list and both are checked for
 ### What is an Exit Zone?
 
 An exit zone entry occurs in one of these cases:
-1. **Autonomous boundary case (classical)**:
+1. **Autonomous component-transition case (classical)**:
    - A component machine has an enabled autonomous transition.
    - The transition source is compatible with current state semantics.
-   - The transition target is outside current state semantics.
+   - The editor records the source/target pair and then classifies it as **internal** or **boundary**.
 2. **Incoming overflow case (`T|...`)**:
    - An incoming controller transition contributes semantics to this state.
    - Under strict action semantics and destination constraints, part of that contribution falls outside constraints.
@@ -996,13 +995,42 @@ For incoming overflow markers, the row is shown as `T|m:S`. The dashboard toolti
 
 ### How Exit Zones Are Computed
 
-Classical autonomous boundary zones are computed from autonomous component transitions:
+Classical autonomous exit-zone candidates are computed from enabled autonomous component transitions:
 
 ```
-1. Source proposition intersects state semantics (reachable source)
-2. Target proposition does not intersect state semantics (outside target)
-3. Record exit zone
+1. Source proposition intersects current state semantics (reachable source)
+2. Record the source→target pair as an exit-zone candidate
 ```
+
+The editor then classifies each classical candidate:
+
+```
+Default internality rule:
+  internal if target ∩ SS ≠ ∅
+
+Constraint-aware internality rule
+(View → Treat CS-covered targets as internal exit zones):
+  internal if target ∩ (SS ∪ explicit CS) ≠ ∅
+```
+
+If a classical candidate is treated as internal, the editor applies the **internal-closure absorption rule**:
+
+```
+1. Compute the concrete codomain produced by the autonomous transition
+2. If explicit constraints exist, clip that codomain by CS
+3. Add the remaining compatible part to computed SS
+```
+
+Equivalently:
+
+```
+absorbed = codomain AND CS   (when explicit constraints exist)
+absorbed = codomain          (otherwise)
+SS := SS OR absorbed
+```
+
+If `absorbed` is empty, nothing is added to computed state semantics even if the target proposition itself is considered internal.
+Configurations added this way are described in configuration hover text and in **Show Extended Details...** as being derived via internal exit-zone closure.
 
 Incoming overflow markers are computed from incoming controller transitions:
 
@@ -1019,7 +1047,7 @@ Incoming overflow markers are computed from incoming controller transitions:
 
 A key insight is how exit zones interact with **partial configurations** (constraints that don't specify all machines).
 
-#### Example: No Exit Zone with Partial Constraints
+#### Example: Internal Exit Zone with Partial Constraints
 
 Suppose your assembly has:
 - **m1** with states `{A, B}`
@@ -1030,7 +1058,7 @@ If the state's constraint is the partial configuration `(m1.A)`:
 - When m2 transitions from X to Y:
   - Source `(m2.X)` intersected with `(m1.A)` = `(m1.A, m2.X)` — NOT EMPTY ✓
   - Target `(m2.Y)` intersected with `(m1.A)` = `(m1.A, m2.Y)` — NOT EMPTY!
-- **Result**: NO exit zone is generated
+- **Result**: the editor can list `m2:X→Y` as an **internal** exit zone (gray), because the autonomous evolution stays within the allowed semantics
 
 **Why?** Because the partial constraint `(m1.A)` doesn't restrict m2 at all. The transition from X to Y keeps the system **within** the allowed configurations—it just moves from `(m1.A, m2.X)` to `(m1.A, m2.Y)`, both of which satisfy `(m1.A)`.
 
@@ -1223,6 +1251,7 @@ Legacy `.bin` workspace loading is not exposed in the current UI.
 |--------|-------------|
 | **Toggle state dashboards** | Toggle display of semantic annotations |
 | **Show exit-zone machine IDs** | Toggle machine IDs in exit-zone labels and related dashboard displays |
+| **Treat CS-covered targets as internal exit zones** | Use the constraint-aware internality rule for classical exit zones; compatible absorbed codomain is added to computed state semantics |
 | **Show Grid** | Toggle grid display |
 | **Snap to Grid** | Toggle automatic grid snapping |
 | **Set grid size...** | Adjust snap-to-grid size |
@@ -1232,117 +1261,11 @@ Legacy `.bin` workspace loading is not exposed in the current UI.
 | **LTL Editor...** | Present in the menu but currently disabled |
 | **Check now** | Present in the menu but currently disabled |
 
-### Testing Menu
-
-| Option | Description |
-|--------|-------------|
-| **Disable exit-zone computation** | Temporarily disable computed exit zones |
-| **Treat CS-covered targets as internal exit zones** | Toggle the experimental constraint-aware exit-zone internality behavior |
-
 ### Info Menu
 
 | Option | Description |
 |--------|-------------|
 | **Show Info** | Open the application information dialog |
-
----
-
-## Testing Features
-
-The **Testing** menu contains analysis toggles for comparing alternative semantics behaviors. These options are intended for experimentation and debugging; they change how the editor computes or classifies exit-zone-related results.
-
-If you are building or reviewing a normal model, keep both options at their defaults unless you are intentionally testing a semantic variant.
-
-### Disable Exit-Zone Computation
-
-This checkbox turns off computed exit-zone generation for the current controller model.
-
-When enabled:
-- Classical autonomous boundary exit zones are not generated
-- Provisional constraints-only exit zones are not generated
-- Incoming overflow markers (`T|...`) are not generated
-- Coverage and report results that depend on those computed exit zones change accordingly
-
-What remains active:
-- State semantics computation
-- Constraint checking
-- Deadlock analysis
-- Transition semantics computation
-
-Use this option when you want to inspect the model without any exit-zone-driven diagnostics.
-
-**Persistence:** this toggle is not currently stored in `.pws` workspace data. Reopening the workspace restores the normal default, with exit-zone computation enabled.
-
-**Example:**
-
-Suppose the assembly has one machine `m1` with an autonomous transition:
-
-```text
-A -> B
-```
-
-and controller state `S` currently has computed semantics:
-
-```text
-m1.A
-```
-
-Normal behavior:
-- The dashboard for `S` shows an exit zone `m1:A→B`
-- If no autonomous controller transition covers it, the exit zone is reported as uncovered
-
-With **Disable exit-zone computation** enabled:
-- That exit zone is not generated
-- The uncovered-exit-zone warning disappears
-- The rest of the state semantics still stays computed normally
-
-### Treat CS-Covered Targets as Internal Exit Zones
-
-This checkbox enables an **experimental constraint-aware internality mode**.
-
-Default behavior:
-- An exit zone is treated as **internal** only if its target intersects the state's **computed state semantics** (`SS`)
-
-With this option enabled:
-- An exit zone is treated as **internal** if its target intersects `SS` **or** the state's **explicit constraint semantics** (`CS`)
-- This applies only when the state has explicit constraints
-
-Practical effects:
-- Some exit zones that would normally appear as external boundaries may instead be shown as **internal**
-- Exit-zone coverage status, dashboard coloring, and controller-report results may change
-- During fixed-point semantics propagation, internal codomain consistent with `SS ∪ CS` can be folded back into the state's computed semantics, clipped by explicit constraints
-
-Use this option to compare the default **SS-only** interpretation against a more **constraint-aware** interpretation of internal autonomous evolution.
-
-**Persistence:** this toggle is saved with workspace annotation/UI data and restored when the workspace is reopened. New documents reset it to **off**.
-
-**Example:**
-
-Suppose controller state `S` has explicit constraints:
-
-```text
-m1.A
-m1.B
-```
-
-so both `A` and `B` are allowed by constraints, but the current computed semantics has only:
-
-```text
-m1.A
-```
-
-and machine `m1` has an autonomous transition:
-
-```text
-A -> B
-```
-
-Default behavior:
-- `m1:A→B` is treated as an exit zone, because `B` is not yet in the current computed state semantics
-
-With **Treat CS-covered targets as internal exit zones** enabled:
-- `m1:A→B` is treated as internal, because `B` is explicitly allowed by the state constraints
-- The editor may absorb that internal codomain into the state's computed semantics instead of treating it as an external boundary
 
 ---
 
