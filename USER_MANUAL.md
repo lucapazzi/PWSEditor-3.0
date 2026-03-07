@@ -24,18 +24,19 @@
 
 ### Installation
 
-PWSEditor is a Java application. Ensure you have **Java 11 or later** installed on your system.
+PWSEditor is a Java application. Ensure you have **Java 17 or later** installed on your system.
 
 ### Running PWSEditor
 
 From the command line, navigate to the PWSEditor directory and run:
 
 ```bash
-javac -d out -cp "lib/pdfbox-2.0.29.jar:lib/fontbox-2.0.29.jar:lib/pdfbox-graphics2d-0.6.0.jar:lib/commons-logging-1.2.jar" -sourcepath src src/pws/editor/PWSEditor.java
-java -cp "out:lib/pdfbox-2.0.29.jar:lib/fontbox-2.0.29.jar:lib/pdfbox-graphics2d-0.6.0.jar:lib/commons-logging-1.2.jar" pws.editor.PWSEditor
+./scripts/build.sh
+java -cp "out:lib/*" pws.editor.PWSEditor
 ```
 
-PWSEditor will launch with an empty controller editor ready for use.
+PWSEditor launches with **no controller loaded**. Use **File -> New** or **File -> Open...**
+to start working on a workspace.
 
 ---
 
@@ -143,10 +144,10 @@ Edit the main controller state machine here. The canvas displays:
 ### Right Panel: Assembly Management
 
 - **Top Section**: Toggles between **Assembly** and **Library** views
-  - **Assembly Tab**: Lists component machines in the current assembly
-    - **Initial Configurations Dashboard** (bottom of the Assembly tab): shows
-      **initial configurations**, **exit zones**, and **closure** for the assembly
-  - **Library Tab**: Lists saved, reusable machine templates
+  - **Assembly view**: Lists component machines in the current assembly
+    - **Initial Configurations Dashboard** (bottom of the Assembly view): shows the
+      **closure** for the assembly
+  - **Library view**: Lists saved, reusable machine templates
 - **Bottom Section**: Embedded editor for viewing/editing selected assembly machines
 
 ---
@@ -157,7 +158,7 @@ Edit the main controller state machine here. The canvas displays:
 
 1. **Right-click** on an empty area of the canvas (left panel)
 2. Select **"Add State"** from the context menu
-3. Click to place the state on the canvas
+3. The state is created immediately at the click location
 
 There is no menu item for adding states; use the right-click context menu on the canvas.
 
@@ -167,9 +168,9 @@ New states are created immediately with an auto-generated name (`S`, `S1`, `S2`,
 
 1. **Double-click** the state to rename it
 2. **Right-click** the state to see options:
-   - **Show Dashboard / Hide Dashboard**
+   - **Show Dashboard**: checkbox toggle for the state's dashboard
   - **Fail state**: Marks the state as a fail-safe/incongruence. Fail states are drawn with a thicker **dashed yellow** border; exit-zone, primary-deadlock, and secondary-deadlock checks are masked.
-   - **Delete**: Remove the state
+   - **Delete State**: Remove the state
 
 To edit constraint semantics, right-click the state's dashboard and choose **Edit Constraints Semantics**.
 
@@ -182,8 +183,8 @@ The pseudo-state is automatically created and appears as a **small filled circle
 When editing a **component machine** in the embedded editor (right-bottom panel), state diagnostics are shown directly on the state border:
 
 - **Unreachable state**: Red outer ring. A state is unreachable if there is no path from the pseudo-state via **enabled** transitions.
-- **Deadlock state**: Dashed yellow border (fail-state styling). A deadlock is a reachable state with **no enabled outgoing transitions**.
-- **Manually marked Fail state**: Dashed yellow border (same fail-state styling).
+- **Deadlock state**: Red border. A deadlock is a reachable state with **no enabled outgoing transitions**.
+- **Manually marked Fail state**: Dashed yellow border.
 
 Right-click a component state to toggle **Fail state** manually. This option is **disabled** for unreachable states (which are already treated as fail by unreachability).
 Manual component Fail states are saved with the model and restored on load.
@@ -192,7 +193,7 @@ Manual component Fail states are saved with the model and restored on load.
 
 ## Assembly Initial Configurations Dashboard
 
-In the **Assembly** tab (right panel), the **Initial Configurations Dashboard** now focuses on the **closure** only:
+In the **Assembly** view (right panel), the **Initial Configurations Dashboard** now focuses on the **closure** only:
 
 - **Closure**: the transitive closure obtained by repeatedly applying exit zones until
   no new configurations appear, rendered as a table (same layout as state dashboards).
@@ -263,9 +264,10 @@ Click on the transition (the arrow) to select it. You can then:
 3. **Edit Actions**: Add emissions (actions that occur when the transition fires)
 
 Use **in-place editors** (floating text boxes) to directly modify:
-- **Guard labels**: Click the guard text and edit
-- **Action labels**: Click the action text and edit
-- **Semantics labels**: View computed semantics
+- **Trigger labels**: Double-click the trigger label to rename the trigger event
+- **Guard annotations**: Use the annotation popup menu to choose/edit the guard
+- **Action annotations**: Use the annotation popup menu to insert/remove actions
+- **Semantics annotations**: View computed semantics (read-only)
 
 If guard/action labels are hidden, right-click the transition control handle and use **Show Guard** / **Show Action** first.
 
@@ -441,7 +443,7 @@ An **Assembly** is a collection of component state machines that work together. 
 
 ### Viewing Assembly Machines
 
-1. Click the **Assembly** tab in the right panel
+1. Click the **Assembly** view in the right panel
 2. A list of all machines in the assembly appears
 3. Each entry shows: `[id] - [name]`
 4. Drag a row up or down to reorder the assembly; dashboards and the initial-configurations view refresh to match the new order
@@ -505,14 +507,14 @@ The **Machine Library** is a repository of reusable state machine templates. Sav
 
 ### Loading the Library
 
-1. Go to the **Library** tab
+1. Switch to the **Library** view
 2. Click **Load**
 3. Select a `.mlib` file (library file)
 4. The library is loaded with all previously saved machines
 
 ### Saving the Library
 
-1. Go to the **Library** tab
+1. Switch to the **Library** view
 2. Click **Save**
 3. Choose a location and filename
 4. The entire library is saved as a `.mlib` file
@@ -524,7 +526,7 @@ The **Machine Library** is a repository of reusable state machine templates. Sav
 To share reusable machines across projects:
 1. Save the library to a `.mlib` file
 2. Send the file to a colleague
-3. They can load it with the **Library** tab → **Load**
+3. They can load it with **Library** view → **Load**
 
 ---
 
@@ -541,9 +543,9 @@ To share reusable machines across projects:
 
 1. Go to **View → Toggle state dashboards** to show or hide annotation visibility
 2. Each dashboard appears as a floating box near its state and uses a compact layout:
-   - A colored state-name band at the top (green/red) that matches the border; hover the name for a status explanation
+   - A colored state-name band at the top (green/gold/red) that matches the border; hover the name for a status explanation
    - **Constraints** and **configs** shown as a matrix (columns = assembly machine IDs in list order, rows = configurations, `-` means unspecified)
-    - **Exit zones** stacked one per line; hover each exit zone for coverage/origin details
+   - **Exit zones** stacked one per line; hover each exit zone for coverage/status details
 
 ### Component Fail States in Controller Semantics
 
@@ -563,6 +565,7 @@ State dashboards can be **minimized** to save screen space while still providing
 2. The dashboard shrinks to a small colored indicator (approximately 16×16 pixels)
 3. The color reflects the overall state status:
    - **Green**: All OK — no issues detected
+   - **Gold/Yellow**: State is unreachable
    - **Red**: Has issues — constraint violations, uncovered exit zones, or deadlocks
 
 #### Restoring a Dashboard
@@ -756,7 +759,7 @@ The same logic applies to **transition guards**. A guard expression like `[m1.A]
 ### Semantics Display
 
 Hover over dashboard elements to see:
-- **State name band**: Explains why the border is green/red (reachable, constraint violations, exit-zone coverage, deadlocks)
+- **State name band**: Explains why the border is green/gold/red (reachable, unreachable, constraint violations, exit-zone coverage, deadlocks)
 - **Configuration rows**: Each row is one configuration; tooltips explain evolution. If it can evolve internally, the tooltip lists target configurations and/or exit zones (possibly multiple)
 - **Exit zones**: Each line has a tooltip showing whether it is covered, uncovered, internal, orphan, or provisional
 
@@ -807,14 +810,17 @@ The border color of the state dashboard indicates the overall health of the stat
 | Border | Meaning |
 |--------|---------|
 | **Green border** | All OK — no issues detected |
-| **Red border** | Has issues — one or more problems need attention |
+| **Gold/Yellow border** | State is unreachable (no computed configurations) |
+| **Red border** | Has issues — one or more non-reachability problems need attention |
 
 The state name is shown in a colored band at the top of the dashboard; the band color matches the border. Hover the name to see a concise explanation of the status.
 
 **Configuration tooltips** also report whether the configuration **satisfies constraints** (or if constraints are **ANY**).
 
-**Red border triggers** (any of these conditions):
+**Gold/Yellow border trigger**:
 - **Unreachable state**: Empty state semantics (no configurations) — the state cannot be reached
+
+**Red border triggers** (any of these conditions):
 - **Constraint violations**: Computed configurations that don't satisfy user-defined constraints
 - **Uncovered exit zones**: Exit zones not handled by any autonomous transition
 - **Primary deadlocks**: Configurations with no escape path to an outgoing controller transition
@@ -827,7 +833,7 @@ A state is **unreachable** when its computed semantics is empty — meaning no c
 1. **Over-constrained**: The user-defined constraints are too restrictive and conflict with incoming transitions
 2. **No valid path**: No combination of component machine states can satisfy the constraints while being reachable from previous states
 
-**Example**: If a state has constraint `(m1.T)` but no incoming transition can lead to a configuration where m1 is in state T, the state has empty semantics and is marked with a red border.
+**Example**: If a state has constraint `(m1.T)` but no incoming transition can lead to a configuration where m1 is in state T, the state has empty semantics and is marked with a gold/yellow border.
 
 **How to fix**:
 - Review and relax the constraints
@@ -917,9 +923,10 @@ In component machine editors (assembly/library):
 | Visual | Meaning |
 |--------|---------|
 | **Red ring around a state** | Unreachable component state (no path from pseudo-state) |
-| **Dashed yellow border** | Component deadlock state or manually marked Fail state |
-| **Red border around the machine panel** | At least one deadlock or unreachable state exists in the component |
-| **Red * in Assembly/Library list** | The component contains at least one deadlock or unreachable state |
+| **Red border** | Component deadlock state (no enabled outgoing transitions) |
+| **Dashed yellow border** | Manually marked Fail state |
+| **Red border around the machine panel** | At least one deadlock state exists in the component |
+| **Red * in Assembly/Library list** | The component contains at least one deadlock state |
 | **Tooltip on unreachable state** | "Unreachable state (no path from the initial pseudostate)" |
 | **Tooltip on deadlock state** | "Deadlock state (no enabled outgoing transitions)" |
 | **Tooltip on yellow‑underlined config** | Lists the deadlocked component state(s) in that configuration |
@@ -978,13 +985,13 @@ An exit zone entry occurs in one of these cases:
 
 ### Exit Zone Structure
 
-Each exit-zone row exposes:
+The exit-zone list, tooltips, and extended details expose:
 - **Machine ID** and **target proposition**
 - **Origin category** (CS-only, SS-only, both, or incoming overflow)
 - **Coverage status** (covered/uncovered/internal/orphan/not required)
 
 For classical zones, the source/target component transition is shown explicitly (`m:S→T`).  
-For incoming overflow markers, the row is shown as `T|m:S` and the tooltip explains the producing incoming controller transition(s) and coverage.
+For incoming overflow markers, the row is shown as `T|m:S`. The dashboard tooltip shows coverage status, and **Show Extended Details...** lists origin category and producing incoming transition(s).
 
 ### How Exit Zones Are Computed
 
@@ -1077,6 +1084,7 @@ The dashboard uses this scheme for exit-zone rows:
 | **Red** | Exit zone is uncovered or orphan (no matching source state) ✗ |
 | **Gray** | Internal exit zone (target already in semantics) — not selectable for autonomous guards |
 | **Amber** | Coverage not required (fail state) |
+| **Purple/Magenta** | Uncovered incoming overflow marker (`T|...`) |
 | **`T|` prefix** | Incoming transition codomain overflow marker |
 
 Internal exit zones (gray) represent autonomous component evolution that stays within the current state's semantics. They are **not selectable** as guards for autonomous PWS transitions. Provisional (blue) exit zones **are selectable** and indicate constraints-only boundaries.
@@ -1088,9 +1096,7 @@ Internal exit zones (gray) represent autonomous component evolution that stays w
 - Incoming overflow markers: `T|m:S` (target proposition only)
 - To hide machine IDs in labels, right-click the state dashboard and toggle **Show machine IDs in exit zones**.
 
-**Hover details:** Exit zones are displayed one per line; hover a line to see coverage/origin details. For `T|` markers, tooltip focus is:
-- origin (`Incoming codomain overflow from: <src->dst via <actions>>`)
-- coverage (`covered`, `uncovered`, `not required`, or `orphan`)
+**Hover details:** Exit zones are displayed one per line; hover a line to see coverage/status details. For producer-transition and origin-category analysis, use **Show Extended Details...**.
 
 **Note**: For detailed analysis (including origin category, producer transitions for incoming overflow, expected guard, and coverage transitions), right-click the state dashboard and select **"Show Extended Details..."**.
 
@@ -1123,14 +1129,16 @@ PWSEditor : Untitled    (new unsaved document)
 ### Creating a New Document
 
 1. Go to **File → New**
-2. If there are unsaved changes, you'll be prompted to save
-3. A fresh empty workspace is created
+2. If there are unsaved changes, you'll be asked whether to continue and discard them
+3. A fresh untitled workspace is created
+4. The current machine library is preserved
 
 ### Opening a Document
 
 1. Go to **File → Open...**
 2. Select a `.pws` file (PWS Workspace format)
-3. The document loads with all states, transitions, annotations, and assembly
+3. The document loads with its saved controller, assembly, annotations, and workspace layout
+4. If both the current library and the file library are non-empty, PWSEditor asks which library to keep
 
 ### Saving a Document
 
@@ -1147,8 +1155,8 @@ PWSEditor : Untitled    (new unsaved document)
 ### Closing a Document
 
 1. Go to **File → Close**
-2. If there are unsaved changes, you'll be prompted to save
-3. The editor returns to an empty state
+2. If there are unsaved changes, you'll be asked whether to continue and discard them
+3. The current document is replaced with a fresh untitled workspace
 
 ### File Format
 
@@ -1157,15 +1165,16 @@ PWSEditor saves documents in `.pws` format, which includes:
 - All component machines in the assembly
 - The machine library
 - Annotation positions (guards, actions, semantics dashboards) and exit-zone label toggle
-- **View settings**: state size, state border thickness, and state font size
+- **View settings**: dashboard visibility, grid visibility, snap-to-grid, grid size, edit mode, state size, state border thickness, and state font size
 - **Pseudo-state aliases and per-transition alias anchoring** (controller, assembly machines, and library entries)
-- **Window size and panel split positions** (layout restoration)
+- **Window size, panel split positions, and Assembly/Library panel selection** (layout restoration)
 
 Single machine files (`.sm`) and library files (`.mlib`) also preserve pseudo-state aliases and transition anchoring.
 
 ### Legacy Format Support
 
-PWSEditor can also load legacy `.bin` files from earlier versions. The library can be saved/loaded separately as `.mlib` files.
+The current UI supports `.pws` workspaces, `.sm` single-machine files, and `.mlib` library files.
+Legacy `.bin` workspace loading is not exposed in the current UI.
 
 ### Exporting
 
@@ -1189,11 +1198,11 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 
 | Option | Description |
 |--------|-------------|
-| **New** | Create a new empty PWS workspace |
+| **New** | Create a new untitled PWS workspace (preserving the current library contents) |
 | **Open...** | Open an existing `.pws` workspace file |
 | **Save** | Save current document (prompts for location if new) |
 | **Save As...** | Save current document to a new location |
-| **Close** | Close current document (prompts to save if dirty) |
+| **Close** | Replace the current document with a new untitled workspace |
 | **Export as PDF** | Export current diagram as a vector PDF |
 | **Export as PNG** | Export current diagram as a PNG image |
 | **Exit** | Close the editor |
@@ -1202,6 +1211,9 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 
 | Option | Description |
 |--------|-------------|
+| **Undo** | Undo the last document change |
+| **Redo** | Redo the last undone change |
+| **Select All** | Select all objects in the active editor panel |
 | **Edit mode** | Toggle edit vs. view mode (controls control handles/interaction) |
 
 ### View Menu
@@ -1209,14 +1221,28 @@ PWSEditor can also load legacy `.bin` files from earlier versions. The library c
 | Option | Description |
 |--------|-------------|
 | **Toggle state dashboards** | Toggle display of semantic annotations |
+| **Show exit-zone machine IDs** | Toggle machine IDs in exit-zone labels and related dashboard displays |
 | **Show Grid** | Toggle grid display |
 | **Snap to Grid** | Toggle automatic grid snapping |
 | **Set grid size...** | Adjust snap-to-grid size |
 | **State size** | Choose state diameter (Small/Medium/Large) |
 | **State border thickness** | Choose state outline thickness (Thin/Medium/Thick) |
 | **State font size** | Choose font size for labels and annotations (Small/Medium/Large) |
-| **LTL Editor...** | Open the LTL formula editor |
-| **Check now** | Run LTL checks on the current model |
+| **LTL Editor...** | Present in the menu but currently disabled |
+| **Check now** | Present in the menu but currently disabled |
+
+### Testing Menu
+
+| Option | Description |
+|--------|-------------|
+| **Disable exit-zone computation** | Temporarily disable computed exit zones |
+| **Treat CS-covered targets as internal exit zones** | Toggle the experimental constraint-aware exit-zone internality behavior |
+
+### Info Menu
+
+| Option | Description |
+|--------|-------------|
+| **Show Info** | Open the application information dialog |
 
 ---
 
@@ -1242,7 +1268,6 @@ Lists transitions with problematic guard conditions:
 |--------------|-------------|------------------|
 | **FALSE Guard** | Placeholder that needs to be set — transition will never fire | Red guard label `[FALSE]` |
 | **Orphan Guard** | References an exit zone that no longer exists | Red guard label |
-| **Incomplete Triggered Partition** | Some source semantics are not covered for the trigger (see orange tooltip for the trigger name) | Orange guard label |
 
 **How to Fix:**
 - **FALSE**: Edit the guard to specify a meaningful condition (e.g., `m1.Failed`)
@@ -1284,7 +1309,7 @@ Lists configurations that appear in computed state semantics but violate user-de
 **How to Fix:** Review and adjust either the constraints or the transition structure.
 
 #### Unreachable States
-Lists states with **no computed configurations** (the state is unreachable). These states show a red dashboard with the message **"State is unreachable (no configurations)"**.
+Lists states with **no computed configurations** (the state is unreachable). These states show a gold/yellow dashboard with the message **"State is unreachable (no configurations)"**.
 
 **How to Fix:** Add or adjust incoming transitions/guards so the state can be reached, or remove the unused state.
 
@@ -1316,7 +1341,7 @@ The report correlates with visual indicators on the diagram:
 - **Primary and secondary deadlocks appear in separate controller-report sections, even when no explicit constraint is specified.**
 - **Uncovered exit zones**: No visual indicator on transitions, but shown in state dashboards
 - **Orphan exit zones**: Shown in red in state dashboards and listed in the report
-- **Unreachable states**: Red dashboard with "State is unreachable (no configurations)"
+- **Unreachable states**: Gold/yellow dashboard with "State is unreachable (no configurations)"
 - **Dashed yellow state border**: Fail state — exit-zone and deadlock checks are masked for that state
 
 Use the report to get a comprehensive overview, then use the diagram to locate and fix individual issues.
@@ -1331,7 +1356,7 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 2. **Watch the title bar**: An asterisk (*) indicates unsaved changes
 3. **Use the library**: Build reusable machine templates to speed up future designs
 4. **Name clearly**: Use descriptive names for states and machines for clarity
-5. **Align visually**: Use grid snapping and arrow keys to keep diagrams organized
+5. **Align visually**: Use grid snapping and drag repositioning to keep diagrams organized
 6. **Export documentation**: Use PDF export for vector output or PNG export for quick sharing
 7. **Monitor deadlocks**: Pay attention to red underlines (secondary deadlocks) and report sections (primary + secondary)
 
@@ -1357,7 +1382,7 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 - Drag annotations to reorganize (they snap to grid)
 
 #### "Red text or red underline appears"
-- **Cause**: Constraint violations (red text), primary deadlocks, or secondary deadlocks (red underline)
+- **Cause**: Constraint violations (red text) or secondary deadlocks (red underline)
 - **Solution**: 
   - Add autonomous transitions in component machines
   - Add PWS transitions with guards covering the deadlock
@@ -1372,7 +1397,7 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 - **Solution**: Check each row of the annotation for red items and address them
 
 #### "Pseudo-state or aliases missing"
-- **Solution**: At least one pseudo-state must exist; if it is removed it will be restored on reload
+- **Solution**: At least one pseudo-state always remains; if the original was deleted, an alias may have been promoted to become the real pseudo-state
 - Recreate missing aliases from the canvas menu and reattach initial transitions if needed
 
 #### "Library didn't load"
@@ -1397,6 +1422,14 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 
 | Shortcut | Action |
 |----------|--------|
+| **Cmd/Ctrl + N** | New workspace |
+| **Cmd/Ctrl + O** | Open workspace |
+| **Cmd/Ctrl + S** | Save |
+| **Cmd/Ctrl + Shift + S** | Save As |
+| **Cmd/Ctrl + Z** | Undo |
+| **Cmd/Ctrl + Shift + Z** | Redo |
+| **Cmd/Ctrl + A** | Select all objects in the active panel |
+| **Cmd/Ctrl + E** | Toggle edit mode |
 | **W/A/S/D** | Pan the diagram |
 | **Cmd/Ctrl + Shift + E** | Export as PDF |
 | **Cmd/Ctrl + P** | Export as PNG |
@@ -1434,7 +1467,7 @@ This is useful for:
 Each transition can have visible annotations:
 
 - **Guard annotation**: Shows the guard condition `[guard]`
-- **Action annotation**: Shows actions `{action1, action2}`
+- **Action annotation**: Shows actions `〈 action1, action2 〉`
 - **Semantics annotation**: Shows computed transition semantics
 
 Toggle visibility via the transition's right-click menu.  
@@ -1454,9 +1487,10 @@ Here's a step-by-step example to get started:
 ### Step 1: Create the Controller
 
 1. Open PWSEditor
-2. Right-click the canvas and select **Add State**
-3. Create three states: `Red`, `Yellow`, `Green`
-4. Add transitions:
+2. Go to **File → New**
+3. Right-click the canvas and select **Add State**
+4. Create three states: `Red`, `Yellow`, `Green`
+5. Add transitions:
    - `Red` → `Green`
    - `Green` → `Yellow`
    - `Yellow` → `Red`
@@ -1470,7 +1504,7 @@ Here's a step-by-step example to get started:
 
 ### Step 3: Create Component Machines
 
-1. Click the **Assembly** tab
+1. Click the **Assembly** view
 2. Click **Add** to create a new machine
 3. Name it `timer` (with ID `timer`)
 4. Create two states: `idle`, `running`
@@ -1504,7 +1538,7 @@ For more information about Part-Whole Statecharts theory, see the project README
 - **Document-based workflow**: New/Open/Save/Save As/Close operations
 - **Dirty tracking**: Unsaved changes indicated by asterisk (*) in window title
 - **Annotation persistence**: Guard, action, and semantics annotation positions (plus the exit-zone label toggle) are saved and restored
-- **New file format**: `.pws` extension for workspace files (backward compatible with `.bin`)
+- **New file format**: `.pws` extension for workspace files
 
 #### Enhanced Deadlock Detection
 - **Primary deadlocks**: configurations with no escape path to an outgoing controller transition
