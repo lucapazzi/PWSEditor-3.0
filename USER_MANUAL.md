@@ -1273,6 +1273,8 @@ Legacy `.bin` workspace loading is not exposed in the current UI.
 
 The **Controller Report** provides a comprehensive overview of all issues in your controller design. It enumerates problems that need attention and correlates with the visual indicators (red highlights) shown on the diagram.
 
+For a review-oriented overview of controller-side consistency obligations, including orphan guards, orphan actions, exit-zone coverage, and how each check is enforced in the editor, see `docs/CBC_OBLIGATIONS.md`.
+
 ### Accessing the Report
 
 **Right-click** on an empty area of the controller canvas (the same menu used to add states) and select **"Controller Report..."** to open the report dialog.
