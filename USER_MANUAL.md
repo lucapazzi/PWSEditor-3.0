@@ -15,8 +15,9 @@
 11. [Exit Zones](#exit-zones)
 12. [File Management](#file-management)
 13. [Menu Reference](#menu-reference)
-14. [Controller Report](#controller-report)
-15. [Tips & Troubleshooting](#tips--troubleshooting)
+14. [Testing Features](#testing-features)
+15. [Controller Report](#controller-report)
+16. [Tips & Troubleshooting](#tips--troubleshooting)
 
 ---
 
@@ -1243,6 +1244,105 @@ Legacy `.bin` workspace loading is not exposed in the current UI.
 | Option | Description |
 |--------|-------------|
 | **Show Info** | Open the application information dialog |
+
+---
+
+## Testing Features
+
+The **Testing** menu contains analysis toggles for comparing alternative semantics behaviors. These options are intended for experimentation and debugging; they change how the editor computes or classifies exit-zone-related results.
+
+If you are building or reviewing a normal model, keep both options at their defaults unless you are intentionally testing a semantic variant.
+
+### Disable Exit-Zone Computation
+
+This checkbox turns off computed exit-zone generation for the current controller model.
+
+When enabled:
+- Classical autonomous boundary exit zones are not generated
+- Provisional constraints-only exit zones are not generated
+- Incoming overflow markers (`T|...`) are not generated
+- Coverage and report results that depend on those computed exit zones change accordingly
+
+What remains active:
+- State semantics computation
+- Constraint checking
+- Deadlock analysis
+- Transition semantics computation
+
+Use this option when you want to inspect the model without any exit-zone-driven diagnostics.
+
+**Persistence:** this toggle is not currently stored in `.pws` workspace data. Reopening the workspace restores the normal default, with exit-zone computation enabled.
+
+**Example:**
+
+Suppose the assembly has one machine `m1` with an autonomous transition:
+
+```text
+A -> B
+```
+
+and controller state `S` currently has computed semantics:
+
+```text
+m1.A
+```
+
+Normal behavior:
+- The dashboard for `S` shows an exit zone `m1:A→B`
+- If no autonomous controller transition covers it, the exit zone is reported as uncovered
+
+With **Disable exit-zone computation** enabled:
+- That exit zone is not generated
+- The uncovered-exit-zone warning disappears
+- The rest of the state semantics still stays computed normally
+
+### Treat CS-Covered Targets as Internal Exit Zones
+
+This checkbox enables an **experimental constraint-aware internality mode**.
+
+Default behavior:
+- An exit zone is treated as **internal** only if its target intersects the state's **computed state semantics** (`SS`)
+
+With this option enabled:
+- An exit zone is treated as **internal** if its target intersects `SS` **or** the state's **explicit constraint semantics** (`CS`)
+- This applies only when the state has explicit constraints
+
+Practical effects:
+- Some exit zones that would normally appear as external boundaries may instead be shown as **internal**
+- Exit-zone coverage status, dashboard coloring, and controller-report results may change
+- During fixed-point semantics propagation, internal codomain consistent with `SS ∪ CS` can be folded back into the state's computed semantics, clipped by explicit constraints
+
+Use this option to compare the default **SS-only** interpretation against a more **constraint-aware** interpretation of internal autonomous evolution.
+
+**Persistence:** this toggle is saved with workspace annotation/UI data and restored when the workspace is reopened. New documents reset it to **off**.
+
+**Example:**
+
+Suppose controller state `S` has explicit constraints:
+
+```text
+m1.A
+m1.B
+```
+
+so both `A` and `B` are allowed by constraints, but the current computed semantics has only:
+
+```text
+m1.A
+```
+
+and machine `m1` has an autonomous transition:
+
+```text
+A -> B
+```
+
+Default behavior:
+- `m1:A→B` is treated as an exit zone, because `B` is not yet in the current computed state semantics
+
+With **Treat CS-covered targets as internal exit zones** enabled:
+- `m1:A→B` is treated as internal, because `B` is explicitly allowed by the state constraints
+- The editor may absorb that internal codomain into the state's computed semantics instead of treating it as an external boundary
 
 ---
 
