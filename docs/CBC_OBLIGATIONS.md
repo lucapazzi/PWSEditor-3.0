@@ -2,10 +2,51 @@
 
 This note collects the controller-side consistency obligations ("CBC obligations") that PWSEditor currently checks in one place.
 
+## Why these obligations matter
+
+CBC obligations matter because a controller can be syntactically editable and still be semantically unsound.
+
+Here, correctness means semantic correctness with respect to the properties explicitly modeled in PWSEditor: the controller remains coherent with the current assembly model, the declared state constraints, the available exit zones, and the transitions/actions that are supposed to react to them.
+
+This includes safety whenever safety is encoded in the model itself. In particular, if constrained semantics (`CS`) exclude unsafe configurations, then keeping computed semantics inside `CS` is already a safety obligation, and reacting correctly to boundary conditions that would leave `CS` is safety-relevant as well.
+
+More concretely, a controller is "correct" in this sense when:
+
+- its guards still refer to meaningful conditions in the current model
+- its actions are actually fireable from the semantics that reach a transition
+- its computed configurations remain compatible with the declared constraints
+- its relevant boundary conditions are either handled explicitly or intentionally masked
+- its states do not silently become unreachable or deadlocked without being reported
+
+So these obligations address a necessary layer of correctness: they keep the controller model well-formed and semantically disciplined while it is being built, and they also cover safety constraints that are explicitly represented in the model. They do not, by themselves, prove requirements that are not captured in `CS`, guards, actions, or controller structure.
+
+The purpose of an obligation is to make a required correctness condition explicit during modeling. An obligation says that, for the controller to remain semantically coherent, some condition must hold. Typical examples are:
+
+- a guard must still refer to a real external boundary condition
+- an action must be fireable from the source semantics
+- computed configurations must remain inside the declared constraints
+- relevant exit zones must be handled unless the state is explicitly fail/masked
+
+Typical failure modes are:
+
+- a guard still names an exit zone that no longer exists
+- an action emits an event that is not actually reachable from the source semantics
+- a state admits configurations outside its declared constraints
+- an external boundary condition exists but no autonomous controller transition reacts to it
+- a state becomes unreachable or deadlocked after a structural change
+
+This is why the notion is closely related to **Correct by Construction**. In a CBC workflow, correctness is not deferred to the finished model. Instead, the editor continuously checks local correctness obligations while the model is being built. These obligations make CBC operational:
+
+- each edit is expected to preserve a set of semantic consistency conditions
+- violations are exposed immediately, not only at the end
+- review can focus on explicit unmet obligations instead of ad hoc inspection
+
+So these obligations are not secondary warnings. They are the editor's main way to keep the controller aligned with the current assembly semantics and to turn "correct by construction" into a concrete editing discipline.
+
 It is meant as a review document:
 
 - what each obligation means
-- how the editor tries to prevent it while editing
+- how the editor tries to prevent violations while editing
 - how it is diagnosed after the fact
 - whether it appears in the Controller Report
 
@@ -25,16 +66,16 @@ It does not try to restate the full semantics model. For drift, internal configu
 
 ## What "enforcement" means here
 
-In the current editor, CBC obligations are enforced in three different ways:
+In the current editor, CBC obligations are enforced in three different ways. One of them is editing-time help that tries to prevent violations before they are created:
 
 - **Preventive filtering**:
-  the standard popup editors try to offer only guards/actions that are meaningful for the current semantics
+  the standard popup editors try to offer only guards/actions that are meaningful for the current semantics, so obvious violations are harder to create
 - **Live diagnostics**:
   annotations and dashboards change color and tooltip text as soon as an obligation is violated
 - **Aggregated reporting**:
   the Controller Report collects the reportable issues into one review dialog
 
-So "enforced" here does not mean a separate hard-validation phase. In practice, the editor mostly guides and diagnoses rather than blocks.
+So "enforced" here does not mean a separate hard-validation phase that blocks every bad edit. In practice, the editor combines prevention of some violations with diagnosis and reporting of the ones that remain.
 
 ## Main enforcement layers
 
@@ -63,7 +104,7 @@ The action problem is about a stale or invalid **command**.
 
 ## Summary matrix
 
-| Obligation | Meaning | Preventive filtering in editor | Live visual diagnostic | Controller Report |
+| Obligation | Meaning | Editing-time prevention of violations | Live visual diagnostic | Controller Report |
 |-----------|---------|--------------------------------|------------------------|-------------------|
 | `FALSE` guard | Placeholder guard; transition can never fire | No hard block; standard guard workflow encourages replacement | Red guard label | Yes |
 | Orphan guard | Autonomous guard target no longer valid / became internal | Yes, standard autonomous guard popup offers only eligible exit-zone targets | Red guard label | Yes |
@@ -105,7 +146,7 @@ Important detail:
 
 The editor enforces this in two stages:
 
-- **Prevention**:
+- **Editing-time prevention of violations**:
   the standard autonomous guard popup offers only eligible exit-zone targets; it also avoids targets already covered by other enabled autonomous transitions from the same source.
 - **Detection**:
   an existing guard that no longer matches the valid target set is colored red and reported as **Orphan Guard**.
@@ -136,6 +177,13 @@ Current enforcement split:
 
 This is one of the main completeness distinctions in the current tool: some guard obligations are diagram-level only.
 
+Autonomous reactions use a related but not identical rule. For exit zones, the editor distinguishes **coverage** from **determinism**:
+
+- **coverage** means an external exit zone has at least one autonomous controller reaction
+- **determinism** means that same situation does not enable more than one competing autonomous controller reaction
+
+The current uncovered-exit-zone obligation enforces the first condition directly. The standard autonomous guard popup also tries to preserve the second by hiding exit-zone targets already used by other enabled autonomous transitions from the same source state. However, there is not currently a separate report-level autonomous-nondeterminism check analogous to the triggered overlap check.
+
 ## Action obligations
 
 ### Orphan action
@@ -155,7 +203,7 @@ The validation rule depends on transition type:
 
 Current enforcement split:
 
-- **Prevention**:
+- **Editing-time prevention of violations**:
   the action popup filters insertable actions to the valid action set when enough semantics is available
 - **Detection**:
   an action list containing invalid actions is colored red and its tooltip explains the orphan reasons
@@ -192,11 +240,19 @@ For this check:
 - internal gray exit zones are ignored
 - fail states do not require exit-zone coverage
 
+This obligation is about **coverage**, not uniqueness. It enforces that every relevant external boundary condition has at least one autonomous reaction, which is what guarantees reactive/safety behavior is present in the controller. By itself, it does not prove autonomous determinism, because "covered" means "handled at least once", not "handled by exactly one autonomous transition".
+
 Enforcement surfaces:
 
 - the exit-zone line is shown in red in the dashboard
 - the dashboard header turns problematic
 - the Controller Report lists the state under **Uncovered Exit Zones**
+
+Current nuance:
+
+- the Controller Report checks whether an exit-zone target is covered at least once
+- the autonomous guard popup tries to prevent duplicate coverage by excluding targets already used by other enabled autonomous transitions from the same source state
+- there is no separate report section that flags autonomous duplicate coverage as a distinct nondeterminism problem
 
 ### 3. Orphan exit zone
 
@@ -252,6 +308,8 @@ Enforcement surfaces:
 - detailed listing in Extended Details
 - Controller Report section for **Secondary (Internal) Deadlock Configurations**
 
+In other words, deadlock avoidance is enforced as a per-configuration CBC obligation. After each semantics recomputation, the editor checks whether every computed configuration still has an escape path to some enabled outgoing non-self controller transition, either directly or after internal autonomous evolution. Configurations that lose every escape path violate the primary-deadlock obligation; configurations that also cannot evolve internally violate the secondary-deadlock obligation. This is enforced incrementally by immediate diagnosis and reporting rather than by blocking the edit itself.
+
 ## Fail-state masking
 
 Fail-state marking changes the obligation set.
@@ -306,10 +364,11 @@ This is the current split that is worth reviewing explicitly.
 - triggered guard with empty source coverage
 - overlapping triggered guards in the same source + trigger group
 - incomplete triggered guard partitions
+- autonomous duplicate coverage is prevented by the standard popup workflow, but not reported as a separate nondeterminism issue
 
 ### Important implementation nuances
 
-- Standard popups provide the strongest prevention. Advanced editing can still create guard formulas that are only caught after the fact by live diagnostics.
+- Standard popups provide the strongest editing-time prevention of violations. Advanced editing can still create guard formulas that are only caught after the fact by live diagnostics.
 - Orphan-action detection is intentionally skipped when the source-side semantics is not available enough to decide.
 - Internal gray exit zones are excluded from autonomous guard validation, so an autonomous guard can become orphan simply because the referenced exit zone became internal after recomputation.
 - Disabled transitions are ignored by the main guard/action/report obligation checks.
@@ -333,7 +392,7 @@ This is the current split that is worth reviewing explicitly.
 
 The current editor does have a coherent CBC-obligation model, but it is split across:
 
-- preventive UI filtering
+- editing-time prevention of violations
 - live annotation/dashboard diagnostics
 - report-only aggregation
 
