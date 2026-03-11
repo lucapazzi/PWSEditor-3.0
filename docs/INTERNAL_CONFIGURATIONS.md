@@ -278,8 +278,10 @@ So:
 ## Fail-State Note
 
 Marking a controller state as **Fail state** does **not** stop exit-zones from being computed.
-Classical autonomous exit-zones are still formed from the
-state's semantics and constraints in the usual way.
+PWSEditor still computes:
+
+- reactive exit-zones from computed `SS`
+- CS-only provisional exit-zones from explicit `CS`
 
 What changes is the **coverage obligation**:
 

@@ -37,4 +37,5 @@ Relation:
 ## Quick checklist
 - No escape path (direct coverage or via internal evolution) => primary deadlock.
 - Primary + internally stuck => secondary deadlock.
+- Fail state => exit-zone coverage not required.
 - Fail state => deadlock checks masked.

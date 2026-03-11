@@ -11,6 +11,30 @@ Additional user-facing semantics notes:
 - `docs/DEADLOCK_FRAMEWORK.md`
 - `docs/WARNING_POLICY.md`
 
+## Fail-State Behavior (Obligations)
+
+When a controller state is marked **Fail state**, the editor masks only a specific subset of obligations:
+
+- masked: uncovered exit-zone checks
+- masked: primary deadlock checks
+- masked: secondary (internal) deadlock checks
+
+These checks are still active for fail states:
+
+- orphan guard checks
+- orphan action checks
+- constraint-violation checks
+- orphan exit-zone checks
+- unreachable-state detection
+
+Fail-state marking does not stop exit-zone computation. It changes how selected diagnostics are interpreted and reported.
+
+See detailed rationale and examples:
+
+- `docs/CBC_OBLIGATIONS.md` (section: Fail-state masking)
+- `docs/INTERNAL_CONFIGURATIONS.md` (section: Fail-State Note)
+- `docs/DEADLOCK_FRAMEWORK.md` (section: Fail-state masking)
+
 ## Assembly Components Preview Panel (Current UI)
 
 - Located on the **left side**, below the controller editor.
