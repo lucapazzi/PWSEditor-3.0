@@ -639,7 +639,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                     // Snap initial placement: support half-grid snapping when enabled
                     int placedX = defaultX;
                     int placedY = defaultY;
-                    if (this.isSnapToGrid()) {
+                    Point storedOffset = t.getTriggerOffset();
+                    if (storedOffset != null) {
+                        placedX = storedOffset.x;
+                        placedY = storedOffset.y;
+                    } else if (this.isSnapToGrid()) {
                         int grid = this.getGridSize();
                         if (grid > 0) {
                             int w = size.width;

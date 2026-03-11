@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.logging.Logger;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
@@ -29,6 +30,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.InputEvent;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.*;
 
 import pws.editor.PWSStateMachineEditor;
@@ -58,8 +60,20 @@ public class PWSEditor extends JFrame {
     private JToggleButton btnAssembly; // Assembly toggle button reference
     private JToggleButton btnLibraryToggle; // Library toggle button reference
     private JSplitPane mainSplitPane;
+    private JSplitPane leftSplitPane;
     private JSplitPane rightSplitPane;
     private JSplitPane assemblySplitPane;
+    private JPanel assemblyOverviewRow;
+    private JScrollPane assemblyOverviewScrollPane;
+    private final Map<String, JToggleButton> assemblyOverviewButtons = new LinkedHashMap<>();
+    private ButtonGroup assemblyOverviewButtonGroup;
+    private transient Timer assemblyOverviewRefreshTimer;
+    private String selectedAssemblyOverviewMachineId = null;
+    private boolean assemblyOverviewVisible = false;
+    private int assemblyOverviewDividerSize = -1;
+    private int assemblyOverviewLastVisibleHeight = 190;
+    private static final int ASSEMBLY_OVERVIEW_PREVIEW_WIDTH = 180;
+    private static final int ASSEMBLY_OVERVIEW_PREVIEW_HEIGHT = 100;
     // Whether the left-hand controller editor should be shown.
     private boolean controllerEditorVisible = false;
     // Menu items that depend on the controller/editor being present
@@ -71,6 +85,7 @@ public class PWSEditor extends JFrame {
     private JCheckBoxMenuItem editModeItem;
     private JMenuItem selectAllItem;
     private JCheckBoxMenuItem showStateAnn;
+    private JCheckBoxMenuItem showAssemblyComponentsItem;
     private JCheckBoxMenuItem showExitZoneMachineIdsItem;
     private JCheckBoxMenuItem constraintAwareExitZoneInternalityItem;
     private JCheckBoxMenuItem showGridItem;
@@ -143,6 +158,20 @@ public class PWSEditor extends JFrame {
             this.json = json;
         }
     }
+
+    private static final class AssemblyOverviewSizing {
+        private final int iconWidth;
+        private final int iconHeight;
+        private final int buttonWidth;
+        private final int buttonHeight;
+
+        private AssemblyOverviewSizing(int iconWidth, int iconHeight, int buttonWidth, int buttonHeight) {
+            this.iconWidth = iconWidth;
+            this.iconHeight = iconHeight;
+            this.buttonWidth = buttonWidth;
+            this.buttonHeight = buttonHeight;
+        }
+    }
     private void initComponents() {
         // Don't set the menu bar at the frame level anymore
         // setJMenuBar(createMenuBar());
@@ -174,6 +203,11 @@ public class PWSEditor extends JFrame {
         
         leftWrapper.add(leftTopSection, BorderLayout.NORTH);
         leftWrapper.add(editorInner, BorderLayout.CENTER);
+
+        leftSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, leftWrapper, createAssemblyOverviewPanel());
+        leftSplitPane.setResizeWeight(0.78);
+        leftSplitPane.setOneTouchExpandable(true);
+        leftSplitPane.setContinuousLayout(true);
 
         // Ensure clicks anywhere on the left editor area transfer focus to the controller's panel
         Component controllerPanel = (baseEditor != null) ? baseEditor.getStateMachinePanel() : null;
@@ -306,7 +340,7 @@ public class PWSEditor extends JFrame {
         rightSplitPane.setResizeWeight(0.25);
         rightSplitPane.setOneTouchExpandable(true);
 
-        mainSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftWrapper, rightSplitPane);
+        mainSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftSplitPane, rightSplitPane);
         mainSplitPane.setResizeWeight(0.7);
         getContentPane().add(mainSplitPane, BorderLayout.CENTER);
 
@@ -324,7 +358,10 @@ public class PWSEditor extends JFrame {
                             String title = id + " : " + (machine.getName() != null ? machine.getName() : "");
                             if (embeddedEditor == null) {
                                 embeddedEditor = new StateMachineEditor(machine, pwsStateMachine.getAssembly(), title);
-                                embeddedEditor.setModelChangedCallback(() -> scheduleSemanticsRecalculation());
+                                embeddedEditor.setModelChangedCallback(() -> {
+                                    scheduleSemanticsRecalculation();
+                                    scheduleAssemblyOverviewRefresh();
+                                });
                                 embeddedEditor.setCloseCallback(() -> {
                                     syncEmbeddedLibraryAliasData();
                                     embeddedEditor = null;
@@ -334,6 +371,7 @@ public class PWSEditor extends JFrame {
                                     machineEditorContainer.revalidate();
                                     machineEditorContainer.repaint();
                                     embeddedMachineId = null;
+                                    setSelectedAssemblyOverviewMachine(null);
                                     lastActiveStateMachinePanel = getControllerStateMachinePanel();
                                         // Restore focus to the main controller panel when embedded editor is closed
                                         SwingUtilities.invokeLater(() -> {
@@ -349,6 +387,7 @@ public class PWSEditor extends JFrame {
 
                             // remember which id is currently embedded
                             embeddedMachineId = id;
+                            setSelectedAssemblyOverviewMachine(id);
 
                             JMenuBar mb = embeddedEditor.getJMenuBar();
                             StateMachinePanel smPanel = embeddedEditor.getStateMachinePanel();
@@ -379,6 +418,7 @@ public class PWSEditor extends JFrame {
                             machineEditorContainer.add(wrapper, BorderLayout.CENTER);
                             machineEditorContainer.revalidate();
                             machineEditorContainer.repaint();
+                            scheduleAssemblyOverviewRefresh();
                         } catch (Exception ex) {
                             machineEditorContainer.removeAll();
                             JPanel wrapper = new JPanel(new BorderLayout());
@@ -399,6 +439,8 @@ public class PWSEditor extends JFrame {
                             machineEditorContainer.add(wrapper, BorderLayout.CENTER);
                             machineEditorContainer.revalidate();
                             machineEditorContainer.repaint();
+                            setSelectedAssemblyOverviewMachine(id);
+                            scheduleAssemblyOverviewRefresh();
                         }
                     });
                 }
@@ -417,6 +459,7 @@ public class PWSEditor extends JFrame {
                             machineEditorContainer.repaint();
                         }
                         embeddedMachineId = null;
+                        setSelectedAssemblyOverviewMachine(null);
                         lastActiveStateMachinePanel = getControllerStateMachinePanel();
                         // ensure focus returns to main controller panel after removal
                         try {
@@ -428,6 +471,7 @@ public class PWSEditor extends JFrame {
                 // Recompute semantics since assembly changes affect configurations/exit zones
                 markDocumentDirty();
                 SwingUtilities.invokeLater(() -> scheduleSemanticsRecalculation());
+                scheduleAssemblyOverviewRefresh();
             }
 
             @Override
@@ -446,6 +490,7 @@ public class PWSEditor extends JFrame {
                 // Detach/clone changes the assembly mapping, so refresh semantics/initial configs
                 markDocumentDirty();
                 SwingUtilities.invokeLater(() -> scheduleSemanticsRecalculation());
+                scheduleAssemblyOverviewRefresh();
             }
 
             @Override
@@ -459,6 +504,7 @@ public class PWSEditor extends JFrame {
                     scheduleSemanticsRecalculation();
                 });
                 markDocumentDirty();
+                scheduleAssemblyOverviewRefresh();
             }
 
             @Override
@@ -468,6 +514,7 @@ public class PWSEditor extends JFrame {
                     scheduleSemanticsRecalculation();
                 });
                 markDocumentDirty();
+                scheduleAssemblyOverviewRefresh();
             }
         });
         }
@@ -485,7 +532,10 @@ public class PWSEditor extends JFrame {
                             String title = machine.getName() != null ? machine.getName() : "Unnamed";
                             if (embeddedEditor == null) {
                                 embeddedEditor = new StateMachineEditor(machine, pwsStateMachine.getAssembly(), title);
-                                embeddedEditor.setModelChangedCallback(() -> scheduleSemanticsRecalculation());
+                                embeddedEditor.setModelChangedCallback(() -> {
+                                    scheduleSemanticsRecalculation();
+                                    scheduleAssemblyOverviewRefresh();
+                                });
                                 embeddedEditor.setCloseCallback(() -> {
                                     syncEmbeddedLibraryAliasData();
                                     embeddedEditor = null;
@@ -495,12 +545,14 @@ public class PWSEditor extends JFrame {
                                     machineEditorContainer.revalidate();
                                     machineEditorContainer.repaint();
                                     embeddedMachineId = null;
+                                    setSelectedAssemblyOverviewMachine(null);
                                     lastActiveStateMachinePanel = getControllerStateMachinePanel();
                                 });
                             } else {
                                 embeddedEditor.bindStateMachine(machine);
                             }
                             embeddedMachineId = "lib:" + key;
+                            setSelectedAssemblyOverviewMachine(null);
 
                             JMenuBar mb = embeddedEditor.getJMenuBar();
                             StateMachinePanel smPanel = embeddedEditor.getStateMachinePanel();
@@ -529,6 +581,7 @@ public class PWSEditor extends JFrame {
                             machineEditorContainer.add(wrapper, BorderLayout.CENTER);
                             machineEditorContainer.revalidate();
                             machineEditorContainer.repaint();
+                            scheduleAssemblyOverviewRefresh();
                         } catch (Exception ex) {
                             machineEditorContainer.removeAll();
                             JPanel wrapper = new JPanel(new BorderLayout());
@@ -547,6 +600,8 @@ public class PWSEditor extends JFrame {
                             machineEditorContainer.add(wrapper, BorderLayout.CENTER);
                             machineEditorContainer.revalidate();
                             machineEditorContainer.repaint();
+                            setSelectedAssemblyOverviewMachine(null);
+                            scheduleAssemblyOverviewRefresh();
                         }
                     });
                 }
@@ -562,9 +617,11 @@ public class PWSEditor extends JFrame {
                         machineEditorContainer.revalidate();
                         machineEditorContainer.repaint();
                         embeddedMachineId = null;
+                        setSelectedAssemblyOverviewMachine(null);
                         lastActiveStateMachinePanel = getControllerStateMachinePanel();
                     });
                 }
+                scheduleAssemblyOverviewRefresh();
             }
 
             @Override
@@ -588,6 +645,7 @@ public class PWSEditor extends JFrame {
                         }
                     }
                 });
+                scheduleAssemblyOverviewRefresh();
             }
 
             @Override
@@ -598,8 +656,376 @@ public class PWSEditor extends JFrame {
         });
 
         refreshInitialConfigurationsPanel();
+        refreshAssemblyOverviewNow();
+        applyAssemblyOverviewVisibility();
         installUndoRedoKeyBindings();
         installGlobalActivePanelMouseTracking();
+    }
+
+    private JComponent createAssemblyOverviewPanel() {
+        JPanel wrapper = new JPanel(new BorderLayout());
+        JLabel header = new JLabel("Assembly Components", SwingConstants.CENTER);
+        header.setBorder(BorderFactory.createEmptyBorder(6, 6, 4, 6));
+        header.setFont(header.getFont().deriveFont(Font.BOLD));
+        wrapper.add(header, BorderLayout.NORTH);
+
+        assemblyOverviewRow = new JPanel();
+        assemblyOverviewRow.setLayout(new BoxLayout(assemblyOverviewRow, BoxLayout.X_AXIS));
+        assemblyOverviewRow.setBorder(BorderFactory.createEmptyBorder(4, 8, 6, 8));
+        assemblyOverviewRow.setBackground(new Color(248, 248, 248));
+
+        assemblyOverviewScrollPane = new JScrollPane(
+                assemblyOverviewRow,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        assemblyOverviewScrollPane.setBorder(BorderFactory.createEmptyBorder());
+        assemblyOverviewScrollPane.getHorizontalScrollBar().setUnitIncrement(20);
+        assemblyOverviewScrollPane.getViewport().setBackground(assemblyOverviewRow.getBackground());
+        assemblyOverviewScrollPane.getViewport().addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                scheduleAssemblyOverviewRefresh();
+            }
+        });
+        wrapper.add(assemblyOverviewScrollPane, BorderLayout.CENTER);
+
+        wrapper.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(220, 220, 220)));
+        wrapper.setPreferredSize(new Dimension(10, 190));
+        return wrapper;
+    }
+
+    public void setAssemblyOverviewVisible(boolean visible) {
+        assemblyOverviewVisible = visible;
+        if (showAssemblyComponentsItem != null && showAssemblyComponentsItem.isSelected() != visible) {
+            showAssemblyComponentsItem.setSelected(visible);
+        }
+        applyAssemblyOverviewVisibility();
+    }
+
+    private void applyAssemblyOverviewVisibility() {
+        if (leftSplitPane == null) return;
+        if (assemblyOverviewDividerSize < 0) {
+            assemblyOverviewDividerSize = leftSplitPane.getDividerSize();
+        }
+        Component bottom = leftSplitPane.getBottomComponent();
+        if (bottom == null) return;
+
+        if (assemblyOverviewVisible) {
+            bottom.setVisible(true);
+            leftSplitPane.setDividerSize(assemblyOverviewDividerSize);
+            if (leftSplitPane.getHeight() > 0) {
+                int desiredBottomHeight = Math.max(90, assemblyOverviewLastVisibleHeight);
+                int divider = leftSplitPane.getDividerSize();
+                int maxDividerLocation = Math.max(0, leftSplitPane.getHeight() - divider - 1);
+                int desiredDividerLocation = leftSplitPane.getHeight() - divider - desiredBottomHeight;
+                desiredDividerLocation = Math.max(0, Math.min(maxDividerLocation, desiredDividerLocation));
+                leftSplitPane.setDividerLocation(desiredDividerLocation);
+            } else {
+                leftSplitPane.setDividerLocation(0.78);
+            }
+            scheduleAssemblyOverviewRefresh();
+        } else {
+            if (bottom.isVisible() && leftSplitPane.getHeight() > 0) {
+                int currentBottomHeight = leftSplitPane.getHeight()
+                        - leftSplitPane.getDividerLocation()
+                        - leftSplitPane.getDividerSize();
+                if (currentBottomHeight > 0) {
+                    assemblyOverviewLastVisibleHeight = currentBottomHeight;
+                }
+            }
+            bottom.setVisible(false);
+            leftSplitPane.setDividerLocation(1.0);
+            leftSplitPane.setDividerSize(0);
+        }
+        leftSplitPane.revalidate();
+        leftSplitPane.repaint();
+    }
+
+    private void scheduleAssemblyOverviewRefresh() {
+        if (assemblyOverviewRow == null) return;
+        Runnable schedule = () -> {
+            if (assemblyOverviewRefreshTimer == null) {
+                assemblyOverviewRefreshTimer = new Timer(60, e -> refreshAssemblyOverviewNow());
+                assemblyOverviewRefreshTimer.setRepeats(false);
+            }
+            assemblyOverviewRefreshTimer.restart();
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            schedule.run();
+        } else {
+            SwingUtilities.invokeLater(schedule);
+        }
+    }
+
+    private void refreshAssemblyOverviewNow() {
+        if (assemblyOverviewRow == null) return;
+
+        assemblyOverviewRow.removeAll();
+        assemblyOverviewButtons.clear();
+        assemblyOverviewButtonGroup = new ButtonGroup();
+
+        if (!controllerEditorVisible || pwsStateMachine == null || pwsStateMachine.getAssembly() == null) {
+            JLabel placeholder = new JLabel("No controller loaded.", SwingConstants.LEFT);
+            placeholder.setBorder(BorderFactory.createEmptyBorder(10, 6, 10, 6));
+            placeholder.setForeground(new Color(110, 110, 110));
+            assemblyOverviewRow.add(placeholder);
+            assemblyOverviewRow.revalidate();
+            assemblyOverviewRow.repaint();
+            return;
+        }
+
+        Map<String, StateMachine> machines = pwsStateMachine.getAssembly().getStateMachines();
+        if (machines == null || machines.isEmpty()) {
+            JLabel placeholder = new JLabel("No assembly components yet.", SwingConstants.LEFT);
+            placeholder.setBorder(BorderFactory.createEmptyBorder(10, 6, 10, 6));
+            placeholder.setForeground(new Color(110, 110, 110));
+            assemblyOverviewRow.add(placeholder);
+            assemblyOverviewRow.revalidate();
+            assemblyOverviewRow.repaint();
+            return;
+        }
+
+        boolean first = true;
+        AssemblyOverviewSizing sizing = computeAssemblyOverviewSizing();
+        for (Map.Entry<String, StateMachine> entry : machines.entrySet()) {
+            if (!first) {
+                assemblyOverviewRow.add(Box.createHorizontalStrut(8));
+            }
+            first = false;
+            String id = entry.getKey();
+            StateMachine machine = entry.getValue();
+            JToggleButton button = createAssemblyOverviewButton(id, machine, sizing);
+            assemblyOverviewButtonGroup.add(button);
+            assemblyOverviewButtons.put(id, button);
+            assemblyOverviewRow.add(button);
+        }
+        assemblyOverviewRow.add(Box.createHorizontalGlue());
+
+        String selectedId = selectedAssemblyOverviewMachineId;
+        if ((selectedId == null || !assemblyOverviewButtons.containsKey(selectedId))
+                && embeddedMachineId != null && !embeddedMachineId.startsWith("lib:")) {
+            selectedId = embeddedMachineId;
+        }
+        setSelectedAssemblyOverviewMachine(selectedId);
+
+        assemblyOverviewRow.revalidate();
+        assemblyOverviewRow.repaint();
+    }
+
+    private AssemblyOverviewSizing computeAssemblyOverviewSizing() {
+        int iconWidth = ASSEMBLY_OVERVIEW_PREVIEW_WIDTH;
+        int iconHeight = ASSEMBLY_OVERVIEW_PREVIEW_HEIGHT;
+        int buttonWidth = iconWidth + 18;
+        int buttonHeight = iconHeight + 48;
+
+        int viewportHeight = 0;
+        if (assemblyOverviewScrollPane != null && assemblyOverviewScrollPane.getViewport() != null) {
+            viewportHeight = assemblyOverviewScrollPane.getViewport().getExtentSize().height;
+            if (viewportHeight <= 0) {
+                viewportHeight = assemblyOverviewScrollPane.getViewport().getHeight();
+            }
+        }
+        if (viewportHeight > 0) {
+            int usableHeight = Math.max(68, viewportHeight - 10);
+            buttonHeight = usableHeight;
+            int textAndChromeHeight = 44;
+            iconHeight = Math.max(24, usableHeight - textAndChromeHeight);
+            double aspect = (double) ASSEMBLY_OVERVIEW_PREVIEW_WIDTH / (double) ASSEMBLY_OVERVIEW_PREVIEW_HEIGHT;
+            iconWidth = Math.max(52, (int) Math.round(iconHeight * aspect));
+            buttonWidth = Math.max(92, iconWidth + 18);
+        }
+
+        return new AssemblyOverviewSizing(iconWidth, iconHeight, buttonWidth, buttonHeight);
+    }
+
+    private JToggleButton createAssemblyOverviewButton(String id, StateMachine machine, AssemblyOverviewSizing sizing) {
+        String machineName = (machine != null && machine.getName() != null && !machine.getName().trim().isEmpty())
+                ? machine.getName()
+                : "Unnamed";
+        String text = "<html><center><b>" + escapeHtml(id) + "</b><br/>" + escapeHtml(machineName) + "</center></html>";
+        JToggleButton button = new JToggleButton(text);
+        button.setIcon(createMachinePreviewIcon(id, machine, sizing.iconWidth, sizing.iconHeight));
+        button.setVerticalTextPosition(SwingConstants.BOTTOM);
+        button.setHorizontalTextPosition(SwingConstants.CENTER);
+        button.setFocusPainted(false);
+        button.setOpaque(true);
+        button.setBackground(Color.WHITE);
+        button.setMargin(new Insets(6, 6, 6, 6));
+
+        Dimension pref = new Dimension(sizing.buttonWidth, sizing.buttonHeight);
+        button.setPreferredSize(pref);
+        button.setMinimumSize(pref);
+        button.setMaximumSize(pref);
+
+        javax.swing.border.Border defaultBorder = button.getBorder();
+        javax.swing.border.Border selectedBorder = BorderFactory.createLineBorder(new Color(72, 123, 201), 2);
+        button.addChangeListener(e -> {
+            if (button.isSelected()) {
+                button.setBorder(selectedBorder);
+                button.setBackground(new Color(234, 242, 255));
+            } else {
+                button.setBorder(defaultBorder);
+                button.setBackground(Color.WHITE);
+            }
+        });
+        button.addActionListener(a -> openAssemblyMachineFromOverview(id));
+        return button;
+    }
+
+    private void openAssemblyMachineFromOverview(String machineId) {
+        if (machineId == null) return;
+        selectedAssemblyOverviewMachineId = machineId;
+        if (btnAssembly != null && topCardsLayout != null && topSwitchPanel != null) {
+            btnAssembly.setSelected(true);
+            topCardsLayout.show(topSwitchPanel, "assembly");
+        }
+        if (assemblyPanel != null) {
+            assemblyPanel.selectMachineById(machineId);
+        }
+    }
+
+    private void setSelectedAssemblyOverviewMachine(String machineId) {
+        selectedAssemblyOverviewMachineId = machineId;
+        if (assemblyOverviewButtons.isEmpty()) return;
+        if (machineId == null) {
+            if (assemblyOverviewButtonGroup != null) {
+                assemblyOverviewButtonGroup.clearSelection();
+            }
+            return;
+        }
+        JToggleButton button = assemblyOverviewButtons.get(machineId);
+        if (button == null) {
+            if (assemblyOverviewButtonGroup != null) {
+                assemblyOverviewButtonGroup.clearSelection();
+            }
+            return;
+        }
+        button.setSelected(true);
+        if (assemblyOverviewRow != null) {
+            assemblyOverviewRow.scrollRectToVisible(button.getBounds());
+        }
+    }
+
+    private ImageIcon createMachinePreviewIcon(String machineId, StateMachine machine, int width, int height) {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = image.createGraphics();
+        try {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(Color.WHITE);
+            g2.fillRect(0, 0, width, height);
+            g2.setColor(new Color(220, 220, 220));
+            g2.drawRect(0, 0, width - 1, height - 1);
+
+            if (machine == null || machine.getStates() == null || machine.getStates().isEmpty()) {
+                g2.setColor(new Color(130, 130, 130));
+                Font f = g2.getFont();
+                g2.setFont(f.deriveFont(Font.PLAIN, 11f));
+                String text = "Empty";
+                FontMetrics fm = g2.getFontMetrics();
+                int x = (width - fm.stringWidth(text)) / 2;
+                int y = (height + fm.getAscent() - fm.getDescent()) / 2;
+                g2.drawString(text, x, y);
+                g2.setFont(f);
+                return new ImageIcon(image);
+            }
+
+            StateMachinePanel previewPanel = new StateMachinePanel(machine);
+            try {
+                ToolTipManager.sharedInstance().unregisterComponent(previewPanel);
+                previewPanel.setShowGrid(false);
+                previewPanel.setShowControlHandles(false);
+                previewPanel.setEditMode(false);
+                previewPanel.importAliasData(resolveAliasDataForPreview(machineId, machine));
+                previewPanel.setSize(width, height);
+
+                Rectangle bounds = computeMachinePreviewBounds(machine, previewPanel.getStateDiameter());
+                if (bounds != null && bounds.width > 0 && bounds.height > 0) {
+                    double pad = 8.0;
+                    double sx = (width - 2.0 * pad) / bounds.width;
+                    double sy = (height - 2.0 * pad) / bounds.height;
+                    double scale = Math.min(sx, sy);
+                    if (!Double.isFinite(scale) || scale <= 0.0) {
+                        scale = 1.0;
+                    }
+                    scale = Math.max(0.08, Math.min(scale, 3.0));
+                    double scaledWidth = bounds.width * scale;
+                    double scaledHeight = bounds.height * scale;
+                    double tx = (width - scaledWidth) / 2.0 - bounds.x * scale;
+                    double ty = (height - scaledHeight) / 2.0 - bounds.y * scale;
+
+                    Shape oldClip = g2.getClip();
+                    java.awt.geom.AffineTransform oldTransform = g2.getTransform();
+                    g2.clipRect(1, 1, width - 2, height - 2);
+                    g2.translate(tx, ty);
+                    g2.scale(scale, scale);
+                    previewPanel.paint(g2);
+                    g2.setTransform(oldTransform);
+                    g2.setClip(oldClip);
+                }
+            } finally {
+                ToolTipManager.sharedInstance().unregisterComponent(previewPanel);
+            }
+        } finally {
+            g2.dispose();
+        }
+        return new ImageIcon(image);
+    }
+
+    private Rectangle computeMachinePreviewBounds(StateMachine machine, int stateDiameter) {
+        if (machine == null) return null;
+        int pseudoDiameter = Math.max(6, stateDiameter / 3);
+        Rectangle bounds = null;
+        for (machinery.StateInterface stateInterface : machine.getStates()) {
+            if (!(stateInterface instanceof machinery.State state)) continue;
+            Point pos = state.getPosition();
+            if (pos == null) continue;
+            int diameter = "PseudoState".equals(state.getName()) ? pseudoDiameter : stateDiameter;
+            Rectangle r = new Rectangle(pos.x, pos.y, diameter, diameter);
+            bounds = (bounds == null) ? new Rectangle(r) : bounds.union(r);
+        }
+        for (machinery.TransitionInterface transitionInterface : machine.getTransitions()) {
+            if (!(transitionInterface instanceof machinery.Transition transition)) continue;
+            Point cp = transition.getControlPoint();
+            if (cp == null) continue;
+            Rectangle r = new Rectangle(cp.x - 10, cp.y - 10, 20, 20);
+            bounds = (bounds == null) ? new Rectangle(r) : bounds.union(r);
+        }
+        if (bounds == null) {
+            return new Rectangle(0, 0, stateDiameter, stateDiameter);
+        }
+        bounds.grow(14, 14);
+        if (bounds.width <= 0) bounds.width = stateDiameter;
+        if (bounds.height <= 0) bounds.height = stateDiameter;
+        return bounds;
+    }
+
+    private StateMachinePanel.AliasData resolveAliasDataForPreview(String assemblyMachineId, StateMachine machine) {
+        if (pwsStateMachine == null || pwsStateMachine.getAssembly() == null) return null;
+        if (assemblyMachineId == null || machine == null) return null;
+        String libKey = findLibraryKeyForMachine(machine);
+        if (libKey != null) {
+            return copyAliasData(pwsStateMachine.getAssembly().getMachineLibrary().getAliasData(libKey));
+        }
+        return copyAliasData(pwsStateMachine.getAssembly().getAliasData(assemblyMachineId));
+    }
+
+    private StateMachinePanel.AliasData copyAliasData(StateMachinePanel.AliasData source) {
+        if (source == null) return null;
+        StateMachinePanel.AliasData copy = new StateMachinePanel.AliasData();
+        for (Point pos : source.pseudoAliases) {
+            if (pos != null) {
+                copy.pseudoAliases.add(new Point(pos));
+            }
+        }
+        copy.pseudoAliasByTransition.putAll(source.pseudoAliasByTransition);
+        return copy;
+    }
+
+    private static String escapeHtml(String value) {
+        if (value == null) return "";
+        return value.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
     }
 
     private JMenuBar createMenuBar() {
@@ -946,6 +1372,13 @@ public class PWSEditor extends JFrame {
         });
         viewMenu.add(showStateAnn);
 
+        showAssemblyComponentsItem = new JCheckBoxMenuItem("Show assembly components", false);
+        showAssemblyComponentsItem.addActionListener(e -> {
+            setAssemblyOverviewVisible(showAssemblyComponentsItem.isSelected());
+            markDocumentDirty();
+        });
+        viewMenu.add(showAssemblyComponentsItem);
+
         showExitZoneMachineIdsItem = new JCheckBoxMenuItem(
             "Show exit-zone machine IDs",
             StateSemanticsAnnotation.isShowExitZoneMachineIds()
@@ -1165,6 +1598,7 @@ public class PWSEditor extends JFrame {
     public void setControllerEditorVisible(boolean visible) {
         this.controllerEditorVisible = visible;
         updateMenuItemsEnabledState();
+        scheduleAssemblyOverviewRefresh();
     }
 
     private StateMachinePanel getControllerStateMachinePanel() {
@@ -1252,6 +1686,10 @@ public class PWSEditor extends JFrame {
 
     @Override
     public void dispose() {
+        if (assemblyOverviewRefreshTimer != null) {
+            assemblyOverviewRefreshTimer.stop();
+            assemblyOverviewRefreshTimer = null;
+        }
         uninstallGlobalActivePanelMouseTracking();
         super.dispose();
     }
@@ -1312,6 +1750,9 @@ public class PWSEditor extends JFrame {
 
     private void updateMenuItemsEnabledState() {
         boolean ctrl = controllerEditorVisible && baseEditor != null;
+        if (!ctrl) {
+            setAssemblyOverviewVisible(false);
+        }
         // Save/SaveAs/Close require a document
         boolean hasDoc = (currentDocument != null);
         if (saveItem != null) saveItem.setEnabled(hasDoc);
@@ -1324,6 +1765,7 @@ public class PWSEditor extends JFrame {
         if (editModeItem != null) editModeItem.setEnabled(ctrl);
         if (selectAllItem != null) selectAllItem.setEnabled(ctrl);
         if (showStateAnn != null) showStateAnn.setEnabled(ctrl);
+        if (showAssemblyComponentsItem != null) showAssemblyComponentsItem.setEnabled(ctrl);
         if (showExitZoneMachineIdsItem != null) showExitZoneMachineIdsItem.setEnabled(ctrl);
         if (constraintAwareExitZoneInternalityItem != null) constraintAwareExitZoneInternalityItem.setEnabled(ctrl);
         if (showGridItem != null) showGridItem.setEnabled(ctrl);
@@ -1355,6 +1797,9 @@ public class PWSEditor extends JFrame {
         }
         if (snapToGridItem != null) {
             snapToGridItem.setSelected(panel.isSnapToGrid());
+        }
+        if (showAssemblyComponentsItem != null) {
+            showAssemblyComponentsItem.setSelected(assemblyOverviewVisible);
         }
         if (showExitZoneMachineIdsItem != null) {
             showExitZoneMachineIdsItem.setSelected(StateSemanticsAnnotation.isShowExitZoneMachineIds());
@@ -1668,6 +2113,9 @@ public class PWSEditor extends JFrame {
             updateWindowTitle();
         }
         recordUndoSnapshot();
+        if (embeddedEditor != null) {
+            scheduleAssemblyOverviewRefresh();
+        }
     }
 
     public void initializeUndoHistory() {
@@ -1849,6 +2297,7 @@ public class PWSEditor extends JFrame {
 
     public void onAssemblyOrderChanged() {
         markDocumentDirty();
+        scheduleAssemblyOverviewRefresh();
         SwingUtilities.invokeLater(() -> {
             refreshInitialConfigurationsPanel();
             if (baseEditor != null) {
@@ -1942,9 +2391,11 @@ public class PWSEditor extends JFrame {
         ui.windowWidth = getWidth() > 0 ? getWidth() : null;
         ui.windowHeight = getHeight() > 0 ? getHeight() : null;
         ui.mainDivider = (mainSplitPane != null) ? mainSplitPane.getDividerLocation() : null;
+        ui.leftDivider = (leftSplitPane != null) ? leftSplitPane.getDividerLocation() : null;
         ui.rightDivider = (rightSplitPane != null) ? rightSplitPane.getDividerLocation() : null;
         ui.assemblyDivider = (assemblySplitPane != null) ? assemblySplitPane.getDividerLocation() : null;
         if (showStateAnn != null) ui.showDashboards = showStateAnn.isSelected();
+        if (showAssemblyComponentsItem != null) ui.showAssemblyComponents = showAssemblyComponentsItem.isSelected();
         if (showGridItem != null) ui.showGrid = showGridItem.isSelected();
         if (snapToGridItem != null) ui.snapToGrid = snapToGridItem.isSelected();
         if (editModeItem != null) ui.editMode = editModeItem.isSelected();
@@ -1969,11 +2420,25 @@ public class PWSEditor extends JFrame {
             if (mainSplitPane != null && ui.mainDivider != null && ui.mainDivider > 0) {
                 mainSplitPane.setDividerLocation(ui.mainDivider);
             }
+            if (leftSplitPane != null && ui.leftDivider != null && ui.leftDivider > 0) {
+                leftSplitPane.setDividerLocation(ui.leftDivider);
+            }
             if (rightSplitPane != null && ui.rightDivider != null && ui.rightDivider > 0) {
                 rightSplitPane.setDividerLocation(ui.rightDivider);
             }
             if (assemblySplitPane != null && ui.assemblyDivider != null && ui.assemblyDivider > 0) {
                 assemblySplitPane.setDividerLocation(ui.assemblyDivider);
+            }
+            if (ui.showAssemblyComponents != null) {
+                setAssemblyOverviewVisible(ui.showAssemblyComponents);
+            } else {
+                setAssemblyOverviewVisible(false);
+            }
+            if (leftSplitPane != null
+                    && ui.leftDivider != null
+                    && ui.leftDivider > 0
+                    && assemblyOverviewVisible) {
+                leftSplitPane.setDividerLocation(ui.leftDivider);
             }
             if (ui.topCard != null && topCardsLayout != null && topSwitchPanel != null) {
                 if ("library".equalsIgnoreCase(ui.topCard)) {

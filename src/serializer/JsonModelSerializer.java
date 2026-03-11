@@ -90,9 +90,11 @@ public final class JsonModelSerializer {
         public Integer windowWidth;
         public Integer windowHeight;
         public Integer mainDivider;
+        public Integer leftDivider;
         public Integer rightDivider;
         public Integer assemblyDivider;
         public Boolean showDashboards;
+        public Boolean showAssemblyComponents;
         public Boolean showGrid;
         public Boolean snapToGrid;
         public Integer gridSize;
@@ -1162,9 +1164,11 @@ public final class JsonModelSerializer {
         if (ui.windowWidth != null) map.put("windowWidth", ui.windowWidth);
         if (ui.windowHeight != null) map.put("windowHeight", ui.windowHeight);
         if (ui.mainDivider != null) map.put("mainDivider", ui.mainDivider);
+        if (ui.leftDivider != null) map.put("leftDivider", ui.leftDivider);
         if (ui.rightDivider != null) map.put("rightDivider", ui.rightDivider);
         if (ui.assemblyDivider != null) map.put("assemblyDivider", ui.assemblyDivider);
         if (ui.showDashboards != null) map.put("showDashboards", ui.showDashboards);
+        if (ui.showAssemblyComponents != null) map.put("showAssemblyComponents", ui.showAssemblyComponents);
         if (ui.showGrid != null) map.put("showGrid", ui.showGrid);
         if (ui.snapToGrid != null) map.put("snapToGrid", ui.snapToGrid);
         if (ui.gridSize != null) map.put("gridSize", ui.gridSize);
@@ -1181,10 +1185,14 @@ public final class JsonModelSerializer {
         ui.windowWidth = getNullableInt(map, "windowWidth");
         ui.windowHeight = getNullableInt(map, "windowHeight");
         ui.mainDivider = getNullableInt(map, "mainDivider");
+        ui.leftDivider = getNullableInt(map, "leftDivider");
         ui.rightDivider = getNullableInt(map, "rightDivider");
         ui.assemblyDivider = getNullableInt(map, "assemblyDivider");
         if (map != null && map.containsKey("showDashboards")) {
             ui.showDashboards = getBoolean(map, "showDashboards", true);
+        }
+        if (map != null && map.containsKey("showAssemblyComponents")) {
+            ui.showAssemblyComponents = getBoolean(map, "showAssemblyComponents", false);
         }
         if (map != null && map.containsKey("showGrid")) {
             ui.showGrid = getBoolean(map, "showGrid", true);
@@ -1198,9 +1206,9 @@ public final class JsonModelSerializer {
         }
         ui.topCard = getString(map, "topCard", null);
         if (ui.windowWidth == null && ui.windowHeight == null
-                && ui.mainDivider == null && ui.rightDivider == null
+                && ui.mainDivider == null && ui.leftDivider == null && ui.rightDivider == null
                 && ui.assemblyDivider == null
-                && ui.showDashboards == null && ui.showGrid == null
+                && ui.showDashboards == null && ui.showAssemblyComponents == null && ui.showGrid == null
                 && ui.snapToGrid == null && ui.gridSize == null
                 && ui.editMode == null && ui.topCard == null) {
             return null;

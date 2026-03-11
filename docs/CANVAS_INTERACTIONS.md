@@ -70,3 +70,13 @@ Controlled editor (`StateMachineEditor`):
 - `Cmd/Ctrl + W`: Close Editor
 - `Cmd/Ctrl + Shift + E`: Export as PDF
 - `Cmd/Ctrl + P`: Export as PNG
+
+## 7. Assembly Components Preview Panel
+
+- The assembly components preview panel is in the **left side**, under the controller editor.
+- It is **hidden by default**.
+- Use `View -> Show assembly components` to show/hide it.
+- Previews are **read-only**. Use them for navigation and context.
+- Clicking a component preview selects that assembly component and opens it in the component editor on the right.
+- The panel height is resizable against the controller editor by dragging the horizontal divider.
+- Preview drawings reflect pseudostate alias routing and stored trigger-label offsets.
