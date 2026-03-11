@@ -141,7 +141,7 @@ There are two different checks:
    This is the concrete codomain test:
 
 ```text
-absorbed = codomain AND CS
+absorbed = codomain
 ```
 
 That distinction matters.
@@ -152,10 +152,10 @@ That distinction matters.
 |----------|-----------|--------------|--------|
 | Target already intersects `SS` | Yes | Usually already present | Gray internal EZ |
 | Target intersects explicit `CS`, codomain also satisfies `CS` | Yes (constraint-aware rule) | Yes | Drifted config is absorbed into `SS` |
-| Target intersects explicit `CS`, but codomain does **not** satisfy `CS` | Yes at target level | No | No new config is added; absorbed part is empty |
+| Target intersects explicit `CS`, but codomain does **not** satisfy `CS` | Yes at target level | Yes | Drifted config is absorbed into `SS` and shown as a constraint violation |
 | Target intersects neither `SS` nor explicit `CS` | No | No | Boundary EZ |
 
-The third row is the subtle one. A target proposition may look "allowed" at the machine-state level, while the full concrete codomain is still incompatible with `CS` after all machines are considered together.
+The third row is the subtle one. A target proposition may look "allowed" at the machine-state level, while the full concrete codomain is still incompatible with `CS` after all machines are considered together. Under soft constraints, that configuration is still kept in `SS`; `CS` is diagnostic, not a filter.
 
 ## Examples
 
@@ -179,7 +179,7 @@ Then:
 
 ```text
 codomain = (cover.Closed, laser.Off)
-absorbed = codomain AND CS = (cover.Closed, laser.Off)
+absorbed = codomain = (cover.Closed, laser.Off)
 ```
 
 So the configuration is added to `SS`.
@@ -215,26 +215,26 @@ The component codomain is still:
 but now:
 
 ```text
-absorbed = codomain AND CS = empty
+absorbed = codomain = (cover.Closed, laser.Off)
 ```
 
-So no new configuration is added to `SS`.
+So the configuration is still added to `SS`, but it is displayed as violating `CS`.
 
-This is why "target allowed by CS" is not enough by itself. The **whole resulting configuration** must remain compatible with `CS`.
+This is why "target allowed by CS" is not enough by itself to guarantee a green row. The **whole resulting configuration** may still violate `CS`, even though it remains part of computed semantics.
 
 ## How CS Forms Exit-Zones
 
 There are three relevant interactions with `CS`.
 
-### 1. CS Restricts What Drift May Add
+### 1. CS Does Not Restrict What Drift May Add
 
 For internal drift closure:
 
 ```text
-only codomain compatible with CS is absorbed into SS
+the full codomain is absorbed into SS
 ```
 
-This is the main role of `CS` for internal configurations.
+`CS` remains relevant as a diagnostic and as an aid to internality/provisional exit-zone analysis, but it no longer clips the absorbed codomain.
 
 ### 2. CS Can Make A Target Count As Internal
 
@@ -256,29 +256,29 @@ PWSEditor also computes **CS-only provisional exit-zones** from explicit constra
 
 For partial constraints, unspecified machines are treated as `ANY`, so autonomous transitions of those unconstrained machines are not reported as provisional exit-zones.
 
-## Incoming Transition Overflow vs Internal Drift
+## Incoming Transition Soft Constraints vs Internal Drift
 
-Do not confuse internal drift with incoming-transition overflow markers.
+Do not confuse internal drift with how incoming controller transitions interact with constraints.
 
 For incoming controller transitions:
 
 ```text
-accepted = contribution AND CS
-overflow = contribution AND NOT(CS)
+accepted = contribution
 ```
 
-Only `accepted` is inserted into computed `SS`.
-The `overflow` part is shown as `T|...` markers in the exit-zone section.
+The full contribution is inserted into computed `SS`.
+If some resulting configurations do not satisfy `CS`, they remain in `SS` and are shown as constraint violations; they are not treated as exit-zones.
 
 So:
 
-- **internal drift closure** adds compatible autonomous codomain into `SS`
-- **incoming overflow** records incompatible incoming codomain as `T|...`
+- **internal drift closure** adds autonomous codomain into `SS`
+- **incoming controller transitions** also add their full codomain into `SS`
+- **constraints** diagnose incompatible configurations instead of filtering them out
 
 ## Fail-State Note
 
 Marking a controller state as **Fail state** does **not** stop exit-zones from being computed.
-Classical autonomous exit-zones and incoming overflow markers are still formed from the
+Classical autonomous exit-zones are still formed from the
 state's semantics and constraints in the usual way.
 
 What changes is the **coverage obligation**:

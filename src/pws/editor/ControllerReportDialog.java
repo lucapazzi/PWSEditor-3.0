@@ -681,8 +681,8 @@ public class ControllerReportDialog extends JDialog {
         appendText("UNCOVERED EXIT ZONES\n", STYLE_SECTION);
         appendText("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n", STYLE_GRAY);
         
-        appendText("  Exit zones represent either autonomous component evolution outside\n", STYLE_NORMAL);
-        appendText("  the current state's constraints or incoming transition-codomain overflow.\n", STYLE_NORMAL);
+        appendText("  Exit zones represent autonomous component evolution outside\n", STYLE_NORMAL);
+        appendText("  the current state's allowed semantics.\n", STYLE_NORMAL);
         appendText("  Each exit zone should have a covering autonomous transition.\n\n", STYLE_NORMAL);
         
         for (Map.Entry<PWSState, List<ExitZoneProblem>> entry : problemMap.entrySet()) {

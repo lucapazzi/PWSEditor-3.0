@@ -10,11 +10,8 @@ import smalgebra.BasicStateProposition;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.LinkedHashSet;
-import java.util.HashSet;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -41,12 +38,10 @@ public class SemanticsVisitor {
         Assembly asm = machine.getAssembly();
         String asmId = asm.getAssemblyId();
         Map<PWSState, Semantics> semMap = new HashMap<>();
-        Map<PWSState, HashSet<ExitZone>> incomingOverflowZones = new HashMap<>();
         // Initialize all states to bottom
         for (StateInterface si : machine.getStates()) {
             PWSState ps = (PWSState) si;
             semMap.put(ps, Semantics.bottom(asmId));
-            incomingOverflowZones.put(ps, new HashSet<>());
         }
         // Seed pseudostate with assembly closure (initial semantics closed under exit zones)
         PWSState pseudo = null;
@@ -93,24 +88,12 @@ public class SemanticsVisitor {
                 }
 
                 PWSState tgt = (PWSState) t.getTarget();
-                Semantics accepted = contrib;
-                if (hasExplicitConstraints(tgt)) {
-                    Semantics cs = tgt.getConstraintsSemantics();
-                    if (cs != null) {
-                        accepted = contrib.AND(cs);
-                        Semantics overflow = contrib.AND(cs.NOT(asm));
-                        if (!overflow.ISEMPTY()) {
-                            incomingOverflowZones.computeIfAbsent(tgt, k -> new HashSet<>())
-                                    .addAll(buildConstraintOverflowExitZones(overflow, cs, asm));
-                        }
-                    }
-                }
-                if (accepted == null || accepted.ISEMPTY()) {
+                if (contrib == null || contrib.ISEMPTY()) {
                     continue;
                 }
 
                 Semantics oldSem = semMap.get(tgt);
-                Semantics combined = oldSem.OR(accepted);
+                Semantics combined = oldSem.OR(contrib);
                 combined = machine.closeStateSemanticsWithInternalExitZones(tgt, combined);
                 if (!combined.equals(oldSem)) {
                     semMap.put(tgt, combined);
@@ -118,7 +101,7 @@ public class SemanticsVisitor {
                     logger.info(String.format("    transition '%s' -> '%s' added %d configs: %d -> %d (enqueued '%s')",
                             t.getSource().getName(),
                             tgt.getName(),
-                            accepted.getConfigurations().size(),
+                            contrib.getConfigurations().size(),
                             oldSem.getConfigurations().size(),
                             combined.getConfigurations().size(),
                             tgt.getName()));
@@ -129,68 +112,9 @@ public class SemanticsVisitor {
             }
         }
 
-        // Store transition-generated overflow exit zones on each state.
-        for (Map.Entry<PWSState, HashSet<ExitZone>> e : incomingOverflowZones.entrySet()) {
-            e.getKey().setIncomingTransitionOverflowExitZones(e.getValue());
-        }
-
         // (Removed POST-FIXPOINT EXIT-ZONE UPDATE)
         logger.info("Completed worklist semantics computation for machine '" + machine.getName() + "' in " + step + " steps.");
         return semMap;
-    }
-
-    private static boolean hasExplicitConstraints(PWSState state) {
-        if (state == null || state.isPseudoState()) {
-            return false;
-        }
-        String raw = state.getRawConstraintText();
-        if (raw != null && !raw.isBlank()) {
-            return !"ANY".equalsIgnoreCase(raw.trim());
-        }
-        Semantics cs = state.getConstraintsSemantics();
-        return cs != null && !cs.getConfigurations().isEmpty();
-    }
-
-    private static Set<ExitZone> buildConstraintOverflowExitZones(Semantics overflow, Semantics cs, Assembly asm) {
-        Set<ExitZone> zones = new HashSet<>();
-        if (overflow == null || overflow.ISEMPTY()) {
-            return zones;
-        }
-        for (Configuration cfg : overflow.getConfigurations()) {
-            Set<BasicStateProposition> candidates = new LinkedHashSet<>();
-            for (BasicStateProposition bsp : cfg.getBasicStatePropositions()) {
-                if (bsp == null) {
-                    continue;
-                }
-                if (cs == null || asm == null) {
-                    candidates.add(bsp);
-                    continue;
-                }
-                try {
-                    Semantics bspSem = bsp.toSemantics(asm);
-                    if (bspSem.AND(cs).ISEMPTY()) {
-                        candidates.add(bsp);
-                    }
-                } catch (Exception ignore) {
-                    candidates.add(bsp);
-                }
-            }
-            // If no single proposition is clearly outside CS, keep a conservative marker.
-            if (candidates.isEmpty()) {
-                candidates.addAll(cfg.getBasicStatePropositions());
-            }
-            for (BasicStateProposition bsp : candidates) {
-                if (bsp == null) {
-                    continue;
-                }
-                zones.add(new ExitZone(
-                        bsp.getMachineId(),
-                        null,
-                        new BasicStateProposition(bsp.getMachineId(), bsp.getStateName()),
-                        new BasicStateProposition(bsp.getMachineId(), bsp.getStateName())));
-            }
-        }
-        return zones;
     }
 
 }

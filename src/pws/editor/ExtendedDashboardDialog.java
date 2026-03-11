@@ -373,7 +373,6 @@ public class ExtendedDashboardDialog extends JDialog {
         Set<ExitZone> reactiveZones = state.getReactiveSemantics();
         Set<ExitZone> csOnlyZones = state.getCsOnlyExitZones();
         Set<ExitZone> ssOnlyZones = state.getSsOnlyExitZones();
-        Set<ExitZone> overflowZones = state.getIncomingTransitionOverflowExitZones();
         boolean coverageRequired = !state.isFailState();
         if (!coverageRequired) {
             appendText("  Note: fail state — exit-zone coverage is not required.\n\n", STYLE_ORANGE);
@@ -397,7 +396,7 @@ public class ExtendedDashboardDialog extends JDialog {
             return;
         }
 
-        appendText("  Exit zones (autonomous + incoming transition overflow markers):\n", STYLE_GRAY);
+        appendText("  Exit zones:\n", STYLE_GRAY);
         appendText("  Legend: ", STYLE_GRAY);
         appendText("GRAY", STYLE_GRAY);
         appendText(" = internal (target already in semantics), ", STYLE_GRAY);
@@ -405,16 +404,12 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText("GREEN", STYLE_GREEN);
             appendText(" = covered (handled by PWS transition), ", STYLE_GRAY);
             appendText("RED", STYLE_RED);
-            appendText(" = uncovered or orphan (needs attention), ", STYLE_GRAY);
-            appendText("overflow|m.s", STYLE_ORANGE);
-            appendText(" = incoming transition codomain overflow marker\n\n", STYLE_GRAY);
+            appendText(" = uncovered or orphan (needs attention)\n\n", STYLE_GRAY);
         } else {
             appendText("ORANGE", STYLE_ORANGE);
             appendText(" = coverage not required (fail state), ", STYLE_GRAY);
             appendText("RED", STYLE_RED);
-            appendText(" = orphan (needs attention), ", STYLE_GRAY);
-            appendText("overflow|m.s", STYLE_ORANGE);
-            appendText(" = incoming transition codomain overflow marker\n\n", STYLE_GRAY);
+            appendText(" = orphan (needs attention)\n\n", STYLE_GRAY);
         }
 
         int internalCount = 0;
@@ -424,7 +419,6 @@ public class ExtendedDashboardDialog extends JDialog {
         int orphanCount = 0;
         int csOnlyCount = 0;
         int ssOnlyCount = 0;
-        int overflowCount = 0;
         int bothCount = 0;
 
         for (ExitZone ez : reactiveZones) {
@@ -433,16 +427,12 @@ public class ExtendedDashboardDialog extends JDialog {
             boolean isCovered = coverageRequired && !isOrphan && !isInternal && coveredGuards.contains(ez.getTarget());
             boolean isCsOnly = csOnlyZones != null && csOnlyZones.contains(ez);
             boolean isSsOnly = ssOnlyZones != null && ssOnlyZones.contains(ez);
-            boolean isOverflow = overflowZones != null && overflowZones.contains(ez);
             
             // Determine origin
             String origin;
             if (isCsOnly) {
                 origin = "CS-only (from Constraint Semantics)";
                 csOnlyCount++;
-            } else if (isOverflow) {
-                origin = "Incoming transition codomain overflow (outside destination constraints)";
-                overflowCount++;
             } else if (isSsOnly) {
                 origin = "SS-only (from State Semantics)";
                 ssOnlyCount++;
@@ -452,7 +442,7 @@ public class ExtendedDashboardDialog extends JDialog {
             }
 
             appendText("    Exit Zone: ", STYLE_BOLD);
-            String exitZoneLabel = isOverflow ? formatOverflowLabel(ez) : ez.toString();
+            String exitZoneLabel = ez.toString();
             if (isOrphan) {
                 appendText(exitZoneLabel + "\n", STYLE_RED);
             } else if (isInternal) {
@@ -467,9 +457,7 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText(ez.getStateMachineId() + "\n", STYLE_NORMAL);
             
             appendText("      Transition:  ", STYLE_GRAY);
-            if (ez.getTransition() == null && isOverflow) {
-                appendText("incoming transition codomain overflow\n", STYLE_NORMAL);
-            } else if (ez.getSource() != null && ez.getTarget() != null) {
+            if (ez.getSource() != null && ez.getTarget() != null) {
                 appendText(ez.getSource().getStateName() + " → " + ez.getTarget().getStateName() + "\n", STYLE_NORMAL);
             } else {
                 appendText("(unknown)\n", STYLE_NORMAL);
@@ -499,8 +487,6 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText("      Origin:      ", STYLE_GRAY);
             if (isCsOnly) {
                 appendText(origin + "\n", STYLE_BLUE);
-            } else if (isOverflow) {
-                appendText(origin + "\n", STYLE_ORANGE);
             } else if (isSsOnly) {
                 appendText(origin + "\n", STYLE_ORANGE);
             } else {
@@ -510,13 +496,6 @@ public class ExtendedDashboardDialog extends JDialog {
             appendText("      Status:      ", STYLE_GRAY);
             if (isOrphan) {
                 appendText("orphan exit zone — no matching source state\n", STYLE_RED);
-            } else if (isOverflow && !coverageRequired) {
-                appendText("incoming-transition overflow marker; coverage not required for fail state\n", STYLE_ORANGE);
-            } else if (isOverflow && isCovered) {
-                appendText("incoming-transition overflow marker covered by autonomous PWS transition\n", STYLE_GREEN);
-            } else if (isOverflow) {
-                appendText("incoming-transition overflow marker uncovered — needs PWS autonomous guard [" +
-                          ez.getTarget().toString() + "]\n", STYLE_RED);
             } else if (isInternal) {
                 appendText("internal (target already in semantics)\n", STYLE_GRAY);
             } else if (!coverageRequired) {
@@ -538,18 +517,6 @@ public class ExtendedDashboardDialog extends JDialog {
                 }
             } else {
                 appendText(formatPwsTransitions(autonomousCovering) + "\n", STYLE_GREEN);
-            }
-
-            if (isOverflow) {
-                java.util.List<PWSTransition> producers = findIncomingOverflowProducers(ez);
-                appendText("      Incoming producer transitions: ", STYLE_GRAY);
-                if (producers.isEmpty()) {
-                    appendText("(none detected)\n", STYLE_GRAY);
-                } else {
-                    appendText(formatPwsTransitions(producers) + "\n", STYLE_NORMAL);
-                }
-                appendText("      Effect on semantics: ", STYLE_GRAY);
-                appendText("excluded from state semantics (outside constraints)\n", STYLE_ORANGE);
             }
             appendText("\n", STYLE_NORMAL);
 
@@ -586,7 +553,6 @@ public class ExtendedDashboardDialog extends JDialog {
         appendText("  Breakdown: ", STYLE_BOLD);
         appendText(csOnlyCount + " CS-only, ", STYLE_BLUE);
         appendText(ssOnlyCount + " SS-only, ", STYLE_ORANGE);
-        appendText(overflowCount + " incoming-overflow, ", STYLE_ORANGE);
         appendText(bothCount + " both CS+SS, ", STYLE_GRAY);
         appendText(orphanCount + " orphan\n\n", orphanCount > 0 ? STYLE_RED : STYLE_GREEN);
     }
@@ -765,56 +731,6 @@ public class ExtendedDashboardDialog extends JDialog {
             }
         }
         return covering;
-    }
-
-    private java.util.List<PWSTransition> findIncomingOverflowProducers(ExitZone ez) {
-        java.util.List<PWSTransition> producers = new ArrayList<>();
-        if (ez == null || ez.getTarget() == null || stateMachine == null || assembly == null || state == null) {
-            return producers;
-        }
-        Semantics cs = state.getConstraintsSemantics();
-        if (cs == null) {
-            return producers;
-        }
-        Semantics csComplement;
-        Semantics targetSem;
-        try {
-            csComplement = cs.NOT(assembly);
-            targetSem = ez.getTarget().toSemantics(assembly);
-        } catch (Exception ex) {
-            return producers;
-        }
-        if (targetSem == null || targetSem.ISEMPTY()) {
-            return producers;
-        }
-
-        Set<PWSTransition> ordered = new LinkedHashSet<>();
-        for (TransitionInterface ti : stateMachine.getTransitions()) {
-            if (!(ti instanceof PWSTransition pt) || !pt.isEnabled() || pt.getTarget() != state) {
-                continue;
-            }
-            if (!(pt.getSource() instanceof PWSState srcState)) {
-                continue;
-            }
-            Semantics srcSem = srcState.getStateSemantics();
-            if (srcSem == null || srcSem.ISEMPTY()) {
-                continue;
-            }
-            Semantics contribution = stateMachine.computeTransitionContribution(pt, srcSem);
-            if (contribution == null || contribution.ISEMPTY()) {
-                continue;
-            }
-            Semantics overflow = contribution.AND(csComplement);
-            if (overflow == null || overflow.ISEMPTY()) {
-                continue;
-            }
-            Semantics hitsTarget = overflow.AND(targetSem);
-            if (hitsTarget != null && !hitsTarget.ISEMPTY()) {
-                ordered.add(pt);
-            }
-        }
-        producers.addAll(ordered);
-        return producers;
     }
 
     private java.util.List<String> findComponentDeadlocks(Configuration cfg) {
@@ -999,25 +915,6 @@ public class ExtendedDashboardDialog extends JDialog {
             return machineName;
         }
         return machineId + " (" + machineName + ")";
-    }
-
-    private static String formatOverflowLabel(ExitZone ez) {
-        return "overflow|" + formatOverflowTarget(ez != null ? ez.getTarget() : null);
-    }
-
-    private static String formatOverflowTarget(BasicStateProposition target) {
-        if (target == null) {
-            return "?";
-        }
-        String machineId = target.getMachineId();
-        String stateName = target.getStateName();
-        if (machineId == null || machineId.isBlank()) {
-            return (stateName == null || stateName.isBlank()) ? "?" : stateName;
-        }
-        if (stateName == null || stateName.isBlank()) {
-            return machineId;
-        }
-        return machineId + "." + stateName;
     }
 
     private void appendText(String text, String styleName) {
