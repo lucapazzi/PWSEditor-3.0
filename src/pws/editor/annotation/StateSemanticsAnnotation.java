@@ -44,6 +44,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     private static final String UNREACHABLE_ISSUE_TEXT = "State is unreachable (no configurations).";
     private static final String PRIMARY_DEADLOCK_ISSUE_TEXT = "Primary deadlock configurations exist.";
     private static final String SECONDARY_DEADLOCK_ISSUE_TEXT = "Secondary (internal) deadlock configurations exist.";
+    private static final String CONSTRAINTS_SECTION_LABEL = "Sem";
+    private static final String CONFIGS_SECTION_LABEL = "Acc";
+    private static final String EXIT_ZONES_SECTION_LABEL = "RS";
     private final transient java.util.ArrayList<HitArea> configHitAreas = new ArrayList<>();
     private final transient java.util.ArrayList<HitArea> constraintHitAreas = new ArrayList<>();
     private final transient java.util.ArrayList<HitArea> exitZoneHitAreas = new ArrayList<>();
@@ -755,7 +758,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         y += smallLineHeight;
         g2d.setFont(smallFont);
         g2d.setColor(new Color(150, 150, 150));
-        g2d.drawString("constraints", padding, y);
+        g2d.drawString(CONSTRAINTS_SECTION_LABEL, padding, y);
         int constraintsSectionTop = y - fmSmall.getAscent();
         
         // 1) Constraint semantics: stacked matrix (one configuration per row)
@@ -825,7 +828,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         y += smallLineHeight + 1;
         g2d.setFont(smallFont);
         g2d.setColor(new Color(150, 150, 150));
-        g2d.drawString("configs", padding, y);
+        g2d.drawString(CONFIGS_SECTION_LABEL, padding, y);
         g2d.setFont(getNormalFont());
 
         // 2) Actual state semantics: one configuration per line, stacked as a compact matrix
@@ -964,9 +967,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         y += smallLineHeight + 1;
         g2d.setFont(smallFont);
         g2d.setColor(new Color(150, 150, 150));
-        g2d.drawString("exit zones", padding, y);
+        g2d.drawString(EXIT_ZONES_SECTION_LABEL, padding, y);
         if (hasCsOnlyWarning) {
-            int labelWidth = fmSmall.stringWidth("exit zones");
+            int labelWidth = fmSmall.stringWidth(EXIT_ZONES_SECTION_LABEL);
             int iconW = 12;
             int iconH = 10;
             int iconX = padding + labelWidth + 5;
@@ -1650,9 +1653,9 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
         // Account for section labels width
         String stateName = state.getName() != null ? state.getName() : "";
         maxWidth = Math.max(maxWidth, fm.stringWidth(stateName) + 24);
-        maxWidth = Math.max(maxWidth, fmSmall.stringWidth("constraints") + 20);
-        maxWidth = Math.max(maxWidth, fmSmall.stringWidth("exit zones") + 20);
-        maxWidth = Math.max(maxWidth, fmSmall.stringWidth("configs") + 20);
+        maxWidth = Math.max(maxWidth, fmSmall.stringWidth(CONSTRAINTS_SECTION_LABEL) + 20);
+        maxWidth = Math.max(maxWidth, fmSmall.stringWidth(EXIT_ZONES_SECTION_LABEL) + 20);
+        maxWidth = Math.max(maxWidth, fmSmall.stringWidth(CONFIGS_SECTION_LABEL) + 20);
         if (!componentFailWarning.isBlank()) {
             maxWidth = Math.max(maxWidth, fmSmall.stringWidth(componentFailWarning) + 20);
         }
