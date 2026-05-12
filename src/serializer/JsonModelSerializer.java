@@ -790,6 +790,9 @@ public final class JsonModelSerializer {
         if (data.showExitZoneMachineIds != null) {
             map.put("showExitZoneMachineIds", data.showExitZoneMachineIds);
         }
+        if (data.showConfigurationUnderlines != null) {
+            map.put("showConfigurationUnderlines", data.showConfigurationUnderlines);
+        }
         if (data.constraintAwareExitZoneInternality != null) {
             map.put("constraintAwareExitZoneInternality", data.constraintAwareExitZoneInternality);
         }
@@ -892,6 +895,9 @@ public final class JsonModelSerializer {
         PWSStateMachinePanel.AnnotationData data = new PWSStateMachinePanel.AnnotationData();
         if (map != null && map.containsKey("showExitZoneMachineIds")) {
             data.showExitZoneMachineIds = getBoolean(map, "showExitZoneMachineIds", true);
+        }
+        if (map != null && map.containsKey("showConfigurationUnderlines")) {
+            data.showConfigurationUnderlines = getBoolean(map, "showConfigurationUnderlines", true);
         }
         // Default OFF for documents that don't store this setting.
         data.constraintAwareExitZoneInternality = getBoolean(map, "constraintAwareExitZoneInternality", false);

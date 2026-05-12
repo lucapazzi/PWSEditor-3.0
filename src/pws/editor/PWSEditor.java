@@ -87,6 +87,7 @@ public class PWSEditor extends JFrame {
     private JCheckBoxMenuItem showStateAnn;
     private JCheckBoxMenuItem showAssemblyComponentsItem;
     private JCheckBoxMenuItem showExitZoneMachineIdsItem;
+    private JCheckBoxMenuItem showConfigurationUnderlinesItem;
     private JCheckBoxMenuItem constraintAwareExitZoneInternalityItem;
     private JCheckBoxMenuItem showGridItem;
     private JCheckBoxMenuItem snapToGridItem;
@@ -1395,6 +1396,22 @@ public class PWSEditor extends JFrame {
         });
         viewMenu.add(showExitZoneMachineIdsItem);
 
+        showConfigurationUnderlinesItem = new JCheckBoxMenuItem(
+            "Show dashboard configuration underlines",
+            StateSemanticsAnnotation.isShowConfigurationUnderlines()
+        );
+        showConfigurationUnderlinesItem.addActionListener(e -> {
+            StateSemanticsAnnotation.setShowConfigurationUnderlines(
+                showConfigurationUnderlinesItem.isSelected()
+            );
+            if (baseEditor == null) return;
+            PWSStateMachinePanel panel =
+                (PWSStateMachinePanel)((PWSStateMachineEditor) baseEditor).getStateMachinePanel();
+            panel.repaint();
+            markDocumentDirty();
+        });
+        viewMenu.add(showConfigurationUnderlinesItem);
+
         // Ensure dashboards are visible at startup (preserve per-state visibility)
         try {
             applyDashboardVisibility();
@@ -1767,6 +1784,7 @@ public class PWSEditor extends JFrame {
         if (showStateAnn != null) showStateAnn.setEnabled(ctrl);
         if (showAssemblyComponentsItem != null) showAssemblyComponentsItem.setEnabled(ctrl);
         if (showExitZoneMachineIdsItem != null) showExitZoneMachineIdsItem.setEnabled(ctrl);
+        if (showConfigurationUnderlinesItem != null) showConfigurationUnderlinesItem.setEnabled(ctrl);
         if (constraintAwareExitZoneInternalityItem != null) constraintAwareExitZoneInternalityItem.setEnabled(ctrl);
         if (showGridItem != null) showGridItem.setEnabled(ctrl);
         if (snapToGridItem != null) snapToGridItem.setEnabled(ctrl);
@@ -1803,6 +1821,10 @@ public class PWSEditor extends JFrame {
         }
         if (showExitZoneMachineIdsItem != null) {
             showExitZoneMachineIdsItem.setSelected(StateSemanticsAnnotation.isShowExitZoneMachineIds());
+        }
+        if (showConfigurationUnderlinesItem != null) {
+            showConfigurationUnderlinesItem.setSelected(
+                    StateSemanticsAnnotation.isShowConfigurationUnderlines());
         }
         if (constraintAwareExitZoneInternalityItem != null) {
             constraintAwareExitZoneInternalityItem.setSelected(

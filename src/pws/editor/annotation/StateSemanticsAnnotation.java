@@ -41,6 +41,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             CONFIG_UNDERLINE_THICKNESS,
             BasicStroke.CAP_ROUND,
             BasicStroke.JOIN_ROUND);
+    private static boolean showConfigurationUnderlines = true;
     private static final String UNREACHABLE_ISSUE_TEXT = "State is unreachable (no configurations).";
     private static final String PRIMARY_DEADLOCK_ISSUE_TEXT = "Primary deadlock configurations exist.";
     private static final String SECONDARY_DEADLOCK_ISSUE_TEXT = "Secondary (internal) deadlock configurations exist.";
@@ -488,6 +489,14 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
 
     public static void setShowExitZoneMachineIds(boolean show) {
         showExitZoneMachineIds = show;
+    }
+
+    public static boolean isShowConfigurationUnderlines() {
+        return showConfigurationUnderlines;
+    }
+
+    public static void setShowConfigurationUnderlines(boolean show) {
+        showConfigurationUnderlines = show;
     }
 
     private static List<String> buildExitZoneLabels(List<ExitZone> zones) {
@@ -1076,7 +1085,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
     }
 
     private void drawConfigurationUnderline(Graphics2D g2d, int xStart, int width, int y, Color color) {
-        if (width <= 0 || g2d == null || color == null) {
+        if (!showConfigurationUnderlines || width <= 0 || g2d == null || color == null) {
             return;
         }
         Stroke previousStroke = g2d.getStroke();
