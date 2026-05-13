@@ -777,6 +777,20 @@ public class PWSStateMachine extends StateMachine {
     }
 
     /**
+     * Compute semantics for timeout transitions: source semantics followed by actions.
+     */
+    public Semantics computeTimeoutTransitionSemantics(PWSTransition t, Semantics base) {
+        Semantics result = Semantics.bottom(assembly.getAssemblyId());
+        if (base != null) {
+            result = result.OR(base);
+        }
+        for (Action a : t.getActionList()) {
+            result = result.transformByMachineEvent(a.getMachineId(), a.getEvent(), assembly);
+        }
+        return result;
+    }
+
+    /**
      * LEGACY: Compute semantics for a reactive (autonomous) transition.
      */
     private Semantics computeReactiveTransitionSemantics(PWSTransition t) {
@@ -1078,6 +1092,9 @@ public class PWSStateMachine extends StateMachine {
      * @return the transition’s contribution
      */
     public Semantics computeTransitionContribution(PWSTransition t, Semantics base) {
+        if (t.isTimeoutTransition()) {
+            return computeTimeoutTransitionSemantics(t, base);
+        }
         if (t.isTriggerable() || ((PWSState) t.getSource()).isPseudoState()) {
             return computeTriggerableSemantics(t, base);
         } else {
@@ -1094,7 +1111,7 @@ public class PWSStateMachine extends StateMachine {
             return false;
         }
         SMProposition guard = t.getGuardProposition();
-        if (guard != null) {
+        if (!t.isTimeoutTransition() && guard != null) {
             try {
                 if (!guard.evaluateConfiguration(cfg, assembly)) {
                     return false;
@@ -1121,6 +1138,22 @@ public class PWSStateMachine extends StateMachine {
             }
         }
         return true;
+    }
+
+    /** Returns timeout transitions outgoing from the given PWS state. */
+    public List<PWSTransition> getTimeoutTransitionsFrom(PWSState state) {
+        List<PWSTransition> result = new ArrayList<>();
+        if (state == null || transitions == null) {
+            return result;
+        }
+        for (TransitionInterface ti : transitions) {
+            if (ti instanceof PWSTransition pt
+                    && pt.isTimeoutTransition()
+                    && pt.getSource() == state) {
+                result.add(pt);
+            }
+        }
+        return result;
     }
 
     /**

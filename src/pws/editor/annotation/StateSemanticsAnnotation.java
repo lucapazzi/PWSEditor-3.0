@@ -1151,6 +1151,19 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             issues.add(UNREACHABLE_ISSUE_TEXT);
         }
 
+        if (!state.isPseudoState()) {
+            int timeoutCount = sm.getTimeoutTransitionsFrom(state).size();
+            if (state.isTimedState()) {
+                if (timeoutCount == 0) {
+                    issues.add("Timed state must have exactly one timeout transition.");
+                } else if (timeoutCount > 1) {
+                    issues.add("Timed state has more than one timeout transition.");
+                }
+            } else if (timeoutCount > 0) {
+                issues.add("Timeout transition starts from a non-timed state.");
+            }
+        }
+
         if (!anyConstraint && constraintsSem != null && state.getStateSemantics() != null) {
             for (Object cfgObj : state.getStateSemantics().getConfigurations()) {
                 if (cfgObj instanceof pws.editor.semantics.Configuration cfg) {

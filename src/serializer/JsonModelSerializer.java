@@ -274,6 +274,11 @@ public final class JsonModelSerializer {
                 String raw = ps.getRawConstraintText();
                 if (raw != null) sMap.put("rawConstraintText", raw);
                 if (ps.isFailState()) sMap.put("failState", true);
+                if (ps.isTimedState()) {
+                    sMap.put("timedState", true);
+                    sMap.put("timeoutLabel", ps.getTimeoutLabel());
+                    sMap.put("timedBadgePosition", ps.getTimedBadgePosition().name());
+                }
             }
             stateList.add(sMap);
         }
@@ -288,6 +293,7 @@ public final class JsonModelSerializer {
             tMap.put("source", stateIndex.get(pt.getSource()));
             tMap.put("target", stateIndex.get(pt.getTarget()));
             tMap.put("autonomous", pt.isAutonomous());
+            if (pt.isTimeoutTransition()) tMap.put("timeoutTransition", true);
             if (pt.getTriggerEvent() != null) tMap.put("triggerEvent", pt.getTriggerEvent());
             Point cp = ((Transition) pt).getControlPoint();
             if (cp != null) tMap.put("controlPoint", pointToMap(cp));
@@ -398,6 +404,15 @@ public final class JsonModelSerializer {
             if (failState && !"PseudoState".equals(sName)) {
                 state.setFailState(true);
             }
+            if (!"PseudoState".equals(sName)) {
+                state.setTimedState(getBoolean(sMap, "timedState", false));
+                String timeoutLabel = getString(sMap, "timeoutLabel", null);
+                if (timeoutLabel != null) {
+                    state.setTimeoutLabel(timeoutLabel);
+                }
+                String timedBadgePosition = getString(sMap, "timedBadgePosition", null);
+                state.setTimedBadgePosition(PWSState.TimedBadgePosition.fromName(timedBadgePosition));
+            }
 
             Map<String, Object> constraints = asMap(sMap.get("constraints"), null);
             String raw = getString(sMap, "rawConstraintText", null);
@@ -435,6 +450,7 @@ public final class JsonModelSerializer {
             boolean autonomous = getBoolean(tMap, "autonomous", false);
             String trigger = getString(tMap, "triggerEvent", "");
             PWSTransition tr = new PWSTransition(source, target, autonomous, trigger, assembly);
+            tr.setTimeoutTransition(getBoolean(tMap, "timeoutTransition", false));
 
             String id = getString(tMap, "id", null);
             if (id != null) tr.setId(id);

@@ -234,6 +234,7 @@ public class ControllerReportDialog extends JDialog {
         int autonomousCount = 0;
         int triggeredCount = 0;
         int initialCount = 0;
+        int timeoutCount = 0;
         
         for (StateInterface si : stateMachine.getStates()) {
             if (si instanceof PWSState ps && !ps.isPseudoState()) {
@@ -249,6 +250,8 @@ public class ControllerReportDialog extends JDialog {
                 
                 if (isInitial) {
                     initialCount++;
+                } else if (pt.isTimeoutTransition()) {
+                    timeoutCount++;
                 } else if (pt.isAutonomous()) {
                     // True autonomous transitions (guard-driven)
                     autonomousCount++;
@@ -264,16 +267,20 @@ public class ControllerReportDialog extends JDialog {
         appendText("    • Transitions: " + transitionCount + " (", STYLE_NORMAL);
         if (initialCount > 0) {
             appendText(initialCount + " initial", STYLE_CODE);
-            if (autonomousCount > 0 || triggeredCount > 0) appendText(", ", STYLE_NORMAL);
+            if (autonomousCount > 0 || timeoutCount > 0 || triggeredCount > 0) appendText(", ", STYLE_NORMAL);
         }
         if (autonomousCount > 0) {
             appendText(autonomousCount + " autonomous", STYLE_CODE);
+            if (timeoutCount > 0 || triggeredCount > 0) appendText(", ", STYLE_NORMAL);
+        }
+        if (timeoutCount > 0) {
+            appendText(timeoutCount + " timeout", STYLE_CODE);
             if (triggeredCount > 0) appendText(", ", STYLE_NORMAL);
         }
         if (triggeredCount > 0) {
             appendText(triggeredCount + " triggered", STYLE_CODE);
         }
-        if (initialCount == 0 && autonomousCount == 0 && triggeredCount == 0) {
+        if (initialCount == 0 && autonomousCount == 0 && timeoutCount == 0 && triggeredCount == 0) {
             appendText("none", STYLE_CODE);
         }
         appendText(")\n", STYLE_NORMAL);

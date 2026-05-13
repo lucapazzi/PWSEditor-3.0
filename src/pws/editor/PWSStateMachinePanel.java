@@ -60,6 +60,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     private boolean showStateAnnotations = false;
     private static final Color FAIL_STATE_BORDER_COLOR = new Color(204, 170, 0);
     private static final float[] FAIL_STATE_DASH = new float[] {6f, 4f};
+    private static final int TIMED_BADGE_MIN_WIDTH = 26;
+    private static final int TIMED_BADGE_HEIGHT = 24;
+    private static final int TIMED_BADGE_OVERLAP = 6;
     
     // Fields for self-loop endpoint dragging
     private TransitionInterface selectedSelfLoopTransition = null;
@@ -83,6 +86,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     private StateInterface dragTransitionSourceState = null;
     private int dragTransitionSourcePseudoAliasIndex = -1;
     private Point dragTransitionCurrentPoint = null;
+    private boolean timeoutTransitionMode = false;
+    private PWSState timeoutTransitionSourceState = null;
 
     private static final Color SELECTION_RECT_STROKE = new Color(27, 88, 166);
     private static final Color SELECTION_RECT_FILL = new Color(27, 88, 166, 48);
@@ -119,6 +124,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     @Override
     public void setStateMachine(machinery.StateMachine sm) {
         super.setStateMachine(sm);
+        clearTimeoutTransitionMode();
         clearObjectSelection();
         clearSelectionInteractionState();
     }
@@ -144,6 +150,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
     @Override
     public void selectAllObjects() {
+        clearTimeoutTransitionMode();
         clearSelectionInteractionState();
         selectedStates.clear();
         selectedStates.addAll(stateMachine.getStates());
@@ -211,6 +218,12 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             if (pos == null) continue;
             int diameter = isPseudoState(state) ? PSEUDO_DIAMETER : DIAMETER;
             Rectangle r = new Rectangle(pos.x, pos.y, diameter, diameter);
+            if (state instanceof PWSState ps) {
+                Rectangle badge = getTimedBadgeBounds(ps);
+                if (badge != null) {
+                    r = r.union(badge);
+                }
+            }
             bounds = (bounds == null) ? new Rectangle(r) : bounds.union(r);
         }
 
@@ -436,6 +449,163 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         comp.repaint();
     }
 
+    private Rectangle getTimedBadgeBounds(PWSState state) {
+        if (state == null || !state.isTimedState() || state.isPseudoState()) {
+            return null;
+        }
+        Point pos = ((machinery.State) state).getPosition();
+        if (pos == null) {
+            return null;
+        }
+        Font font = getFont();
+        if (font == null) {
+            font = new Font("Dialog", Font.PLAIN, Math.round(getStateFontSize()));
+        }
+        FontMetrics fm = getFontMetrics(font.deriveFont(Font.BOLD, getStateFontSize()));
+        String label = state.getTimeoutLabel();
+        int width = Math.max(TIMED_BADGE_MIN_WIDTH, fm.stringWidth(label) + 14);
+        int x;
+        int y;
+        switch (state.getTimedBadgePosition()) {
+            case BOTTOM:
+                x = pos.x + DIAMETER / 2 - width / 2;
+                y = pos.y + DIAMETER - TIMED_BADGE_OVERLAP;
+                break;
+            case LEFT:
+                x = pos.x - width + TIMED_BADGE_OVERLAP;
+                y = pos.y + DIAMETER / 2 - TIMED_BADGE_HEIGHT / 2;
+                break;
+            case RIGHT:
+                x = pos.x + DIAMETER - TIMED_BADGE_OVERLAP;
+                y = pos.y + DIAMETER / 2 - TIMED_BADGE_HEIGHT / 2;
+                break;
+            case TOP_LEFT:
+                x = pos.x;
+                y = pos.y - TIMED_BADGE_HEIGHT + TIMED_BADGE_OVERLAP;
+                break;
+            case TOP_RIGHT:
+                x = pos.x + DIAMETER - width;
+                y = pos.y - TIMED_BADGE_HEIGHT + TIMED_BADGE_OVERLAP;
+                break;
+            case BOTTOM_LEFT:
+                x = pos.x;
+                y = pos.y + DIAMETER - TIMED_BADGE_OVERLAP;
+                break;
+            case BOTTOM_RIGHT:
+                x = pos.x + DIAMETER - width;
+                y = pos.y + DIAMETER - TIMED_BADGE_OVERLAP;
+                break;
+            case TOP:
+            default:
+                x = pos.x + DIAMETER / 2 - width / 2;
+                y = pos.y - TIMED_BADGE_HEIGHT + TIMED_BADGE_OVERLAP;
+                break;
+        }
+        return new Rectangle(x, y, width, TIMED_BADGE_HEIGHT);
+    }
+
+    private PWSState getTimedStateBadgeAt(Point p) {
+        if (p == null) {
+            return null;
+        }
+        hitPseudoAliasIndex = -1;
+        List<StateInterface> states = stateMachine.getStates();
+        for (int i = states.size() - 1; i >= 0; i--) {
+            StateInterface state = states.get(i);
+            if (!(state instanceof PWSState ps) || !ps.isTimedState() || ps.isPseudoState()) {
+                continue;
+            }
+            Rectangle bounds = getTimedBadgeBounds(ps);
+            if (bounds != null && bounds.contains(p)) {
+                return ps;
+            }
+        }
+        return null;
+    }
+
+    @Override
+    protected StateInterface getStateAt(Point p) {
+        PWSState timedHit = getTimedStateBadgeAt(p);
+        if (timedHit != null) {
+            return timedHit;
+        }
+        return super.getStateAt(p);
+    }
+
+    private void drawTimedStateBadge(Graphics2D g2d, PWSState state, boolean selected) {
+        Rectangle badge = getTimedBadgeBounds(state);
+        if (badge == null) {
+            return;
+        }
+        Stroke oldStroke = g2d.getStroke();
+        Font oldFont = g2d.getFont();
+        g2d.setColor(Color.WHITE);
+        g2d.fillRect(badge.x, badge.y, badge.width, badge.height);
+        g2d.setStroke(new BasicStroke(Math.max(1.5f, stateBorderThickness)));
+        g2d.setColor(selected ? Color.RED : Color.BLACK);
+        g2d.drawRect(badge.x, badge.y, badge.width, badge.height);
+
+        Font badgeFont = oldFont != null
+                ? oldFont.deriveFont(Font.BOLD, getStateFontSize())
+                : new Font("Dialog", Font.BOLD, Math.round(getStateFontSize()));
+        g2d.setFont(badgeFont);
+        FontMetrics fm = g2d.getFontMetrics();
+        String label = state.getTimeoutLabel();
+        int textX = badge.x + (badge.width - fm.stringWidth(label)) / 2;
+        int textY = badge.y + (badge.height - fm.getHeight()) / 2 + fm.getAscent();
+        g2d.drawString(label, textX, textY);
+        if (oldFont != null) {
+            g2d.setFont(oldFont);
+        }
+        g2d.setStroke(oldStroke);
+    }
+
+    private void editTimeoutLabel(PWSState state) {
+        if (state == null || state.isPseudoState()) {
+            return;
+        }
+        JTextField labelField = new JTextField(state.getTimeoutLabel(), 12);
+        JComboBox<PWSState.TimedBadgePosition> positionBox =
+                new JComboBox<>(PWSState.TimedBadgePosition.values());
+        positionBox.setSelectedItem(state.getTimedBadgePosition());
+
+        JPanel panel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(4, 4, 4, 4);
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        panel.add(new JLabel("Label:"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        panel.add(labelField, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.weightx = 0.0;
+        panel.add(new JLabel("Position:"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        panel.add(positionBox, gbc);
+
+        int result = JOptionPane.showConfirmDialog(
+                this,
+                panel,
+                "Edit timed-state badge",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE);
+        if (result != JOptionPane.OK_OPTION) {
+            return;
+        }
+        state.setTimeoutLabel(labelField.getText());
+        state.setTimedBadgePosition((PWSState.TimedBadgePosition) positionBox.getSelectedItem());
+        markEditorDirtyAndRecalculate();
+        revalidate();
+        repaint();
+    }
+
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
@@ -586,6 +756,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 int textY = y + (DIAMETER - textHeight) / 2 + fm.getAscent();
                 g2d.setColor(isSelected ? Color.RED : Color.BLACK);
                 g2d.drawString(name, textX, textY);
+                if (state instanceof PWSState ps) {
+                    drawTimedStateBadge(g2d, ps, isSelected);
+                }
             }
         }
         for (int i = 0; i < pseudoStateAliases.size(); i++) {
@@ -894,6 +1067,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         if (transition.isInitialTransition()) {
             return "initial";
         }
+        if (transition.isTimeoutTransition()) {
+            return "timeout";
+        }
         if (transition.isAutonomous()) {
             return "autonomous";
         }
@@ -1095,7 +1271,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         // Restore original stroke
         g2d.setStroke(oldStroke);
 
-        // Draw the trigger annotation or, if empty (autonomous transition), a white dot.
+        PWSTransition pt = (t instanceof PWSTransition) ? (PWSTransition) t : null;
+
+        // Draw the trigger annotation or, if empty, a source marker.
         String trigger = t.getTriggerEvent();
         if (trigger != null && !trigger.trim().isEmpty() && t.isTriggerable()) {
             // Fixed trigger labels are no longer drawn here because triggers are shown as draggable labels.
@@ -1108,12 +1286,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             // Outline: gray for disabled, black otherwise
             g2d.setColor(disabled ? Color.LIGHT_GRAY : Color.BLACK);
             g2d.drawOval(p0.x - circleRadius, p0.y - circleRadius, circleRadius * 2, circleRadius * 2);
+            if (pt != null && pt.isTimeoutTransition()) {
+                drawTimeoutTransitionCross(g2d, p0, cp, disabled);
+            }
         }
 
         // If the transition is a PWSTransition, update/draw annotations.
-        PWSTransition pt = null;
-        if (t instanceof PWSTransition) {
-            pt = (PWSTransition) t;
+        if (pt != null) {
             drawPWSTransitionAnnotations(g2d, pt, p0, cp, p2);
         }
 
@@ -1367,6 +1546,32 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         g2d.drawLine(p2.x, p2.y, x2, y2);
     }
 
+    private void drawTimeoutTransitionCross(Graphics2D g2d, Point p0, Point cp, boolean disabled) {
+        if (p0 == null || cp == null) {
+            return;
+        }
+        double dx = cp.x - p0.x;
+        double dy = cp.y - p0.y;
+        double length = Math.hypot(dx, dy);
+        if (length == 0.0) {
+            length = 1.0;
+        }
+        int centerX = (int) Math.round(p0.x + (dx / length) * 14.0);
+        int centerY = (int) Math.round(p0.y + (dy / length) * 14.0);
+        double perpX = -dy / length;
+        double perpY = dx / length;
+        int r = 7;
+        int x1 = (int) Math.round(centerX - perpX * r);
+        int y1 = (int) Math.round(centerY - perpY * r);
+        int x2 = (int) Math.round(centerX + perpX * r);
+        int y2 = (int) Math.round(centerY + perpY * r);
+        Stroke oldStroke = g2d.getStroke();
+        g2d.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2d.setColor(disabled ? Color.LIGHT_GRAY : Color.BLACK);
+        g2d.drawLine(x1, y1, x2, y2);
+        g2d.setStroke(oldStroke);
+    }
+
     private void drawControlHandle(Graphics2D g2d, Point cp) {
         g2d.setColor(Color.GREEN);
         int handleRadius = 5;
@@ -1396,12 +1601,18 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         if (transition.isInitialTransition()) {
             return true;
         }
+        if (transition.isTimeoutTransition()) {
+            return false;
+        }
         return transition.isAutonomous();
     }
 
     private boolean defaultActionAnnotationVisible(PWSTransition transition) {
         if (transition == null || transition.isInitialTransition()) {
             return false;
+        }
+        if (transition.isTimeoutTransition()) {
+            return true;
         }
         return !transition.isAutonomous();
     }
@@ -1415,43 +1626,50 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
         // ---- Guard Annotation ----
         SMProposition guardProp = pt.getGuardProposition();
-        if (pt.getGuardAnnotation() == null) {
-            // Compute the point on the curve for the GuardAnnotation (using t = 0.2)
-            Point guardPoint = computePointOnCurve(p0, cp, p2, 0.2);
-            // Center the annotation on the grid point by subtracting half the width/height
-            int guardX = guardPoint.x - 60; // center horizontal (120 / 2 = 60)
-            int guardY = guardPoint.y - 10; // center vertical (20 / 2 = 10)
-            // Snap guard annotation center to half-grid if snapping is enabled
-            java.awt.Container parent = SwingUtilities.getAncestorOfClass(editor.StateMachinePanel.class, this);
-            if (parent instanceof editor.StateMachinePanel panel && panel.isSnapToGrid()) {
-                int grid = panel.getGridSize();
-                if (grid > 0) {
-                    int w = 120, h = 20;
-                    int centerX = guardX + w / 2;
-                    int centerY = guardY + h / 2;
-                    float half = grid / 2f;
-                    int snappedCenterX = Math.round(centerX / half) * Math.round(half);
-                    int snappedCenterY = Math.round(centerY / half) * Math.round(half);
-                    guardX = snappedCenterX - w / 2;
-                    guardY = snappedCenterY - h / 2;
-                }
+        if (pt.isTimeoutTransition()) {
+            if (pt.getGuardAnnotation() != null) {
+                remove(pt.getGuardAnnotation());
+                pt.setGuardAnnotation(null);
             }
-            GuardAnnotation guardAnnot = new GuardAnnotation(guardProp, assembly, newGuard -> {
-                pt.setGuardProposition(newGuard);
-                java.awt.Window w = SwingUtilities.getWindowAncestor(PWSStateMachinePanel.this);
-                if (w instanceof PWSEditor pe) {
-                    pe.markDocumentDirty();
-                    pe.scheduleSemanticsRecalculation();
-                }
-            }, pt);
-            guardAnnot.setBounds(guardX, guardY, 120, 20);
-            // For both reactive and triggerable transitions, pass guardProp directly.
-            guardAnnot.setContent(guardProp);
-            pt.setGuardAnnotation(guardAnnot);
-            add(guardAnnot);
-            guardAnnot.setVisible(defaultGuardAnnotationVisible(pt));
         } else {
-            pt.getGuardAnnotation().setContent(guardProp);
+            if (pt.getGuardAnnotation() == null) {
+                // Compute the point on the curve for the GuardAnnotation (using t = 0.2)
+                Point guardPoint = computePointOnCurve(p0, cp, p2, 0.2);
+                // Center the annotation on the grid point by subtracting half the width/height
+                int guardX = guardPoint.x - 60; // center horizontal (120 / 2 = 60)
+                int guardY = guardPoint.y - 10; // center vertical (20 / 2 = 10)
+                // Snap guard annotation center to half-grid if snapping is enabled
+                java.awt.Container parent = SwingUtilities.getAncestorOfClass(editor.StateMachinePanel.class, this);
+                if (parent instanceof editor.StateMachinePanel panel && panel.isSnapToGrid()) {
+                    int grid = panel.getGridSize();
+                    if (grid > 0) {
+                        int w = 120, h = 20;
+                        int centerX = guardX + w / 2;
+                        int centerY = guardY + h / 2;
+                        float half = grid / 2f;
+                        int snappedCenterX = Math.round(centerX / half) * Math.round(half);
+                        int snappedCenterY = Math.round(centerY / half) * Math.round(half);
+                        guardX = snappedCenterX - w / 2;
+                        guardY = snappedCenterY - h / 2;
+                    }
+                }
+                GuardAnnotation guardAnnot = new GuardAnnotation(guardProp, assembly, newGuard -> {
+                    pt.setGuardProposition(newGuard);
+                    java.awt.Window w = SwingUtilities.getWindowAncestor(PWSStateMachinePanel.this);
+                    if (w instanceof PWSEditor pe) {
+                        pe.markDocumentDirty();
+                        pe.scheduleSemanticsRecalculation();
+                    }
+                }, pt);
+                guardAnnot.setBounds(guardX, guardY, 120, 20);
+                // For both reactive and triggerable transitions, pass guardProp directly.
+                guardAnnot.setContent(guardProp);
+                pt.setGuardAnnotation(guardAnnot);
+                add(guardAnnot);
+                guardAnnot.setVisible(defaultGuardAnnotationVisible(pt));
+            } else {
+                pt.getGuardAnnotation().setContent(guardProp);
+            }
         }
 
         // ---- Action Annotation ----
@@ -1643,6 +1861,143 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         }
     }
 
+    private boolean hasTimeoutTransitionFrom(PWSState source, PWSTransition ignored) {
+        if (source == null) {
+            return false;
+        }
+        for (TransitionInterface ti : stateMachine.getTransitions()) {
+            if (!(ti instanceof PWSTransition pt) || pt == ignored) {
+                continue;
+            }
+            if (pt.isTimeoutTransition() && pt.getSource() == source) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int countTimeoutTransitionsFrom(PWSState source) {
+        int count = 0;
+        if (source == null) {
+            return count;
+        }
+        for (TransitionInterface ti : stateMachine.getTransitions()) {
+            if (ti instanceof PWSTransition pt
+                    && pt.isTimeoutTransition()
+                    && pt.getSource() == source) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void removeTimeoutTransitionsFrom(PWSState source) {
+        if (source == null) {
+            return;
+        }
+        List<TransitionInterface> toDelete = new ArrayList<>();
+        for (TransitionInterface ti : stateMachine.getTransitions()) {
+            if (ti instanceof PWSTransition pt
+                    && pt.isTimeoutTransition()
+                    && pt.getSource() == source) {
+                toDelete.add(ti);
+            }
+        }
+        for (TransitionInterface ti : toDelete) {
+            deleteTransition(ti);
+        }
+    }
+
+    private void setTimedStateEnabled(PWSState state, boolean enabled) {
+        if (state == null || state.isPseudoState()) {
+            return;
+        }
+        if (!enabled && countTimeoutTransitionsFrom(state) > 0) {
+            int confirm = JOptionPane.showConfirmDialog(
+                    this,
+                    "Removing the timed marker will also delete its timeout transition.",
+                    "Remove timed state",
+                    JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.WARNING_MESSAGE);
+            if (confirm != JOptionPane.OK_OPTION) {
+                return;
+            }
+            removeTimeoutTransitionsFrom(state);
+        }
+        state.setTimedState(enabled);
+        if (enabled && state.getTimeoutLabel().isBlank()) {
+            state.setTimeoutLabel("T");
+        }
+        markEditorDirtyAndRecalculate();
+        revalidate();
+        repaint();
+    }
+
+    private void enableTimeoutTransitionModeWithSource(PWSState sourceState) {
+        if (sourceState == null || sourceState.isPseudoState()) {
+            return;
+        }
+        if (!sourceState.isTimedState()) {
+            JOptionPane.showMessageDialog(this, "Timeout transitions can only start from timed states.");
+            return;
+        }
+        if (hasTimeoutTransitionFrom(sourceState, null)) {
+            JOptionPane.showMessageDialog(this, "This timed state already has a timeout transition.");
+            return;
+        }
+        timeoutTransitionMode = true;
+        timeoutTransitionSourceState = sourceState;
+        linkMode = false;
+        transitionSourceState = null;
+        System.out.println("Timeout transition mode activated: click on an arrival state.");
+    }
+
+    private void clearTimeoutTransitionMode() {
+        timeoutTransitionMode = false;
+        timeoutTransitionSourceState = null;
+    }
+
+    private boolean createTimeoutTransition(PWSState sourceState, StateInterface targetState) {
+        if (sourceState == null || targetState == null) {
+            return false;
+        }
+        if (!sourceState.isTimedState()) {
+            JOptionPane.showMessageDialog(this, "Timeout transitions can only start from timed states.");
+            return false;
+        }
+        if (targetState instanceof PWSState ps && ps.isPseudoState()) {
+            JOptionPane.showMessageDialog(this, "Cannot create transition to PseudoState.");
+            return false;
+        }
+        if (targetState == sourceState) {
+            JOptionPane.showMessageDialog(this, "Self-loop transitions are not supported.");
+            return false;
+        }
+        if (hasTimeoutTransitionFrom(sourceState, null)) {
+            JOptionPane.showMessageDialog(this, "This timed state already has a timeout transition.");
+            return false;
+        }
+
+        PWSTransition transition = new PWSTransition(
+                sourceState,
+                targetState,
+                false,
+                "",
+                ((PWSStateMachine) stateMachine).getAssembly());
+        transition.setTimeoutTransition(true);
+        stateMachine.addTransition(transition);
+        markEditorDirtyAndRecalculate();
+        return true;
+    }
+
+    private void handleTimeoutTransitionMode(MouseEvent e) {
+        StateInterface targetState = getStateAt(e.getPoint());
+        createTimeoutTransition(timeoutTransitionSourceState, targetState);
+        clearTimeoutTransitionMode();
+        revalidate();
+        repaint();
+    }
+
     private boolean createGuardOrEventDragTransition(StateInterface sourceState, int sourceAliasIndex, StateInterface targetState) {
         if (sourceState == null || targetState == null || sourceState == targetState) {
             return false;
@@ -1748,7 +2103,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         if (!isSelectableComponent(component) || e == null) {
             return false;
         }
-        if (initialTransitionMode || linkMode) {
+        if (initialTransitionMode || linkMode || timeoutTransitionMode) {
             return false;
         }
         if (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger()) {
@@ -2184,6 +2539,12 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             if (pos == null) continue;
             int d = isPseudoState(state) ? PSEUDO_DIAMETER : DIAMETER;
             Rectangle stateRect = new Rectangle(pos.x, pos.y, d, d);
+            if (state instanceof PWSState ps) {
+                Rectangle badge = getTimedBadgeBounds(ps);
+                if (badge != null) {
+                    stateRect = stateRect.union(badge);
+                }
+            }
             if (rect.intersects(stateRect) || rect.contains(stateRect)) {
                 states.add(state);
             }
@@ -2257,6 +2618,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         }
         if (!SwingUtilities.isLeftMouseButton(e)) {
             clearDragTransitionState();
+            clearTimeoutTransitionMode();
             clearSelectionInteractionState();
         }
 
@@ -2331,6 +2693,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         // Handle initial transition mode.
         if (initialTransitionMode) {
             handleInitialTransitionMode(e);
+            return;
+        }
+
+        if (timeoutTransitionMode) {
+            handleTimeoutTransitionMode(e);
             return;
         }
 
@@ -2583,12 +2950,33 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                     // Do not allow transitions to pseudo-state
                 } else {
                     Transition tr = (Transition) draggingEndpointTransition;
-                    if (draggingEndpointStart && tr.getTarget() == hit) {
+                    PWSState oldTimeoutSource = null;
+                    if (tr instanceof PWSTransition pt && pt.isTimeoutTransition()) {
+                        if (draggingEndpointStart) {
+                            if (!(hit instanceof PWSState newSource) || !newSource.isTimedState()) {
+                                JOptionPane.showMessageDialog(this, "Timeout transitions can only start from timed states.");
+                                hit = null;
+                            } else if (hasTimeoutTransitionFrom(newSource, pt)) {
+                                JOptionPane.showMessageDialog(this, "This timed state already has a timeout transition.");
+                                hit = null;
+                            } else if (tr.getSource() instanceof PWSState oldSource && oldSource != newSource) {
+                                oldTimeoutSource = oldSource;
+                            }
+                        } else if (draggingEndpointEnd && hit instanceof PWSState targetPs && targetPs.isPseudoState()) {
+                            hit = null;
+                        }
+                    }
+                    if (hit == null) {
+                        // Validation failed; keep the original endpoint.
+                    } else if (draggingEndpointStart && tr.getTarget() == hit) {
                         JOptionPane.showMessageDialog(this, "Self-loop transitions are not supported.");
                     } else if (draggingEndpointEnd && tr.getSource() == hit) {
                         JOptionPane.showMessageDialog(this, "Self-loop transitions are not supported.");
                     } else if (draggingEndpointStart && tr.getSource() != hit) {
                         tr.setSource(hit);
+                        if (oldTimeoutSource != null) {
+                            oldTimeoutSource.setTimedState(false);
+                        }
                         changed = true;
                     } else if (draggingEndpointEnd && tr.getTarget() != hit) {
                         tr.setTarget(hit);
@@ -2715,6 +3103,11 @@ public class PWSStateMachinePanel extends StateMachinePanel {
     public void mouseClicked(MouseEvent e) {
         // Left-button double-click to rename a state
         if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) {
+            PWSState timedHit = getTimedStateBadgeAt(e.getPoint());
+            if (timedHit != null) {
+                editTimeoutLabel(timedHit);
+                return;
+            }
             StateInterface state = getStateAt(e.getPoint());
             if (state == null) {
                 resizeCanvasToContent();
@@ -2788,6 +3181,15 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             int y1 = pos.y;
             int x2 = pos.x + radius * 2;
             int y2 = pos.y + radius * 2;
+            if (si instanceof PWSState ps) {
+                Rectangle badge = getTimedBadgeBounds(ps);
+                if (badge != null) {
+                    x1 = Math.min(x1, badge.x);
+                    y1 = Math.min(y1, badge.y);
+                    x2 = Math.max(x2, badge.x + badge.width);
+                    y2 = Math.max(y2, badge.y + badge.height);
+                }
+            }
             minX = Math.min(minX, x1);
             minY = Math.min(minY, y1);
             maxX = Math.max(maxX, x2);
@@ -3176,6 +3578,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
      * Enable link mode with a predefined source state.
      */
     public void enableLinkModeWithSource(StateInterface sourceState) {
+        clearTimeoutTransitionMode();
         linkMode = true;
         transitionSourceState = sourceState;
         transitionSourcePseudoAliasIndex = -1;
@@ -3204,7 +3607,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             popup.addSeparator();
 
             // Add other menu entries here for annotations, etc., if needed.
-            if (!pt.isAutonomous()) {
+            if (!pt.isAutonomous() && !pt.isTimeoutTransition()) {
                 // Show/Hide Guard (only for non-autonomous transitions)
                 String guardText = (pt.getGuardAnnotation() != null && pt.getGuardAnnotation().isVisible()) ? "Hide Guard" : "Show Guard";
                 JMenuItem guardItem = new JMenuItem(guardText);
@@ -3421,6 +3824,33 @@ public class PWSStateMachinePanel extends StateMachinePanel {
 
             if (state instanceof PWSState) {
                 PWSState pwsState = (PWSState) state;
+                if (!pwsState.isPseudoState()) {
+                    JCheckBoxMenuItem timedItem = new JCheckBoxMenuItem("Timed state", pwsState.isTimedState());
+                    timedItem.addActionListener(ae -> {
+                        setTimedStateEnabled(pwsState, timedItem.isSelected());
+                    });
+                    popup.add(timedItem);
+
+                    JMenuItem editTimeoutLabelItem = new JMenuItem("Edit timed label...");
+                    editTimeoutLabelItem.setEnabled(pwsState.isTimedState());
+                    editTimeoutLabelItem.addActionListener(ae -> editTimeoutLabel(pwsState));
+                    popup.add(editTimeoutLabelItem);
+
+                    if (pwsState.isTimedState()) {
+                        if (hasTimeoutTransitionFrom(pwsState, null)) {
+                            JMenuItem existingTimeoutItem = new JMenuItem("Timeout transition already exists");
+                            existingTimeoutItem.setEnabled(false);
+                            popup.add(existingTimeoutItem);
+                        } else {
+                            JMenuItem timeoutItem = new JMenuItem("Create timeout transition: choose arrival state");
+                            timeoutItem.addActionListener(ae -> enableTimeoutTransitionModeWithSource(pwsState));
+                            popup.add(timeoutItem);
+                        }
+                    }
+
+                    popup.addSeparator();
+                }
+
                 JCheckBoxMenuItem toggleAnnot = new JCheckBoxMenuItem("Show Dashboard", pwsState.isAnnotationVisible());
                 toggleAnnot.addActionListener(ae -> {
                     boolean newVisible = toggleAnnot.isSelected();
@@ -3837,7 +4267,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                 if (t instanceof PWSTransition && ((PWSTransition) t).getId().equals(transitionId)) {
                     PWSTransition pt = (PWSTransition) t;
 
-                    if (guardBounds != null) {
+                    if (guardBounds != null && !pt.isTimeoutTransition()) {
                         if (pt.getGuardAnnotation() == null) {
                             SMProposition guardProp = pt.getGuardProposition();
                             GuardAnnotation guardAnnot = new GuardAnnotation(guardProp, ((PWSStateMachine)stateMachine).getAssembly(), newGuard -> {
@@ -4227,7 +4657,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
                         }
 
                         // Guard Annotation
-                        if (guardBounds != null) {
+                        if (guardBounds != null && !pt.isTimeoutTransition()) {
                             if (pt.getGuardAnnotation() == null) {
                                 SMProposition guardProp = pt.getGuardProposition();
                                 GuardAnnotation guardAnnot = new GuardAnnotation(guardProp, ((PWSStateMachine)stateMachine).getAssembly(), newGuard -> {
@@ -4414,9 +4844,13 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         if (triggerLabel != null) {
             selectedComponents.remove(triggerLabel);
         }
+        PWSState timeoutSourceToUpdate = null;
         // If t is a PWSTransition, clear its associated annotations.
         if (t instanceof PWSTransition) {
             PWSTransition pt = (PWSTransition) t;
+            if (pt.isTimeoutTransition() && pt.getSource() instanceof PWSState source) {
+                timeoutSourceToUpdate = source;
+            }
             if (pt.getGuardAnnotation() != null) selectedComponents.remove(pt.getGuardAnnotation());
             if (pt.getActionAnnotation() != null) selectedComponents.remove(pt.getActionAnnotation());
             if (pt.getSemanticsAnnotation() != null) selectedComponents.remove(pt.getSemanticsAnnotation());
@@ -4436,6 +4870,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         StateInterface target = t.getTarget();
         if (target != null && target.getIncomingTransitions() != null) {
             target.getIncomingTransitions().remove(t);
+        }
+        if (timeoutSourceToUpdate != null && !hasTimeoutTransitionFrom(timeoutSourceToUpdate, null)) {
+            timeoutSourceToUpdate.setTimedState(false);
         }
 
         // After removing the transition, update and remove its trigger label

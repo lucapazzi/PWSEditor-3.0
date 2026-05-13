@@ -23,6 +23,7 @@ public class PWSTransition extends Transition implements Serializable {
     private SMProposition guardProposition;
     private ActionList actionList;  // o List<Action>
     private Semantics transitionSemantics;
+    private boolean timeoutTransition = false;
 
     // Componenti per annotazioni interattive (utilizzeremo le nuove sottoclassi)
     private transient GuardAnnotation guardAnnotation;
@@ -76,6 +77,10 @@ public class PWSTransition extends Transition implements Serializable {
     }
 
     public void setGuardProposition(SMProposition guardProposition) {
+        if (timeoutTransition) {
+            this.guardProposition = new TrueProposition();
+            return;
+        }
         this.guardProposition = guardProposition;
     }
 
@@ -105,6 +110,32 @@ public class PWSTransition extends Transition implements Serializable {
             return true;
         }
         return isAutonomous() && (trigger == null || trigger.isBlank());
+    }
+
+    /** Returns whether this transition is a timeout transition. */
+    public boolean isTimeoutTransition() {
+        return timeoutTransition;
+    }
+
+    /**
+     * Marks this transition as a timeout transition.
+     * Timeout transitions have no trigger event and no editable guard.
+     */
+    public void setTimeoutTransition(boolean timeoutTransition) {
+        this.timeoutTransition = timeoutTransition;
+        if (timeoutTransition) {
+            super.setTriggerEvent("");
+            this.guardProposition = new TrueProposition();
+        }
+    }
+
+    @Override
+    public void setTriggerEvent(String event) {
+        if (timeoutTransition) {
+            super.setTriggerEvent("");
+            return;
+        }
+        super.setTriggerEvent(event);
     }
 
     public void setTransitionSemantics(Semantics transitionSemantics) {
