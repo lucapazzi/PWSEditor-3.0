@@ -82,6 +82,8 @@ public class PWSEditor extends JFrame {
     private JMenuItem closeItem;
     private JMenuItem exportPDFItem;
     private JMenuItem saveAsPNGItem;
+    private JMenuItem exportSTItem;
+    private JMenuItem exportPLCOpenItem;
     private JCheckBoxMenuItem editModeItem;
     private JMenuItem selectAllItem;
     private JCheckBoxMenuItem showStateAnn;
@@ -1163,6 +1165,14 @@ public class PWSEditor extends JFrame {
         });
         fileMenu.add(closeItem);
 
+        exportSTItem = new JMenuItem("Export as ST");
+        exportSTItem.addActionListener(e -> exportStructuredText());
+        fileMenu.add(exportSTItem);
+
+        exportPLCOpenItem = new JMenuItem("Export as PLCOpen XML");
+        exportPLCOpenItem.addActionListener(e -> exportPLCOpenXml());
+        fileMenu.add(exportPLCOpenItem);
+
         // Composite Save/Load moved to toolbar buttons
 
         // Library save/load moved to the Library panel buttons
@@ -1778,6 +1788,8 @@ public class PWSEditor extends JFrame {
 
         if (exportPDFItem != null) exportPDFItem.setEnabled(ctrl);
         if (saveAsPNGItem != null) saveAsPNGItem.setEnabled(ctrl);
+        if (exportSTItem != null) exportSTItem.setEnabled(ctrl);
+        if (exportPLCOpenItem != null) exportPLCOpenItem.setEnabled(ctrl);
 
         if (editModeItem != null) editModeItem.setEnabled(ctrl);
         if (selectAllItem != null) selectAllItem.setEnabled(ctrl);
@@ -1799,6 +1811,124 @@ public class PWSEditor extends JFrame {
             syncViewMenuSelections();
         }
         updateUndoRedoMenuItems();
+    }
+
+    private void exportStructuredText() {
+        if (!controllerEditorVisible || pwsStateMachine == null) {
+            JOptionPane.showMessageDialog(this,
+                    "No controller is available for ST export.",
+                    "Not Available",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogType(JFileChooser.SAVE_DIALOG);
+        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
+                "Structured Text (.st)", "st"));
+        chooser.setSelectedFile(buildDefaultSTExportFile());
+
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+
+        File file = chooser.getSelectedFile();
+        if (file != null && !file.getName().toLowerCase().endsWith(".st")) {
+            file = new File(file.getAbsolutePath() + ".st");
+        }
+
+        try {
+            utility.STExporter.exportToFile(pwsStateMachine, file);
+            JOptionPane.showMessageDialog(this,
+                    "Structured Text file saved successfully.");
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(this,
+                    "ST export is not available for this controller: " + ex.getMessage(),
+                    "Export Error",
+                    JOptionPane.WARNING_MESSAGE);
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this,
+                    "Error exporting ST: " + ex.getMessage(),
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void exportPLCOpenXml() {
+        if (!controllerEditorVisible || pwsStateMachine == null) {
+            JOptionPane.showMessageDialog(this,
+                    "No controller is available for PLCOpen export.",
+                    "Not Available",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogType(JFileChooser.SAVE_DIALOG);
+        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
+                "PLCOpen XML (.xml)", "xml"));
+        chooser.setSelectedFile(buildDefaultPLCOpenExportFile());
+
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+
+        File file = chooser.getSelectedFile();
+        if (file != null && !file.getName().toLowerCase().endsWith(".xml")) {
+            file = new File(file.getAbsolutePath() + ".xml");
+        }
+
+        try {
+            utility.PLCOpenExporter.exportToFile(pwsStateMachine, file);
+            JOptionPane.showMessageDialog(this,
+                    "PLCOpen XML file saved successfully.");
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(this,
+                    "PLCOpen export is not available for this controller: " + ex.getMessage(),
+                    "Export Error",
+                    JOptionPane.WARNING_MESSAGE);
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this,
+                    "Error exporting PLCOpen XML: " + ex.getMessage(),
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private File buildDefaultSTExportFile() {
+        String baseName = "controller";
+        if (currentDocument != null && currentDocument.getFile() != null) {
+            String fileName = currentDocument.getFile().getName();
+            int dot = fileName.lastIndexOf('.');
+            baseName = (dot > 0) ? fileName.substring(0, dot) : fileName;
+            File parent = currentDocument.getFile().getParentFile();
+            if (parent != null) {
+                return new File(parent, baseName + ".st");
+            }
+        }
+        if (pwsStateMachine != null && pwsStateMachine.getName() != null && !pwsStateMachine.getName().isBlank()) {
+            baseName = pwsStateMachine.getName().trim();
+        }
+        return new File(baseName + ".st");
+    }
+
+    private File buildDefaultPLCOpenExportFile() {
+        String baseName = "controller";
+        if (currentDocument != null && currentDocument.getFile() != null) {
+            String fileName = currentDocument.getFile().getName();
+            int dot = fileName.lastIndexOf('.');
+            baseName = (dot > 0) ? fileName.substring(0, dot) : fileName;
+            File parent = currentDocument.getFile().getParentFile();
+            if (parent != null) {
+                return new File(parent, baseName + ".plcopen.xml");
+            }
+        }
+        if (pwsStateMachine != null && pwsStateMachine.getName() != null && !pwsStateMachine.getName().isBlank()) {
+            baseName = pwsStateMachine.getName().trim();
+        }
+        return new File(baseName + ".plcopen.xml");
     }
 
     public void syncViewMenuSelections() {

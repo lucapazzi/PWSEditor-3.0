@@ -13,6 +13,9 @@ public class State implements StateInterface {
 
     private Point position;
     private boolean failState = false;
+    private boolean timedState = false;
+    private String timeoutLabel = "T";
+    private TimedBadgePosition timedBadgePosition = TimedBadgePosition.TOP;
 
     public State() {
         this.outgoingTransitions = new ArrayList<>();
@@ -77,5 +80,33 @@ public class State implements StateInterface {
 
     public void setFailState(boolean failState) {
         this.failState = failState;
+    }
+
+    public boolean isTimedState() {
+        return timedState;
+    }
+
+    public void setTimedState(boolean timedState) {
+        this.timedState = timedState;
+    }
+
+    public String getTimeoutLabel() {
+        return timeoutLabel == null || timeoutLabel.isBlank() ? "T" : timeoutLabel;
+    }
+
+    public void setTimeoutLabel(String timeoutLabel) {
+        if (timeoutLabel == null || timeoutLabel.isBlank()) {
+            this.timeoutLabel = "T";
+        } else {
+            this.timeoutLabel = timeoutLabel.trim();
+        }
+    }
+
+    public TimedBadgePosition getTimedBadgePosition() {
+        return timedBadgePosition == null ? TimedBadgePosition.TOP : timedBadgePosition;
+    }
+
+    public void setTimedBadgePosition(TimedBadgePosition timedBadgePosition) {
+        this.timedBadgePosition = timedBadgePosition == null ? TimedBadgePosition.TOP : timedBadgePosition;
     }
 }

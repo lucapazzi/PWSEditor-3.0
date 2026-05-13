@@ -5,6 +5,7 @@ import machinery.StateInterface;
 import machinery.StateMachine;
 import machinery.Transition;
 import machinery.TransitionInterface;
+import pws.PWSStateMachine;
 import smalgebra.BasicStateProposition;
 import smalgebra.FalseProposition;
 import smalgebra.OrProposition;
@@ -534,8 +535,9 @@ public class Semantics implements Serializable {
                 // Check all autonomous transitions from the current state
                 for (TransitionInterface ti : machine.getTransitions()) {
                     Transition t = (Transition) ti;
-                    // Only consider enabled autonomous transitions
-                    if (t.isEnabled() && t.isAutonomous() && t.getSource().getName().equals(currentStateName)) {
+                    // Only consider enabled reactive component transitions.
+                    if (PWSStateMachine.isReactiveComponentTransition(t)
+                            && t.getSource().getName().equals(currentStateName)) {
                         // This autonomous transition can fire
                         String targetStateName = t.getTarget().getName();
                         Configuration nextConfig = current.replaceConstraint(machineId, targetStateName);

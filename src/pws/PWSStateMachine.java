@@ -930,7 +930,7 @@ public class PWSStateMachine extends StateMachine {
                             continue;
                         }
                         Transition transition = (Transition) t;
-                        if (!transition.isEnabled() || !transition.isAutonomous()) {
+                        if (!isReactiveComponentTransition(transition)) {
                             continue;
                         }
                         State sourceState = (State) transition.getSource();
@@ -1157,6 +1157,16 @@ public class PWSStateMachine extends StateMachine {
     }
 
     /**
+     * Returns true when a component-machine transition contributes to reactive
+     * evolution of the assembly semantics.
+     */
+    public static boolean isReactiveComponentTransition(Transition transition) {
+        return transition != null
+                && transition.isEnabled()
+                && (transition.isAutonomous() || transition.isTimeoutTransition());
+    }
+
+    /**
      * Computes the reactive exit-zones for this state machine given a base semantics.
      *
      * <p>The <b>base semantics</b> is typically associated with a PWSState and denotes its
@@ -1191,8 +1201,8 @@ public class PWSStateMachine extends StateMachine {
                     for (TransitionInterface t : allTransitions) {
                         if (t instanceof Transition) {
                             Transition transition = (Transition) t;
-                            // Only consider enabled autonomous transitions
-                            if (transition.isEnabled() && transition.isAutonomous()) {
+                            // Only consider enabled reactive component transitions.
+                            if (isReactiveComponentTransition(transition)) {
                                 State sourceState = (State) transition.getSource();
                                 State targetState = (State) transition.getTarget();
                                 BasicStateProposition bs_source = new BasicStateProposition(machineId, sourceState.getName());

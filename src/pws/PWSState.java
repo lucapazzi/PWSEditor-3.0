@@ -2,6 +2,7 @@ package pws;
 
 import assembly.Assembly;
 import machinery.State;
+import machinery.TimedBadgePosition;
 import pws.editor.annotation.StateSemanticsAnnotation;
 import pws.editor.semantics.Configuration;
 import pws.editor.semantics.ExitZone;
@@ -21,44 +22,6 @@ import java.util.Set;
 public class PWSState extends State {
     private static final long serialVersionUID = 1L;
 
-    public enum TimedBadgePosition {
-        TOP("Top"),
-        BOTTOM("Bottom"),
-        LEFT("Left"),
-        RIGHT("Right"),
-        TOP_LEFT("Top-left"),
-        TOP_RIGHT("Top-right"),
-        BOTTOM_LEFT("Bottom-left"),
-        BOTTOM_RIGHT("Bottom-right");
-
-        private final String displayName;
-
-        TimedBadgePosition(String displayName) {
-            this.displayName = displayName;
-        }
-
-        public String getDisplayName() {
-            return displayName;
-        }
-
-        public static TimedBadgePosition fromName(String name) {
-            if (name == null || name.isBlank()) {
-                return TOP;
-            }
-            for (TimedBadgePosition position : values()) {
-                if (position.name().equalsIgnoreCase(name) || position.displayName.equalsIgnoreCase(name)) {
-                    return position;
-                }
-            }
-            return TOP;
-        }
-
-        @Override
-        public String toString() {
-            return displayName;
-        }
-    }
-
     private transient StateSemanticsAnnotation annotation;
     private boolean annotationVisible = false; // Di default nascosta.
     private boolean annotationMinimized = false; // Whether the dashboard is minimized (small square)
@@ -76,10 +39,6 @@ public class PWSState extends State {
     private boolean failState = false;
     // Stores the raw constraint text entered by the user
     private String rawConstraintText;
-    // Timed-state marker shown as a small editable badge on the state.
-    private boolean timedState = false;
-    private String timeoutLabel = "T";
-    private TimedBadgePosition timedBadgePosition = TimedBadgePosition.TOP;
     // Cached deadlock configurations (computed during semantics recalculation)
     private transient Set<Configuration> deadlockConfigurations = new HashSet<>();
     // Provenance for configurations derived by internal exit-zone closure.
@@ -215,12 +174,12 @@ public class PWSState extends State {
 
     /** Returns whether this state has a timed-state badge. */
     public boolean isTimedState() {
-        return timedState;
+        return super.isTimedState();
     }
 
     /** Sets whether this state has a timed-state badge. */
     public void setTimedState(boolean timedState) {
-        this.timedState = timedState;
+        super.setTimedState(timedState);
         if (annotation != null) {
             annotation.repaint();
         }
@@ -228,26 +187,22 @@ public class PWSState extends State {
 
     /** Returns the text displayed in the timed-state badge. */
     public String getTimeoutLabel() {
-        return timeoutLabel == null || timeoutLabel.isBlank() ? "T" : timeoutLabel;
+        return super.getTimeoutLabel();
     }
 
     /** Sets the text displayed in the timed-state badge. */
     public void setTimeoutLabel(String timeoutLabel) {
-        if (timeoutLabel == null || timeoutLabel.isBlank()) {
-            this.timeoutLabel = "T";
-        } else {
-            this.timeoutLabel = timeoutLabel.trim();
-        }
+        super.setTimeoutLabel(timeoutLabel);
     }
 
     /** Returns the position of the timed-state badge. */
     public TimedBadgePosition getTimedBadgePosition() {
-        return timedBadgePosition == null ? TimedBadgePosition.TOP : timedBadgePosition;
+        return super.getTimedBadgePosition();
     }
 
     /** Sets the position of the timed-state badge. */
     public void setTimedBadgePosition(TimedBadgePosition timedBadgePosition) {
-        this.timedBadgePosition = timedBadgePosition == null ? TimedBadgePosition.TOP : timedBadgePosition;
+        super.setTimedBadgePosition(timedBadgePosition);
         if (annotation != null) {
             annotation.repaint();
         }

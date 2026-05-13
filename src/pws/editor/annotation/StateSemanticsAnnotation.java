@@ -396,7 +396,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
             if (currentStateName == null) continue;
             for (machinery.TransitionInterface ti : machine.getTransitions()) {
                 if (!(ti instanceof machinery.Transition t)) continue;
-                if (!t.isEnabled() || !t.isAutonomous()) continue;
+                if (!PWSStateMachine.isReactiveComponentTransition(t)) continue;
                 if (t.getSource() == null || t.getTarget() == null) continue;
                 if (!currentStateName.equals(t.getSource().getName())) continue;
                 String targetStateName = t.getTarget().getName();
@@ -1340,8 +1340,7 @@ public class StateSemanticsAnnotation extends Annotation<PWSState> {
                 }
                 for (machinery.TransitionInterface ti : machine.getTransitions()) {
                     if (!(ti instanceof machinery.Transition t)
-                            || !t.isEnabled()
-                            || !t.isAutonomous()
+                            || !PWSStateMachine.isReactiveComponentTransition(t)
                             || t.getSource() == null
                             || t.getTarget() == null
                             || !currentStateName.equals(t.getSource().getName())) {

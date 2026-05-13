@@ -9,6 +9,7 @@ import editor.StateMachinePanel;
 import machinery.State;
 import machinery.StateInterface;
 import machinery.StateMachine;
+import machinery.TimedBadgePosition;
 import machinery.Transition;
 import machinery.TransitionInterface;
 import pws.PWSState;
@@ -345,6 +346,13 @@ public final class JsonModelSerializer {
             if (s instanceof State st && st.isFailState()) {
                 sMap.put("failState", true);
             }
+            if (s instanceof State st
+                    && !"PseudoState".equals(s.getName())
+                    && st.isTimedState()) {
+                sMap.put("timedState", true);
+                sMap.put("timeoutLabel", st.getTimeoutLabel());
+                sMap.put("timedBadgePosition", st.getTimedBadgePosition().name());
+            }
             stateList.add(sMap);
         }
         map.put("states", stateList);
@@ -358,6 +366,7 @@ public final class JsonModelSerializer {
             tMap.put("source", stateIndex.get(tr.getSource()));
             tMap.put("target", stateIndex.get(tr.getTarget()));
             tMap.put("autonomous", tr.isAutonomous());
+            if (tr.isTimeoutTransition()) tMap.put("timeoutTransition", true);
             if (tr.getTriggerEvent() != null) tMap.put("triggerEvent", tr.getTriggerEvent());
             Point cp = tr.getControlPoint();
             if (cp != null) tMap.put("controlPoint", pointToMap(cp));
@@ -411,7 +420,7 @@ public final class JsonModelSerializer {
                     state.setTimeoutLabel(timeoutLabel);
                 }
                 String timedBadgePosition = getString(sMap, "timedBadgePosition", null);
-                state.setTimedBadgePosition(PWSState.TimedBadgePosition.fromName(timedBadgePosition));
+                state.setTimedBadgePosition(TimedBadgePosition.fromName(timedBadgePosition));
             }
 
             Map<String, Object> constraints = asMap(sMap.get("constraints"), null);
@@ -504,6 +513,15 @@ public final class JsonModelSerializer {
             if (failState && !"PseudoState".equals(sName)) {
                 state.setFailState(true);
             }
+            if (!"PseudoState".equals(sName)) {
+                state.setTimedState(getBoolean(sMap, "timedState", false));
+                String timeoutLabel = getString(sMap, "timeoutLabel", null);
+                if (timeoutLabel != null) {
+                    state.setTimeoutLabel(timeoutLabel);
+                }
+                String timedBadgePosition = getString(sMap, "timedBadgePosition", null);
+                state.setTimedBadgePosition(TimedBadgePosition.fromName(timedBadgePosition));
+            }
             stateById.put(id, state);
             machine.addState(state);
         }
@@ -540,6 +558,7 @@ public final class JsonModelSerializer {
             Point offset = pointFromMap(tMap.get("triggerOffset"));
             if (offset != null) tr.setTriggerOffset(offset);
             tr.setEnabled(getBoolean(tMap, "enabled", true));
+            tr.setTimeoutTransition(getBoolean(tMap, "timeoutTransition", false));
 
             machine.addTransition(tr);
         }

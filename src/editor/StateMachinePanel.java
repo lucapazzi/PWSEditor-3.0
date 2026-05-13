@@ -130,6 +130,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     }
 // Initial transition mode flag
     protected boolean initialTransitionMode = false;
+    protected boolean timeoutTransitionMode = false;
+    protected State timeoutTransitionSourceState = null;
 
     // Graphic constants (configurable)
     protected int DIAMETER = 50;
@@ -143,6 +145,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     private static final Color COMPONENT_DEADLOCK_BORDER_COLOR = new Color(180, 0, 0);
     private static final Color COMPONENT_UNREACHABLE_BORDER_COLOR = new Color(204, 170, 0);
     private static final float[] COMPONENT_FAIL_STATE_DASH = new float[] {6f, 4f};
+    private static final int TIMED_BADGE_MIN_WIDTH = 26;
+    private static final int TIMED_BADGE_HEIGHT = 24;
+    private static final int TIMED_BADGE_OVERLAP = 6;
 
     // Map to hold trigger labels for transitions
     protected HashMap<TransitionInterface, DraggableTriggerLabel> triggerLabels = new HashMap<>();
@@ -225,6 +230,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
 
     public void setStateMachine(StateMachine sm) {
         this.stateMachine = sm;
+        clearTimeoutTransitionMode();
         pseudoStateAliases.clear();
         pseudoAliasByTransition.clear();
         hitPseudoAliasIndex = -1;
@@ -336,11 +342,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         pruneSelection();
         Rectangle bounds = null;
         for (StateInterface state : selectedStates) {
-            if (!(state instanceof State st)) continue;
-            Point pos = st.getPosition();
-            if (pos == null) continue;
-            int diameter = isPseudoState(state) ? PSEUDO_DIAMETER : DIAMETER;
-            Rectangle r = new Rectangle(pos.x, pos.y, diameter, diameter);
+            Rectangle r = getStateVisualBounds(state);
+            if (r == null) continue;
             bounds = (bounds == null) ? new Rectangle(r) : bounds.union(r);
         }
 
@@ -427,7 +430,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         if (!isSelectableComponent(component) || e == null) {
             return false;
         }
-        if (initialTransitionMode || linkMode) {
+        if (initialTransitionMode || linkMode || timeoutTransitionMode) {
             return false;
         }
         if (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger()) {
@@ -521,12 +524,14 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     }
 
     public void enableLinkMode() {
+        clearTimeoutTransitionMode();
         linkMode = true;
         transitionSourceState = null;
         System.out.println("Link mode activated. Select source node, then target node.");
     }
 
     public void enableInitialTransitionMode() {
+        clearTimeoutTransitionMode();
         initialTransitionMode = true;
         System.out.println("Initial transition mode activated: click on a target to create a triggerable '_init' transition from the pseudo‑state.");
     }
@@ -687,6 +692,171 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         return src != null && "PseudoState".equals(src.getName());
     }
 
+    private Rectangle getTimedBadgeBounds(State state) {
+        if (state == null || !state.isTimedState() || isPseudoState(state)) {
+            return null;
+        }
+        Point pos = state.getPosition();
+        if (pos == null) {
+            return null;
+        }
+        Font font = getFont();
+        if (font == null) {
+            font = new Font("Dialog", Font.PLAIN, Math.round(getStateFontSize()));
+        }
+        FontMetrics fm = getFontMetrics(font.deriveFont(Font.BOLD, getStateFontSize()));
+        String label = state.getTimeoutLabel();
+        int width = Math.max(TIMED_BADGE_MIN_WIDTH, fm.stringWidth(label) + 14);
+        int x;
+        int y;
+        switch (state.getTimedBadgePosition()) {
+            case BOTTOM:
+                x = pos.x + DIAMETER / 2 - width / 2;
+                y = pos.y + DIAMETER - TIMED_BADGE_OVERLAP;
+                break;
+            case LEFT:
+                x = pos.x - width + TIMED_BADGE_OVERLAP;
+                y = pos.y + DIAMETER / 2 - TIMED_BADGE_HEIGHT / 2;
+                break;
+            case RIGHT:
+                x = pos.x + DIAMETER - TIMED_BADGE_OVERLAP;
+                y = pos.y + DIAMETER / 2 - TIMED_BADGE_HEIGHT / 2;
+                break;
+            case TOP_LEFT:
+                x = pos.x;
+                y = pos.y - TIMED_BADGE_HEIGHT + TIMED_BADGE_OVERLAP;
+                break;
+            case TOP_RIGHT:
+                x = pos.x + DIAMETER - width;
+                y = pos.y - TIMED_BADGE_HEIGHT + TIMED_BADGE_OVERLAP;
+                break;
+            case BOTTOM_LEFT:
+                x = pos.x;
+                y = pos.y + DIAMETER - TIMED_BADGE_OVERLAP;
+                break;
+            case BOTTOM_RIGHT:
+                x = pos.x + DIAMETER - width;
+                y = pos.y + DIAMETER - TIMED_BADGE_OVERLAP;
+                break;
+            case TOP:
+            default:
+                x = pos.x + DIAMETER / 2 - width / 2;
+                y = pos.y - TIMED_BADGE_HEIGHT + TIMED_BADGE_OVERLAP;
+                break;
+        }
+        return new Rectangle(x, y, width, TIMED_BADGE_HEIGHT);
+    }
+
+    private State getTimedStateBadgeAt(Point p) {
+        if (p == null) {
+            return null;
+        }
+        List<StateInterface> states = stateMachine.getStates();
+        for (int i = states.size() - 1; i >= 0; i--) {
+            StateInterface state = states.get(i);
+            if (!(state instanceof State st) || !st.isTimedState() || isPseudoState(st)) {
+                continue;
+            }
+            Rectangle bounds = getTimedBadgeBounds(st);
+            if (bounds != null && bounds.contains(p)) {
+                return st;
+            }
+        }
+        return null;
+    }
+
+    private Rectangle getStateVisualBounds(StateInterface state) {
+        if (!(state instanceof State st)) {
+            return null;
+        }
+        Point pos = st.getPosition();
+        if (pos == null) {
+            return null;
+        }
+        int diameter = isPseudoState(state) ? PSEUDO_DIAMETER : DIAMETER;
+        Rectangle bounds = new Rectangle(pos.x, pos.y, diameter, diameter);
+        Rectangle badge = getTimedBadgeBounds(st);
+        if (badge != null) {
+            bounds = bounds.union(badge);
+        }
+        return bounds;
+    }
+
+    private void drawTimedStateBadge(Graphics2D g2d, State state, boolean selected) {
+        Rectangle badge = getTimedBadgeBounds(state);
+        if (badge == null) {
+            return;
+        }
+        Stroke oldStroke = g2d.getStroke();
+        Font oldFont = g2d.getFont();
+        g2d.setColor(Color.WHITE);
+        g2d.fillRect(badge.x, badge.y, badge.width, badge.height);
+        g2d.setStroke(new BasicStroke(Math.max(1.5f, stateBorderThickness)));
+        g2d.setColor(selected ? Color.RED : Color.BLACK);
+        g2d.drawRect(badge.x, badge.y, badge.width, badge.height);
+
+        Font badgeFont = oldFont != null
+                ? oldFont.deriveFont(Font.BOLD, getStateFontSize())
+                : new Font("Dialog", Font.BOLD, Math.round(getStateFontSize()));
+        g2d.setFont(badgeFont);
+        FontMetrics fm = g2d.getFontMetrics();
+        String label = state.getTimeoutLabel();
+        int textX = badge.x + (badge.width - fm.stringWidth(label)) / 2;
+        int textY = badge.y + (badge.height - fm.getHeight()) / 2 + fm.getAscent();
+        g2d.drawString(label, textX, textY);
+        if (oldFont != null) {
+            g2d.setFont(oldFont);
+        }
+        g2d.setStroke(oldStroke);
+    }
+
+    private void editTimeoutLabel(State state) {
+        if (state == null || isPseudoState(state)) {
+            return;
+        }
+        JTextField labelField = new JTextField(state.getTimeoutLabel(), 12);
+        JComboBox<TimedBadgePosition> positionBox =
+                new JComboBox<>(TimedBadgePosition.values());
+        positionBox.setSelectedItem(state.getTimedBadgePosition());
+
+        JPanel panel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(4, 4, 4, 4);
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        panel.add(new JLabel("Label:"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        panel.add(labelField, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.weightx = 0.0;
+        panel.add(new JLabel("Position:"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        panel.add(positionBox, gbc);
+
+        int result = JOptionPane.showConfirmDialog(
+                this,
+                panel,
+                "Edit timed-state badge",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE);
+        if (result != JOptionPane.OK_OPTION) {
+            return;
+        }
+        state.setTimeoutLabel(labelField.getText());
+        state.setTimedBadgePosition((TimedBadgePosition) positionBox.getSelectedItem());
+        scheduleSemanticsRecalculationIfNeeded();
+        markOwningEditorDirty();
+        revalidate();
+        repaint();
+    }
+
     protected void drawStates(Graphics g) {
         Graphics2D g2d = (Graphics2D) g;
         Stroke oldStroke = g2d.getStroke();
@@ -783,6 +953,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                 int textY = y + (DIAMETER - textHeight) / 2 + fm.getAscent();
                 g2d.setColor(isSelected ? Color.RED : Color.BLACK);
                 g2d.drawString(name, textX, textY);
+                if (state instanceof State st && st.isTimedState()) {
+                    drawTimedStateBadge(g2d, st, isSelected);
+                }
             }
         }
         for (int i = 0; i < pseudoStateAliases.size(); i++) {
@@ -889,6 +1062,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
             // Outline: gray for disabled, black otherwise
             g2d.setColor(disabled ? Color.LIGHT_GRAY : Color.BLACK);
             g2d.drawOval(p0.x - circleRadius, p0.y - circleRadius, circleRadius * 2, circleRadius * 2);
+            if (t instanceof Transition trans && trans.isTimeoutTransition()) {
+                drawTimeoutTransitionCross(g2d, p0, cp, disabled);
+            }
         }
 
         // Draw control handle only if edit mode is enabled
@@ -1593,11 +1769,8 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         if (rect == null) return;
 
         for (StateInterface state : stateMachine.getStates()) {
-            if (!(state instanceof State st)) continue;
-            Point pos = st.getPosition();
-            if (pos == null) continue;
-            int d = isPseudoState(state) ? PSEUDO_DIAMETER : DIAMETER;
-            Rectangle stateRect = new Rectangle(pos.x, pos.y, d, d);
+            Rectangle stateRect = getStateVisualBounds(state);
+            if (stateRect == null) continue;
             if (rect.intersects(stateRect) || rect.contains(stateRect)) {
                 states.add(state);
             }
@@ -1688,6 +1861,32 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         g2d.drawLine(p2.x, p2.y, x2, y2);
     }
 
+    private void drawTimeoutTransitionCross(Graphics2D g2d, Point p0, Point cp, boolean disabled) {
+        if (p0 == null || cp == null) {
+            return;
+        }
+        double dx = cp.x - p0.x;
+        double dy = cp.y - p0.y;
+        double length = Math.hypot(dx, dy);
+        if (length == 0.0) {
+            length = 1.0;
+        }
+        int centerX = (int) Math.round(p0.x + (dx / length) * 14.0);
+        int centerY = (int) Math.round(p0.y + (dy / length) * 14.0);
+        double perpX = -dy / length;
+        double perpY = dx / length;
+        int r = 7;
+        int x1 = (int) Math.round(centerX - perpX * r);
+        int y1 = (int) Math.round(centerY - perpY * r);
+        int x2 = (int) Math.round(centerX + perpX * r);
+        int y2 = (int) Math.round(centerY + perpY * r);
+        Stroke oldStroke = g2d.getStroke();
+        g2d.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2d.setColor(disabled ? Color.LIGHT_GRAY : Color.BLACK);
+        g2d.drawLine(x1, y1, x2, y2);
+        g2d.setStroke(oldStroke);
+    }
+
     private void drawControlHandle(Graphics2D g2d, Point cp) {
         g2d.setColor(Color.GREEN);
         int handleRadius = 5;
@@ -1695,6 +1894,10 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     }
 
     protected StateInterface getStateAt(Point p) {
+        State timedHit = getTimedStateBadgeAt(p);
+        if (timedHit != null) {
+            return timedHit;
+        }
         hitPseudoAliasIndex = -1;
         int aliasIndex = getPseudoAliasIndexAt(p);
         if (aliasIndex >= 0) {
@@ -1933,6 +2136,141 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         }
     }
 
+    private boolean hasTimeoutTransitionFrom(State source, Transition ignored) {
+        if (source == null) {
+            return false;
+        }
+        for (TransitionInterface ti : stateMachine.getTransitions()) {
+            if (!(ti instanceof Transition transition) || transition == ignored) {
+                continue;
+            }
+            if (transition.isTimeoutTransition() && transition.getSource() == source) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int countTimeoutTransitionsFrom(State source) {
+        int count = 0;
+        if (source == null) {
+            return count;
+        }
+        for (TransitionInterface ti : stateMachine.getTransitions()) {
+            if (ti instanceof Transition transition
+                    && transition.isTimeoutTransition()
+                    && transition.getSource() == source) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void removeTimeoutTransitionsFrom(State source) {
+        if (source == null) {
+            return;
+        }
+        List<TransitionInterface> toDelete = new ArrayList<>();
+        for (TransitionInterface ti : stateMachine.getTransitions()) {
+            if (ti instanceof Transition transition
+                    && transition.isTimeoutTransition()
+                    && transition.getSource() == source) {
+                toDelete.add(ti);
+            }
+        }
+        for (TransitionInterface ti : toDelete) {
+            deleteTransition(ti);
+        }
+    }
+
+    private void setTimedStateEnabled(State state, boolean enabled) {
+        if (state == null || isPseudoState(state)) {
+            return;
+        }
+        if (!enabled && countTimeoutTransitionsFrom(state) > 0) {
+            int confirm = JOptionPane.showConfirmDialog(
+                    this,
+                    "Removing the timed marker will also delete its timeout transition.",
+                    "Remove timed state",
+                    JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.WARNING_MESSAGE);
+            if (confirm != JOptionPane.OK_OPTION) {
+                return;
+            }
+            removeTimeoutTransitionsFrom(state);
+        }
+        state.setTimedState(enabled);
+        if (enabled && state.getTimeoutLabel().isBlank()) {
+            state.setTimeoutLabel("T");
+        }
+        scheduleSemanticsRecalculationIfNeeded();
+        markOwningEditorDirty();
+        revalidate();
+        repaint();
+    }
+
+    private void enableTimeoutTransitionModeWithSource(State sourceState) {
+        if (sourceState == null || isPseudoState(sourceState)) {
+            return;
+        }
+        if (!sourceState.isTimedState()) {
+            JOptionPane.showMessageDialog(this, "Timeout transitions can only start from timed states.");
+            return;
+        }
+        if (hasTimeoutTransitionFrom(sourceState, null)) {
+            JOptionPane.showMessageDialog(this, "This timed state already has a timeout transition.");
+            return;
+        }
+        timeoutTransitionMode = true;
+        timeoutTransitionSourceState = sourceState;
+        linkMode = false;
+        transitionSourceState = null;
+        transitionSourcePseudoAliasIndex = -1;
+        System.out.println("Timeout transition mode activated: click on an arrival state.");
+    }
+
+    protected void clearTimeoutTransitionMode() {
+        timeoutTransitionMode = false;
+        timeoutTransitionSourceState = null;
+    }
+
+    private boolean createTimeoutTransition(State sourceState, StateInterface targetState) {
+        if (sourceState == null || targetState == null) {
+            return false;
+        }
+        if (!sourceState.isTimedState()) {
+            JOptionPane.showMessageDialog(this, "Timeout transitions can only start from timed states.");
+            return false;
+        }
+        if (isPseudoState(targetState)) {
+            JOptionPane.showMessageDialog(this, "Cannot create transition to PseudoState.");
+            return false;
+        }
+        if (targetState == sourceState) {
+            JOptionPane.showMessageDialog(this, "Self-loop transitions are not supported.");
+            return false;
+        }
+        if (hasTimeoutTransitionFrom(sourceState, null)) {
+            JOptionPane.showMessageDialog(this, "This timed state already has a timeout transition.");
+            return false;
+        }
+
+        Transition transition = new Transition(sourceState, targetState, false, "");
+        transition.setTimeoutTransition(true);
+        stateMachine.addTransition(transition);
+        scheduleSemanticsRecalculationIfNeeded();
+        markOwningEditorDirty();
+        return true;
+    }
+
+    private void handleTimeoutTransitionMode(MouseEvent e) {
+        StateInterface targetState = getStateAt(e.getPoint());
+        createTimeoutTransition(timeoutTransitionSourceState, targetState);
+        clearTimeoutTransitionMode();
+        revalidate();
+        repaint();
+    }
+
     protected boolean isInitialPseudoTransition(TransitionInterface t) {
         if (t == null || !isPseudoState(t.getSource())) {
             return false;
@@ -1998,6 +2336,7 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         }
         if (!SwingUtilities.isLeftMouseButton(e)) {
             clearBaseDragTransitionState();
+            clearTimeoutTransitionMode();
             clearSelectionInteractionState();
         }
         // Debug: mouse press details — commented out to reduce console noise
@@ -2014,6 +2353,10 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         }
         if (initialTransitionMode) {
             handleInitialTransitionMode(e);
+            return;
+        }
+        if (timeoutTransitionMode) {
+            handleTimeoutTransitionMode(e);
             return;
         }
         if (linkMode) {
@@ -2307,6 +2650,11 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
     @Override public void mouseClicked(MouseEvent e) { 
         // Left-button double-click to rename a state
         if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) {
+            State timedHit = getTimedStateBadgeAt(e.getPoint());
+            if (timedHit != null) {
+                editTimeoutLabel(timedHit);
+                return;
+            }
             StateInterface state = getStateAt(e.getPoint());
             if (state == null) return;
             // Do not rename the pseudostate
@@ -2685,6 +3033,27 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                     repaint();
                 });
                 popup.add(failItem);
+
+                JCheckBoxMenuItem timedItem = new JCheckBoxMenuItem("Timed state", st.isTimedState());
+                timedItem.addActionListener(ae -> setTimedStateEnabled(st, timedItem.isSelected()));
+                popup.add(timedItem);
+
+                JMenuItem editTimedLabelItem = new JMenuItem("Edit timed label...");
+                editTimedLabelItem.setEnabled(st.isTimedState());
+                editTimedLabelItem.addActionListener(ae -> editTimeoutLabel(st));
+                popup.add(editTimedLabelItem);
+
+                if (st.isTimedState()) {
+                    if (hasTimeoutTransitionFrom(st, null)) {
+                        JMenuItem existingTimeoutItem = new JMenuItem("Timeout transition already exists");
+                        existingTimeoutItem.setEnabled(false);
+                        popup.add(existingTimeoutItem);
+                    } else {
+                        JMenuItem timeoutItem = new JMenuItem("Create timeout transition: choose arrival state");
+                        timeoutItem.addActionListener(ae -> enableTimeoutTransitionModeWithSource(st));
+                        popup.add(timeoutItem);
+                    }
+                }
             }
 
             JMenuItem deleteItem = new JMenuItem("Delete State");
@@ -2750,10 +3119,12 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
      *   and from the target state's incoming transitions list.
      */
     private void deleteTransition(TransitionInterface t) {
-//        // If t is a PWSTransition, clear its associated annotations.
-//        if (t instanceof PWSTransition) {
-//            clearAnnotationsForTransition((PWSTransition) t);
-//        }
+        State timeoutSourceToUpdate = null;
+        if (t instanceof Transition transition
+                && transition.isTimeoutTransition()
+                && transition.getSource() instanceof State sourceState) {
+            timeoutSourceToUpdate = sourceState;
+        }
         clearPseudoAliasForTransition(t);
         selectedTransitions.remove(t);
         DraggableTriggerLabel label = triggerLabels.remove(t);
@@ -2773,6 +3144,9 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         StateInterface target = t.getTarget();
         if (target != null && target.getIncomingTransitions() != null) {
             target.getIncomingTransitions().remove(t);
+        }
+        if (timeoutSourceToUpdate != null && !hasTimeoutTransitionFrom(timeoutSourceToUpdate, null)) {
+            timeoutSourceToUpdate.setTimedState(false);
         }
         // Schedule semantics recalculation if inside PWSEditor
         java.awt.Container win = javax.swing.SwingUtilities.getWindowAncestor(this);

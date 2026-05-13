@@ -22,6 +22,7 @@ public class Transition implements TransitionInterface {
     
     // Whether this transition is enabled (disabled transitions are ignored in semantics)
     private boolean enabled = true;
+    private boolean timeoutTransition = false;
 
     public Transition() { }
 
@@ -178,5 +179,21 @@ public class Transition implements TransitionInterface {
      */
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    /** Returns whether this transition is a timeout transition. */
+    public boolean isTimeoutTransition() {
+        return timeoutTransition;
+    }
+
+    /**
+     * Marks this transition as a timeout transition.
+     * Timeout transitions have no trigger label.
+     */
+    public void setTimeoutTransition(boolean timeoutTransition) {
+        this.timeoutTransition = timeoutTransition;
+        if (timeoutTransition) {
+            this.triggerEvent = "";
+        }
     }
 }

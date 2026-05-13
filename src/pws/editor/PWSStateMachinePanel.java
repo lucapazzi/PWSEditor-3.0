@@ -4,6 +4,7 @@ import assembly.ActionList;
 import assembly.Assembly;
 import assembly.AssemblyInterface;
 import editor.StateMachinePanel;
+import machinery.TimedBadgePosition;
 import machinery.StateInterface;
 import machinery.Transition;
 import machinery.TransitionInterface;
@@ -565,8 +566,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             return;
         }
         JTextField labelField = new JTextField(state.getTimeoutLabel(), 12);
-        JComboBox<PWSState.TimedBadgePosition> positionBox =
-                new JComboBox<>(PWSState.TimedBadgePosition.values());
+        JComboBox<TimedBadgePosition> positionBox =
+                new JComboBox<>(TimedBadgePosition.values());
         positionBox.setSelectedItem(state.getTimedBadgePosition());
 
         JPanel panel = new JPanel(new GridBagLayout());
@@ -600,7 +601,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
             return;
         }
         state.setTimeoutLabel(labelField.getText());
-        state.setTimedBadgePosition((PWSState.TimedBadgePosition) positionBox.getSelectedItem());
+        state.setTimedBadgePosition((TimedBadgePosition) positionBox.getSelectedItem());
         markEditorDirtyAndRecalculate();
         revalidate();
         repaint();
@@ -1952,7 +1953,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         System.out.println("Timeout transition mode activated: click on an arrival state.");
     }
 
-    private void clearTimeoutTransitionMode() {
+    @Override
+    protected void clearTimeoutTransitionMode() {
         timeoutTransitionMode = false;
         timeoutTransitionSourceState = null;
     }

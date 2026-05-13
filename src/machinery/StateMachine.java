@@ -148,6 +148,12 @@ public class StateMachine implements StateMachineInterface, Cloneable {
         for (StateInterface s : this.getStates()) {
             // Create a new state with the same name and a copy of its position.
             State newState = new State(s.getName(), new Point(s.getPosition()));
+            if (s instanceof State originalState) {
+                newState.setFailState(originalState.isFailState());
+                newState.setTimedState(originalState.isTimedState());
+                newState.setTimeoutLabel(originalState.getTimeoutLabel());
+                newState.setTimedBadgePosition(originalState.getTimedBadgePosition());
+            }
             stateMap.put(s, newState);
             clone.addState(newState);
         }
@@ -174,6 +180,7 @@ public class StateMachine implements StateMachineInterface, Cloneable {
                 newTransition.setTriggerOffset(new Point(originalTriggerOffset));
             }
             newTransition.setEnabled(original.isEnabled());
+            newTransition.setTimeoutTransition(original.isTimeoutTransition());
             clone.addTransition(newTransition);
 
             // Update the incoming/outgoing relationships for the cloned states.

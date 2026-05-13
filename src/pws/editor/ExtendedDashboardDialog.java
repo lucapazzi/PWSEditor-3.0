@@ -792,7 +792,7 @@ public class ExtendedDashboardDialog extends JDialog {
             if (currentStateName == null) continue;
             for (TransitionInterface ti : machine.getTransitions()) {
                 if (!(ti instanceof Transition t)) continue;
-                if (!t.isEnabled() || !t.isAutonomous()) continue;
+                if (!PWSStateMachine.isReactiveComponentTransition(t)) continue;
                 if (t.getSource() == null || t.getTarget() == null) continue;
                 if (!currentStateName.equals(t.getSource().getName())) continue;
                 String targetStateName = t.getTarget().getName();
