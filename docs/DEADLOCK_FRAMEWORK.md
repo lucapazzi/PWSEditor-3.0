@@ -19,7 +19,7 @@ This note defines deadlock terms used by PWSEditor under **strict action semanti
 ## Controller-level deadlocks
 - **Primary deadlock configuration**: a controller-state configuration that has **no escape path** to any enabled outgoing controller transition (excluding self-loops). Escape path means:
   - direct transition coverage from the configuration, or
-  - internal autonomous evolution to another configuration that is directly covered.
+  - internal component evolution to another configuration that is directly covered.
 - **Secondary (internal) deadlock configuration**: a primary deadlock configuration that is also internally stuck.
 
 Relation:

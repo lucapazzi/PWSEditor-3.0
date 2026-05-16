@@ -6,9 +6,9 @@ This note explains three closely related ideas in PWSEditor:
 
 - what an **internal configuration** is
 - how configurations **expand by drifting**
-- how autonomous drift becomes an **exit-zone** when contrasted with state constraints (`CS`)
+- how internal component drift becomes an **exit-zone** when contrasted with state constraints (`CS`)
 
-The goal is to make the relation between **computed state semantics** (`SS`), **constraint semantics** (`CS`), and **autonomous component evolution** explicit.
+The goal is to make the relation between **computed state semantics** (`SS`), **constraint semantics** (`CS`), and component evolution explicit. Component evolution includes enabled autonomous transitions and timeout transitions.
 
 ## Core Terms
 
@@ -19,15 +19,15 @@ The goal is to make the relation between **computed state semantics** (`SS`), **
 - **Internal configuration**:
   a configuration that belongs to the state's computed `SS`
 - **Drift**:
-  autonomous component-machine evolution while the controller remains in the same controller state
+  component-machine evolution while the controller remains in the same controller state; this includes autonomous transitions and timeout transitions
 - **Exit-zone (EZ)**:
-  a boundary condition produced by autonomous component evolution that may require controller reaction
+  a boundary condition produced by autonomous or timeout component evolution that may require controller reaction
 
 In informal discussion, "drift" means:
 
 ```text
 controller state stays fixed
-component machine evolves autonomously
+component machine evolves internally
 configuration changes inside that same controller state
 ```
 
@@ -60,13 +60,13 @@ can be absorbed into `SS`.
 
 ## How Configurations Expand By Drifting
 
-PWSEditor closes state semantics under internal autonomous evolution.
+PWSEditor closes state semantics under internal component evolution.
 
 Conceptually:
 
 ```text
 start from current SS
-find enabled autonomous component transitions from SS
+find enabled autonomous or timeout component transitions from SS
 classify each as internal or boundary
 absorb compatible internal codomain into SS
 repeat until no new configurations are added
@@ -75,7 +75,7 @@ repeat until no new configurations are added
 The concrete absorption rule is:
 
 ```text
-codomain  = result of applying the autonomous component transition
+codomain  = result of applying the autonomous or timeout component transition
 absorbed  = codomain AND CS   (when explicit CS exists)
 absorbed  = codomain          (otherwise)
 SS := SS OR absorbed
@@ -87,7 +87,7 @@ So drift is not just a visual status. It can enlarge the state's computed semant
 
 Configurations added by internal drift closure are now reported as such:
 
-- the **dashboard hover text** says which prior configuration and autonomous component transition produced the row
+- the **dashboard hover text** says which prior configuration and component transition produced the row
 - **Show Extended Details...** lists the same derivation explicitly
 
 This keeps the main dashboard readable while still exposing the provenance of absorbed rows.
@@ -96,7 +96,7 @@ This keeps the main dashboard readable while still exposing the provenance of ab
 
 Autonomous component evolution always starts from a configuration already compatible with the current state. The question is whether the target still belongs "inside" the same controller state, or whether it crosses a boundary.
 
-PWSEditor first records a classical autonomous exit-zone candidate from an enabled autonomous component transition whose source is reachable from the current `SS`.
+PWSEditor first records a classical exit-zone candidate from an enabled autonomous or timeout component transition whose source is reachable from the current `SS`.
 
 It then applies an **internality test**.
 
@@ -254,7 +254,7 @@ PWSEditor also computes **CS-only provisional exit-zones** from explicit constra
 - they are shown in blue
 - they preview boundaries implied by constraints even before `SS` fully reaches them
 
-For partial constraints, unspecified machines are treated as `ANY`, so autonomous transitions of those unconstrained machines are not reported as provisional exit-zones.
+For partial constraints, unspecified machines are treated as `ANY`, so autonomous or timeout transitions of those unconstrained machines are not reported as provisional exit-zones.
 
 ## Incoming Transition Soft Constraints vs Internal Drift
 
@@ -271,7 +271,7 @@ If some resulting configurations do not satisfy `CS`, they remain in `SS` and ar
 
 So:
 
-- **internal drift closure** adds autonomous codomain into `SS`
+- **internal drift closure** adds autonomous or timeout codomain into `SS`
 - **incoming controller transitions** also add their full codomain into `SS`
 - **constraints** diagnose incompatible configurations instead of filtering them out
 
@@ -297,7 +297,7 @@ they are **formed**.
 When looking at one dashboard row in `configs`, ask:
 
 1. Was this row contributed directly by an incoming controller transition?
-2. Or was it added later by autonomous internal drift closure?
+2. Or was it added later by internal drift closure?
 3. If it was drifted in, did that happen because:
    - the target was already in `SS`, or
    - the target was admitted by explicit `CS` and then the concrete codomain survived clipping by `CS`?

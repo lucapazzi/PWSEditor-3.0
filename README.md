@@ -35,6 +35,13 @@ computed semantics and reactive spaces.
   pseudo-state/aliases for initial `_init` transitions), with context-menu
   link mode still available as an alternative.
 
+- **Timed states and timeout transitions:**  
+  Controller states and simple component-machine states can be marked as timed.
+  Timed states show an editable time badge, and each timed state may have one
+  timeout transition. Timeout transitions use the same visual timeout marker in
+  both controller and component editors and contribute to component reactive
+  evolution.
+
 - **Multi-object selection, drag, and focused export:**  
   Use `Shift + Left click` to add/remove a state, pseudostate origin, pseudostate
   alias, transition, or trigger label from the selection. Use
@@ -62,13 +69,18 @@ computed semantics and reactive spaces.
   PWS statecharts and their visual layout can be saved, restored, and
   selectively shown or hidden.
 
-- **Path toward the full PWS toolchain:**  
-  Future releases will integrate with model-checking, analysis, and
-  code-generation tools for PWS-based controller synthesis.
+- **Import/export and code generation:**  
+  PWSEditor opens and saves `.pws` workspaces, `.sm` single machines, and
+  `.mlib` machine libraries. Controller workspaces can also be exported as
+  IEC 61131-3 Structured Text (`.st`) or PLCopen XML (`.plcopen.xml`) containing
+  the controller function block, simple assembly component function blocks, and
+  a generated `PLC_PRG` scaffold.
 
 ## User Manual
 
-- Interaction guide: `docs/USER_MANUAL.md`
+- Full manual: `USER_MANUAL.md`
+- Interaction guide and semantics notes: `docs/USER_MANUAL.md`
+- ST/PLCopen export rules and constraints: `docs/ST_EXPORT.md`
 
 ## Building and Running
 

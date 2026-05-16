@@ -10,6 +10,25 @@ Additional user-facing semantics notes:
 - `docs/CBC_OBLIGATIONS.md`
 - `docs/DEADLOCK_FRAMEWORK.md`
 - `docs/WARNING_POLICY.md`
+- `docs/ST_EXPORT.md`
+
+## Import and Export
+
+- `File -> Open...` imports `.pws` workspaces.
+- The standalone state-machine editor supports `.sm` single-machine files, and the library panel supports `.mlib` machine-library files.
+- `File -> Export as PDF` and `File -> Export as PNG` export the active canvas; selected objects are exported alone when a selection exists.
+- `File -> Export as ST` exports the controller, simple assembly machines, and a generated `PLC_PRG` scaffold as IEC 61131-3 Structured Text.
+- `File -> Export as PLCOpen XML` exports the same controller/component function blocks plus `PLC_PRG` in PLCopen XML. PLCopen XML import is not currently implemented.
+- Export naming, translation rules, and current exporter constraints are documented in `docs/ST_EXPORT.md`.
+
+## Timed States and Timeout Transitions
+
+- Timed states are available in both the controller editor and the component-machine editor.
+- Right-click a state and toggle **Timed state** to show a time badge.
+- Use **Edit timed label...** to edit the time value shown in the badge.
+- A timed state may have one timeout transition, created with **Create timeout transition: choose arrival state**.
+- Timeout transitions are drawn with the same timeout marker in controller and component editors.
+- In component machines, timeout transitions are treated as reactive internal evolution when computing reactive spaces and exit zones.
 
 ## Fail-State Behavior (Obligations)
 

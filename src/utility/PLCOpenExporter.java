@@ -46,36 +46,51 @@ public final class PLCOpenExporter {
 
     /** Generates PLCopen XML for the provided controller and its simple assembly machines. */
     public static String generate(PWSStateMachine controller) {
-        return new BundleGenerator(controller).generate();
+        return generate(controller, null);
+    }
+
+    /** Generates PLCopen XML for the provided controller using a preferred controller FB name. */
+    public static String generate(PWSStateMachine controller, String preferredControllerName) {
+        return new BundleGenerator(controller, preferredControllerName).generate();
     }
 
     /** Writes PLCopen XML for the provided controller to the given file. */
     public static void exportToFile(PWSStateMachine controller, File file) throws IOException {
+        exportToFile(controller, file, null);
+    }
+
+    /** Writes PLCopen XML for the provided controller using a preferred controller FB name. */
+    public static void exportToFile(PWSStateMachine controller, File file, String preferredControllerName) throws IOException {
         if (file == null) {
             throw new IllegalArgumentException("Target file cannot be null.");
         }
-        Files.writeString(file.toPath(), generate(controller), StandardCharsets.UTF_8);
+        Files.writeString(file.toPath(), generate(controller, preferredControllerName), StandardCharsets.UTF_8);
     }
 
     private static final class BundleGenerator {
         private final PWSStateMachine controller;
+        private final String preferredControllerName;
         private final LinkedHashMap<String, String> dataTypesByName = new LinkedHashMap<>();
         private final LinkedHashMap<String, String> pousByName = new LinkedHashMap<>();
         private final List<String> orderedDataTypes = new ArrayList<>();
         private final List<String> orderedPous = new ArrayList<>();
+        private final LinkedHashMap<String, BasicMachineGenerator> basicGeneratorsByMachineId = new LinkedHashMap<>();
+        private ControllerGenerator controllerGenerator;
 
-        private BundleGenerator(PWSStateMachine controller) {
+        private BundleGenerator(PWSStateMachine controller, String preferredControllerName) {
             if (controller == null) {
                 throw new IllegalArgumentException("Controller cannot be null.");
             }
             this.controller = controller;
+            this.preferredControllerName = preferredControllerName;
         }
 
         private String generate() {
             appendSimpleAssemblyMachines();
             appendController();
+            appendProgram();
 
-            String projectName = sanitizeIdentifier(controller.getName(), "ControllerProject");
+            String projectName = sanitizeIdentifier(chooseControllerName(controller, preferredControllerName), "ControllerProject");
             String creationDateTime = DATE_TIME_FORMAT.format(LocalDateTime.now().withNano(0));
 
             StringBuilder out = new StringBuilder();
@@ -130,15 +145,24 @@ public final class PLCOpenExporter {
                             "Assembly machine '" + machineId + "' is not a simple machine and cannot be exported in this mode.");
                 }
                 BasicMachineGenerator generator = new BasicMachineGenerator(machine, machineId);
+                basicGeneratorsByMachineId.put(machineId, generator);
                 registerDataType(generator.getEnumTypeName(), generator.generateDataTypeXml());
                 registerPou(generator.getFunctionBlockName(), generator.generatePouXml());
             }
         }
 
         private void appendController() {
-            ControllerGenerator generator = new ControllerGenerator(controller);
-            registerDataType(generator.getEnumTypeName(), generator.generateDataTypeXml());
-            registerPou(generator.getFunctionBlockName(), generator.generatePouXml());
+            controllerGenerator = new ControllerGenerator(controller, preferredControllerName);
+            registerDataType(controllerGenerator.getEnumTypeName(), controllerGenerator.generateDataTypeXml());
+            registerPou(controllerGenerator.getFunctionBlockName(), controllerGenerator.generatePouXml());
+        }
+
+        private void appendProgram() {
+            if (controllerGenerator == null) {
+                throw new IllegalStateException("Controller export must be generated before PLC_PRG.");
+            }
+            ProgramGenerator generator = new ProgramGenerator(controllerGenerator, basicGeneratorsByMachineId);
+            registerPou(generator.getProgramName(), generator.generatePouXml());
         }
 
         private void registerDataType(String name, String body) {
@@ -200,8 +224,25 @@ public final class PLCOpenExporter {
                                      List<VariableDecl> outputVars,
                                      List<VariableDecl> localVars,
                                      String bodySt) {
+            return buildPouXml(functionBlockName, "functionBlock", inOutVars, inputVars, outputVars, localVars, bodySt);
+        }
+
+        protected String buildProgramPouXml(String programName,
+                                            List<VariableDecl> localVars,
+                                            String bodySt) {
+            return buildPouXml(programName, "program", List.of(), List.of(), List.of(), localVars, bodySt);
+        }
+
+        private String buildPouXml(String pouName,
+                                   String pouType,
+                                   List<VariableDecl> inOutVars,
+                                   List<VariableDecl> inputVars,
+                                   List<VariableDecl> outputVars,
+                                   List<VariableDecl> localVars,
+                                   String bodySt) {
             StringBuilder out = new StringBuilder();
-            out.append("<pou name=\"").append(escapeAttribute(functionBlockName)).append("\" pouType=\"functionBlock\">\n");
+            out.append("<pou name=\"").append(escapeAttribute(pouName)).append("\" pouType=\"")
+                    .append(escapeAttribute(pouType)).append("\">\n");
             out.append("  <interface>\n");
             appendVariableBlock(out, "inOutVars", inOutVars);
             appendVariableBlock(out, "inputVars", inputVars);
@@ -240,6 +281,13 @@ public final class PLCOpenExporter {
                         .append("\"/>\n");
                 out.append("        </initialValue>\n");
             }
+            if (var.comment() != null && !var.comment().isBlank()) {
+                out.append("        <documentation>\n");
+                out.append("          <xhtml:p>")
+                        .append(escapeText(var.comment()))
+                        .append("</xhtml:p>\n");
+                out.append("        </documentation>\n");
+            }
             out.append("      </variable>\n");
         }
 
@@ -261,6 +309,78 @@ public final class PLCOpenExporter {
         }
     }
 
+    private static final class ProgramGenerator extends BaseGenerator {
+        private static final String PROGRAM_NAME = "PLC_PRG";
+
+        private final ControllerGenerator controllerGenerator;
+        private final LinkedHashMap<String, BasicMachineGenerator> basicGeneratorsByMachineId;
+        private final String controllerInstanceName;
+
+        private ProgramGenerator(ControllerGenerator controllerGenerator,
+                                 LinkedHashMap<String, BasicMachineGenerator> basicGeneratorsByMachineId) {
+            super(PROGRAM_NAME, "");
+            this.controllerGenerator = controllerGenerator;
+            this.basicGeneratorsByMachineId = basicGeneratorsByMachineId;
+
+            Set<String> usedIdentifiers = new LinkedHashSet<>();
+            usedIdentifiers.addAll(controllerGenerator.getMachineInstanceNames().values());
+            this.controllerInstanceName = uniqueIdentifier(
+                    sanitizeIdentifier(controllerGenerator.getFunctionBlockName() + "_inst", "controller_inst"),
+                    usedIdentifiers
+            );
+        }
+
+        private String getProgramName() {
+            return PROGRAM_NAME;
+        }
+
+        private String generatePouXml() {
+            List<VariableDecl> localVars = new ArrayList<>();
+            for (Map.Entry<String, String> entry : controllerGenerator.getMachineInstanceNames().entrySet()) {
+                BasicMachineGenerator generator = basicGeneratorsByMachineId.get(entry.getKey());
+                if (generator == null) {
+                    throw new IllegalArgumentException(
+                            "Missing function block generator for assembly machine '" + entry.getKey() + "'.");
+                }
+                localVars.add(new VariableDecl(entry.getValue(), generator.getFunctionBlockName(), true, null, null));
+            }
+            localVars.add(new VariableDecl(
+                    controllerInstanceName,
+                    controllerGenerator.getFunctionBlockName(),
+                    true,
+                    null,
+                    null
+            ));
+            return buildProgramPouXml(PROGRAM_NAME, localVars, buildBodyStructuredText());
+        }
+
+        private String buildBodyStructuredText() {
+            StringBuilder out = new StringBuilder();
+            for (Map.Entry<String, String> entry : controllerGenerator.getMachineInstanceNames().entrySet()) {
+                String instanceName = entry.getValue();
+                out.append(instanceName).append("();\n");
+            }
+            out.append(controllerInstanceName).append("(")
+                    .append(String.join(", ", buildControllerCallArguments()))
+                    .append(");\n");
+            return out.toString().trim();
+        }
+
+        private List<String> buildControllerCallArguments() {
+            List<String> arguments = new ArrayList<>();
+            for (Map.Entry<String, String> entry : controllerGenerator.getMachineInstanceNames().entrySet()) {
+                String formalName = controllerGenerator.getMachineFormalName(entry.getKey());
+                if (formalName == null) {
+                    throw new IllegalArgumentException(
+                            "Missing formal IN_OUT name for assembly machine '" + entry.getKey() + "'.");
+                }
+                arguments.add(formalName + " := " + entry.getValue());
+            }
+            return arguments;
+        }
+
+    }
+
     private static final class ControllerGenerator extends BaseGenerator {
         private final PWSStateMachine controller;
         private final Assembly assembly;
@@ -273,16 +393,17 @@ public final class PLCOpenExporter {
         private final LinkedHashMap<String, LinkedHashMap<String, String>> machineStateNames = new LinkedHashMap<>();
         private final LinkedHashMap<PWSState, String> controllerStateNames = new LinkedHashMap<>();
         private final LinkedHashMap<String, String> triggerInputNames = new LinkedHashMap<>();
+        private final LinkedHashMap<TransitionInterface, String> simulationInputNames = new LinkedHashMap<>();
         private final Set<String> usedIdentifiers = new LinkedHashSet<>();
         private final Set<String> usedTriggerIdentifiers = new LinkedHashSet<>();
 
-        private PWSTransition initialTransition;
+        private final List<PWSTransition> initialTransitions = new ArrayList<>();
         private boolean usesTimer;
 
-        private ControllerGenerator(PWSStateMachine controller) {
+        private ControllerGenerator(PWSStateMachine controller, String preferredControllerName) {
             super(
-                    sanitizeIdentifier(controller != null ? controller.getName() : null, "Controller"),
-                    sanitizeIdentifier("Stati_" + sanitizeIdentifier(controller != null ? controller.getName() : null, "Controller"),
+                    sanitizeIdentifier(chooseControllerName(controller, preferredControllerName), "Controller"),
+                    sanitizeIdentifier("Stati_" + sanitizeIdentifier(chooseControllerName(controller, preferredControllerName), "Controller"),
                             "Stati_Controller")
             );
             if (controller == null) {
@@ -301,6 +422,28 @@ public final class PLCOpenExporter {
 
         private String getEnumTypeName() {
             return enumTypeName;
+        }
+
+        private LinkedHashMap<String, String> getMachineInstanceNames() {
+            LinkedHashMap<String, String> names = new LinkedHashMap<>();
+            Set<String> used = new LinkedHashSet<>();
+            for (String machineId : assemblyMachines.keySet()) {
+                String formalName = machineVarNames.get(machineId);
+                if (formalName == null) {
+                    throw new IllegalArgumentException(
+                            "Missing controller variable name for assembly machine '" + machineId + "'.");
+                }
+                names.put(machineId, uniqueIdentifier(formalName + "_inst", used));
+            }
+            return names;
+        }
+
+        private String getMachineFormalName(String machineId) {
+            return machineVarNames.get(machineId);
+        }
+
+        private LinkedHashMap<String, String> getTriggerInputNames() {
+            return new LinkedHashMap<>(triggerInputNames);
         }
 
         private String generateDataTypeXml() {
@@ -328,25 +471,27 @@ public final class PLCOpenExporter {
                         machineVarNames.get(machineId),
                         machineTypeNames.get(machineId),
                         true,
+                        null,
                         null
                 ));
             }
 
             List<VariableDecl> inputVars = new ArrayList<>();
             for (String trigger : triggerInputNames.keySet()) {
-                inputVars.add(new VariableDecl(triggerInputNames.get(trigger), "BOOL", false, "FALSE"));
+                inputVars.add(new VariableDecl(triggerInputNames.get(trigger), "BOOL", false, "FALSE", null));
             }
 
             List<VariableDecl> outputVars = List.of(new VariableDecl(
                     "stato",
                     enumTypeName,
                     true,
-                    enumTypeName + "." + INITIAL_STATE_NAME
+                    enumTypeName + "." + INITIAL_STATE_NAME,
+                    null
             ));
 
             List<VariableDecl> localVars = new ArrayList<>();
             if (usesTimer) {
-                localVars.add(new VariableDecl("timer", "TON", true, null));
+                localVars.add(new VariableDecl("timer", "TON", true, null, null));
             }
 
             return buildPouXml(inOutVars, inputVars, outputVars, localVars, buildBodyStructuredText());
@@ -377,12 +522,8 @@ public final class PLCOpenExporter {
                     continue;
                 }
                 enabledTransitions.add(pt);
-                if (pt.isInitialTransition()) {
-                    if (initialTransition != null) {
-                        throw new IllegalArgumentException(
-                                "PLCopen export requires exactly one enabled initial transition.");
-                    }
-                    initialTransition = pt;
+                if (isControllerInitialTransition(pt)) {
+                    initialTransitions.add(pt);
                     continue;
                 }
                 if (pt.getSource() instanceof PWSState source && !source.isPseudoState()) {
@@ -395,8 +536,8 @@ public final class PLCOpenExporter {
             if (controllerStates.isEmpty()) {
                 throw new IllegalArgumentException("The controller has no logical states to export.");
             }
-            if (initialTransition == null) {
-                throw new IllegalArgumentException("PLCopen export requires one enabled initial transition.");
+            if (initialTransitions.isEmpty()) {
+                throw new IllegalArgumentException("PLCopen export requires at least one enabled initial transition.");
             }
             for (StateMachine machine : assemblyMachines.values()) {
                 if (machine instanceof PWSStateMachine) {
@@ -443,7 +584,7 @@ public final class PLCOpenExporter {
         private void collectTriggerInputs() {
             Set<String> usedTriggerNames = new LinkedHashSet<>();
             for (PWSTransition transition : enabledTransitions) {
-                if (!transition.isTriggerable() || transition.isInitialTransition()) {
+                if (!transition.isTriggerable() || isControllerInitialTransition(transition)) {
                     continue;
                 }
                 String trigger = transition.getTriggerEvent();
@@ -544,7 +685,9 @@ public final class PLCOpenExporter {
 
         private void appendInitialBranch(StringBuilder out) {
             out.append("    ").append(enumTypeName).append(".").append(INITIAL_STATE_NAME).append(":\n");
-            appendTransitionBody(out, initialTransition, false, "        ");
+            for (PWSTransition transition : initialTransitions) {
+                appendConditionalTransition(out, toCondition(transition), transition, false, "        ", "            ");
+            }
             out.append("\n");
         }
 
@@ -562,11 +705,24 @@ public final class PLCOpenExporter {
                 return;
             }
             for (PWSTransition transition : outgoing) {
-                out.append("        IF ").append(toCondition(transition)).append(" THEN\n");
-                appendTransitionBody(out, transition, state.isTimedState(), "            ");
-                out.append("        END_IF;\n");
+                appendConditionalTransition(out, toCondition(transition), transition, state.isTimedState(), "        ", "            ");
             }
             out.append("\n");
+        }
+
+        private void appendConditionalTransition(StringBuilder out,
+                                                 String condition,
+                                                 PWSTransition transition,
+                                                 boolean resetTimerAfterTransition,
+                                                 String baseIndent,
+                                                 String bodyIndent) {
+            if ("TRUE".equals(condition)) {
+                appendTransitionBody(out, transition, resetTimerAfterTransition, baseIndent);
+                return;
+            }
+            out.append(baseIndent).append("IF ").append(condition).append(" THEN\n");
+            appendTransitionBody(out, transition, resetTimerAfterTransition, bodyIndent);
+            out.append(baseIndent).append("END_IF;\n");
         }
 
         private void appendTransitionBody(StringBuilder out,
@@ -596,6 +752,13 @@ public final class PLCOpenExporter {
         }
 
         private String toCondition(PWSTransition transition) {
+            if (isControllerInitialTransition(transition)) {
+                String guard = toGuardCondition(transition.getGuardProposition());
+                if (isTrueGuard(transition.getGuardProposition())) {
+                    return "TRUE";
+                }
+                return guard;
+            }
             if (transition.isTimeoutTransition()) {
                 return "timer.Q";
             }
@@ -678,7 +841,7 @@ public final class PLCOpenExporter {
         }
 
         private String toConsumedTriggerReference(PWSTransition transition) {
-            if (transition == null || !transition.isTriggerable()) {
+            if (transition == null || isControllerInitialTransition(transition) || !transition.isTriggerable()) {
                 return null;
             }
             String trigger = triggerInputNames.get(transition.getTriggerEvent());
@@ -686,6 +849,19 @@ public final class PLCOpenExporter {
                 return null;
             }
             return trigger;
+        }
+
+        private boolean isControllerInitialTransition(PWSTransition transition) {
+            if (transition == null) {
+                return false;
+            }
+            if (transition.isInitialTransition()) {
+                return true;
+            }
+            if (transition.getSource() instanceof PWSState source && source.isPseudoState()) {
+                return true;
+            }
+            return "_init".equals(transition.getTriggerEvent());
         }
 
         private List<PWSTransition> getEnabledTimeoutTransitions(PWSState state) {
@@ -709,11 +885,12 @@ public final class PLCOpenExporter {
         private final List<TransitionInterface> enabledTransitions = new ArrayList<>();
         private final LinkedHashMap<StateInterface, List<TransitionInterface>> outgoingByState = new LinkedHashMap<>();
         private final LinkedHashMap<String, String> triggerInputNames = new LinkedHashMap<>();
+        private final LinkedHashMap<TransitionInterface, String> simulationInputNames = new LinkedHashMap<>();
         private final LinkedHashMap<StateInterface, String> stateNames = new LinkedHashMap<>();
         private final Set<String> usedIdentifiers = new LinkedHashSet<>();
         private final Set<String> usedTriggerIdentifiers = new LinkedHashSet<>();
 
-        private TransitionInterface initialTransition;
+        private final List<TransitionInterface> initialTransitions = new ArrayList<>();
         private boolean usesTimer;
 
         private BasicMachineGenerator(StateMachine machine, String fallbackName) {
@@ -734,6 +911,10 @@ public final class PLCOpenExporter {
 
         private String getEnumTypeName() {
             return enumTypeName;
+        }
+
+        private LinkedHashMap<String, String> getTriggerInputNames() {
+            return new LinkedHashMap<>(triggerInputNames);
         }
 
         private String generateDataTypeXml() {
@@ -757,19 +938,30 @@ public final class PLCOpenExporter {
             }
             List<VariableDecl> inputVars = new ArrayList<>();
             for (String trigger : triggerInputNames.keySet()) {
-                inputVars.add(new VariableDecl(triggerInputNames.get(trigger), "BOOL", false, "FALSE"));
+                inputVars.add(new VariableDecl(triggerInputNames.get(trigger), "BOOL", false, "FALSE", null));
+            }
+            for (Map.Entry<TransitionInterface, String> entry : simulationInputNames.entrySet()) {
+                TransitionInterface transition = entry.getKey();
+                inputVars.add(new VariableDecl(
+                        entry.getValue(),
+                        "BOOL",
+                        false,
+                        "FALSE",
+                        "simulation event from " + transition.getSource().getName() + " to " + transition.getTarget().getName()
+                ));
             }
 
             List<VariableDecl> outputVars = List.of(new VariableDecl(
                     "stato",
                     enumTypeName,
                     true,
-                    enumTypeName + "." + INITIAL_STATE_NAME
+                    enumTypeName + "." + INITIAL_STATE_NAME,
+                    null
             ));
 
             List<VariableDecl> localVars = new ArrayList<>();
             if (usesTimer) {
-                localVars.add(new VariableDecl("timer", "TON", true, null));
+                localVars.add(new VariableDecl("timer", "TON", true, null, null));
             }
 
             return buildPouXml(List.of(), inputVars, outputVars, localVars, buildBodyStructuredText());
@@ -796,11 +988,7 @@ public final class PLCOpenExporter {
                 }
                 enabledTransitions.add(transition);
                 if (isInitialTransition(machine, transition)) {
-                    if (initialTransition != null) {
-                        throw new IllegalArgumentException(
-                                "Machine '" + machine.getName() + "' requires exactly one enabled initial transition.");
-                    }
-                    initialTransition = transition;
+                    initialTransitions.add(transition);
                     continue;
                 }
                 StateInterface source = transition.getSource();
@@ -815,7 +1003,7 @@ public final class PLCOpenExporter {
                 throw new IllegalArgumentException(
                         "Machine '" + machine.getName() + "' has no logical states to export.");
             }
-            if (initialTransition == null) {
+            if (initialTransitions.isEmpty()) {
                 throw new IllegalArgumentException(
                         "Machine '" + machine.getName() + "' requires one enabled initial transition.");
             }
@@ -866,7 +1054,18 @@ public final class PLCOpenExporter {
         private void collectTriggerInputs() {
             Set<String> usedTriggerNames = new LinkedHashSet<>();
             for (TransitionInterface transition : enabledTransitions) {
-                if (!transition.isTriggerable() || isInitialTransition(machine, transition)) {
+                if (isSimulationInitialTransition(transition)) {
+                    simulationInputNames.put(transition, buildSimulationEventName(transition));
+                    continue;
+                }
+                if (isInitialTransition(machine, transition)) {
+                    continue;
+                }
+                if (isSimulationAutonomousTransition(transition)) {
+                    simulationInputNames.put(transition, buildSimulationEventName(transition));
+                    continue;
+                }
+                if (!transition.isTriggerable()) {
                     continue;
                 }
                 String trigger = transition.getTriggerEvent();
@@ -892,7 +1091,16 @@ public final class PLCOpenExporter {
 
         private void appendInitialBranch(StringBuilder out) {
             out.append("    ").append(enumTypeName).append(".").append(INITIAL_STATE_NAME).append(":\n");
-            appendTransitionBody(out, initialTransition, false, "        ");
+            for (TransitionInterface transition : initialTransitions) {
+                appendConditionalTransition(
+                        out,
+                        toInitialCondition(transition),
+                        transition,
+                        false,
+                        "        ",
+                        "            "
+                );
+            }
             out.append("\n");
         }
 
@@ -910,11 +1118,31 @@ public final class PLCOpenExporter {
                 return;
             }
             for (TransitionInterface transition : outgoing) {
-                out.append("        IF ").append(toCondition(transition)).append(" THEN\n");
-                appendTransitionBody(out, transition, state instanceof State concreteState && concreteState.isTimedState(), "            ");
-                out.append("        END_IF;\n");
+                appendConditionalTransition(
+                        out,
+                        toCondition(transition),
+                        transition,
+                        state instanceof State concreteState && concreteState.isTimedState(),
+                        "        ",
+                        "            "
+                );
             }
             out.append("\n");
+        }
+
+        private void appendConditionalTransition(StringBuilder out,
+                                                 String condition,
+                                                 TransitionInterface transition,
+                                                 boolean resetTimerAfterTransition,
+                                                 String baseIndent,
+                                                 String bodyIndent) {
+            if ("TRUE".equals(condition)) {
+                appendTransitionBody(out, transition, resetTimerAfterTransition, baseIndent);
+                return;
+            }
+            out.append(baseIndent).append("IF ").append(condition).append(" THEN\n");
+            appendTransitionBody(out, transition, resetTimerAfterTransition, bodyIndent);
+            out.append(baseIndent).append("END_IF;\n");
         }
 
         private void appendTransitionBody(StringBuilder out,
@@ -941,6 +1169,13 @@ public final class PLCOpenExporter {
             if (transition instanceof Transition concrete && concrete.isTimeoutTransition()) {
                 return "timer.Q";
             }
+            if (isSimulationAutonomousTransition(transition)) {
+                String simulationInput = simulationInputNames.get(transition);
+                if (simulationInput == null) {
+                    throw new IllegalArgumentException("Missing PLCopen simulation input name for autonomous transition.");
+                }
+                return simulationInput;
+            }
             if (!transition.isTriggerable()) {
                 return "TRUE";
             }
@@ -952,8 +1187,29 @@ public final class PLCOpenExporter {
             return triggerName;
         }
 
+        private String toInitialCondition(TransitionInterface transition) {
+            if (isSimulationInitialTransition(transition)) {
+                String simulationInput = simulationInputNames.get(transition);
+                if (simulationInput == null) {
+                    throw new IllegalArgumentException("Missing PLCopen simulation input name for initial transition.");
+                }
+                return simulationInput;
+            }
+            return "TRUE";
+        }
+
         private String toConsumedTriggerReference(TransitionInterface transition) {
-            if (transition == null || !transition.isTriggerable()) {
+            if (transition == null) {
+                return null;
+            }
+            if (isInitialTransition(machine, transition)) {
+                return null;
+            }
+            if (isSimulationAutonomousTransition(transition)) {
+                String simulationInput = simulationInputNames.get(transition);
+                return simulationInput == null || simulationInput.isBlank() ? null : simulationInput;
+            }
+            if (!transition.isTriggerable()) {
                 return null;
             }
             String triggerName = triggerInputNames.get(transition.getTriggerEvent());
@@ -961,6 +1217,35 @@ public final class PLCOpenExporter {
                 return null;
             }
             return triggerName;
+        }
+
+        private boolean isSimulationAutonomousTransition(TransitionInterface transition) {
+            if (transition == null || transition.isTriggerable()) {
+                return false;
+            }
+            if (isInitialTransition(machine, transition)) {
+                return false;
+            }
+            return !(transition instanceof Transition concrete) || !concrete.isTimeoutTransition();
+        }
+
+        private boolean isSimulationInitialTransition(TransitionInterface transition) {
+            if (transition == null || !isInitialTransition(machine, transition)) {
+                return false;
+            }
+            if (initialTransitions.size() <= 1) {
+                return false;
+            }
+            return !transition.isTriggerable();
+        }
+
+        private String buildSimulationEventName(TransitionInterface transition) {
+            String sourceName = isInitialTransition(machine, transition)
+                    ? INITIAL_STATE_NAME
+                    : transition.getSource() != null ? transition.getSource().getName() : "source";
+            String targetName = transition.getTarget() != null ? transition.getTarget().getName() : "target";
+            String base = "sim_event_" + sanitizeIdentifier(sourceName, "source") + "_" + sanitizeIdentifier(targetName, "target");
+            return uniqueIdentifier(base, usedTriggerIdentifiers);
         }
 
         private List<TransitionInterface> getEnabledTimeoutTransitions(State state) {
@@ -978,7 +1263,7 @@ public final class PLCOpenExporter {
         }
     }
 
-    private record VariableDecl(String name, String typeName, boolean derivedType, String initialValue) {
+    private record VariableDecl(String name, String typeName, boolean derivedType, String initialValue, String comment) {
     }
 
     private static boolean isTransitionEnabled(TransitionInterface transition) {
@@ -1030,6 +1315,29 @@ public final class PLCOpenExporter {
     private static String toEventVariableName(String event) {
         String sanitized = sanitizeIdentifier(event, "event");
         return sanitized.endsWith("_ev") ? sanitized : sanitized + "_ev";
+    }
+
+    private static String chooseControllerName(PWSStateMachine controller, String preferredControllerName) {
+        String preferred = normalizeControllerName(preferredControllerName);
+        if (preferred != null) {
+            return preferred;
+        }
+        String current = normalizeControllerName(controller != null ? controller.getName() : null);
+        if (current != null) {
+            return current;
+        }
+        return "Controller";
+    }
+
+    private static String normalizeControllerName(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty() || "Untitled".equalsIgnoreCase(trimmed)) {
+            return null;
+        }
+        return trimmed;
     }
 
     private static String sanitizeIdentifier(String raw, String fallback) {

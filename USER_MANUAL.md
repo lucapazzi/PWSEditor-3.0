@@ -17,6 +17,7 @@
 13. [Menu Reference](#menu-reference)
 14. [Controller Report](#controller-report)
 15. [Tips & Troubleshooting](#tips--troubleshooting)
+16. [ST and PLCopen Export](#st-and-plcopen-export)
 
 ---
 
@@ -104,13 +105,15 @@ Mini example:
 | **Triggered Transition** | A transition that fires when a specific event occurs (and guard is satisfied) |
 | **Autonomous Transition** | A transition without a trigger event; fires based on guard condition alone (monitors exit zones) |
 | **Initial Transition** | A transition from the pseudo-state; triggered by a hidden `_init` event at system startup (the trigger is not shown and `_init` is reserved) |
+| **Timed State** | A state with an associated time badge and one optional timeout transition |
+| **Timeout Transition** | A transition leaving a timed state when the state's timer expires |
 | **Guard** | A boolean condition that must be true to enable a transition |
 | **Action** | An emission (event output) that occurs when a transition fires |
 | **Constraint Semantics** | User-specified allowed configurations for a state |
 | **Computed Semantics** | Semantics inferred from state machine structure |
 | **Assembly** | A collection of component machines forming a part-whole hierarchy |
 | **Machine Library** | A repository of reusable state machine templates |
-| **Exit Zone** | A boundary condition created by a component machine autonomous transition that would leave a state's allowed configurations |
+| **Exit Zone** | A boundary condition created by a component machine autonomous or timeout transition that would leave a state's allowed configurations |
 | **Deadlock Configuration** | A configuration with no escape path to an outgoing transition (primary deadlock); if it also cannot evolve internally, it is a secondary deadlock |
 
 ---
@@ -189,6 +192,24 @@ When editing a **component machine** in the embedded editor (right-bottom panel)
 Right-click a component state to toggle **Fail state** manually. This option is **disabled** for unreachable states (which are already treated as fail by unreachability).
 Manual component Fail states are saved with the model and restored on load.
 
+### Timed States
+
+Timed states are supported in both the controller editor and the embedded component-machine editor.
+
+To mark a state as timed:
+1. Right-click a normal state.
+2. Toggle **Timed state**.
+3. Use **Edit timed label...** to set the time text shown in the badge.
+
+The timed label is exported as an IEC 61131-3 time literal. Labels such as `10s` are normalized to `T#10s`; labels already written as `T#10s` are preserved.
+
+Timed-state rules:
+- A timed state shows a rectangular time badge attached to the state.
+- The badge can be edited from the state context menu or by interacting with the badge.
+- Each timed state may have at most one timeout transition.
+- Removing the **Timed state** marker also removes the timeout transition after confirmation.
+- Pseudo-states cannot be timed.
+
 ---
 
 ## Assembly Initial Configurations Dashboard
@@ -197,6 +218,53 @@ In the **Assembly** view (right panel), the **Initial Configurations Dashboard**
 
 - **Closure**: the transitive closure obtained by repeatedly applying exit zones until
   no new configurations appear, rendered as a table (same layout as state dashboards).
+
+---
+
+## ST and PLCopen Export
+
+PWSEditor can export:
+
+- IEC 61131-3 Structured Text with `File -> Export as ST`
+- PLCopen XML with `File -> Export as PLCOpen XML`
+
+The export includes:
+
+- the controller function block
+- one function block for each simple component machine in the assembly
+- one enumerated DUT for each exported state set
+- one `PLC_PRG` scaffold that instantiates the controller and the exported component machines
+
+The generated `PLC_PRG` executes the component machines first, then the controller, and passes component instance names to the controller `VAR_IN_OUT` parameters. It does not add extra local event variables for FB inputs that are already default-initialized inside the FB declarations. Project-specific task/resource wiring remains the responsibility of the target PLC environment.
+
+Key conventions:
+
+- controller actions `<m.e>` are translated as `m.e_ev := TRUE;`
+- event inputs are exported as `*_ev : BOOL := FALSE;`
+- triggered transitions consume their trigger by resetting it to `FALSE` at the end of the `IF` body
+- generated transition logic uses separate `IF` blocks, not `ELSIF`
+
+Timed-state export rules:
+
+- a timed state must have exactly one timeout transition
+- a non-timed state cannot have a timeout transition
+- timeout labels are exported as ST time literals such as `T#25s`
+
+Controller export rules:
+
+- the assembly object must exist, but it may be empty
+- the controller must have at least one logical state
+- the controller must have at least one enabled initial transition from its pseudo-state
+
+Current exporter limitations:
+
+- only simple component machines are exported as component FBs
+- controller guards support `TRUE`, `FALSE`, atomic propositions `m.S`, and boolean `AND`/`OR`/`NOT`
+- simple component-machine export still assumes exactly one enabled initial transition and a simpler transition model than the controller exporter
+
+For the full and maintained specification of naming rules, translation rules, model constraints, and current exporter constraints, see:
+
+- `docs/ST_EXPORT.md`
 
 Each row is color-coded:
 - **Green**: covered by at least one **enabled initial transition** guard.
@@ -254,6 +322,9 @@ Alternative (existing workflow):
 
 - Right-click a state and choose **Create transition: choose arrival state** (link mode)
 - For initial transitions, right-click the pseudo-state (or alias) and choose **Add initial transition**
+- For timeout transitions, right-click a timed state and choose **Create timeout transition: choose arrival state**
+
+Timeout transitions follow the same endpoint rule: their target must be a different normal state, not the pseudo-state.
 
 ### Editing Transition Properties
 
@@ -275,7 +346,7 @@ Renaming a trigger (double-click the trigger label) automatically recomputes sem
 
 ### Understanding Transition Types
 
-PWSEditor supports two fundamentally different transition types:
+PWSEditor supports several transition types:
 
 #### Triggered Transitions
 
@@ -336,6 +407,18 @@ This distinction is important for understanding controller reports, which correc
 - **Initial**: Transitions from pseudo-state (hidden `_init` trigger)
 - **Autonomous**: Guard-driven transitions that monitor component machine states  
 - **Triggered**: Transitions with explicit event triggers
+
+#### Timeout Transitions
+
+A **timeout transition** leaves a timed state when that state's timer expires. It is drawn with the same timeout marker in controller and component editors.
+
+Timeout-transition rules:
+- The source state must be marked **Timed state**.
+- A timed state may have exactly one timeout transition for export.
+- Timeout transitions are not trigger-edited like normal event transitions; their generated condition is `timer.Q`.
+- When a timed marker is removed, the timeout transition from that state is removed as well.
+
+In component machines, timeout transitions are treated as reactive internal evolution for semantic analysis, alongside autonomous transitions. This means they can affect reactive-space and exit-zone calculations.
 
 ### Guard Conventions and Visual Feedback
 
@@ -411,7 +494,7 @@ Hover over an orange guard to see which trigger is missing coverage.
 
 **Exit zones** are the key to understanding autonomous transitions:
 
-1. An **exit zone** is derived from a component machine autonomous transition that would move the system **outside** the current state's allowed configurations
+1. An **exit zone** is derived from a component machine autonomous or timeout transition that would move the system **outside** the current state's allowed configurations
 2. When such a component transition becomes enabled in an allowed configuration, that configuration is an **exit zone**
 3. PWS-level autonomous transitions can use guards that match exit-zone targets to react to those boundary conditions
 
@@ -848,8 +931,8 @@ PWSEditor also flags **component-level deadlocks** inside the assembly machines 
 
 ### Primary vs Secondary Deadlock
 
-1. **Primary deadlock configuration**: no escape path exists from the configuration to any enabled outgoing controller transition (excluding self-loops), either directly or after internal autonomous evolution.
-2. **Secondary (internal) deadlock configuration**: the configuration is primary deadlocked **and** cannot evolve internally via autonomous component transitions.
+1. **Primary deadlock configuration**: no escape path exists from the configuration to any enabled outgoing controller transition (excluding self-loops), either directly or after internal component evolution.
+2. **Secondary (internal) deadlock configuration**: the configuration is primary deadlocked **and** cannot evolve internally via autonomous or timeout component transitions.
 
 Secondary deadlocks are stricter:
 - Secondary implies primary.
@@ -863,7 +946,7 @@ For each configuration in a state's computed semantics, PWSEditor computes which
 
 ```
 Configuration C1 can reach C2 if:
-  - There exists an autonomous transition in component machine M
+  - There exists an autonomous or timeout transition in component machine M
   - The transition changes M's state from S1 to S2
   - C1 contains M.S1 and C2 is C1 with M.S1 replaced by M.S2
 ```
@@ -961,7 +1044,7 @@ Deadlock detection is automatically recalculated whenever you:
 
 ### Overview
 
-**Exit zones** identify autonomous boundary conditions where controller attention is required. They are generated from enabled autonomous component transitions that would leave the current state's allowed semantics.
+**Exit zones** identify component boundary conditions where controller attention is required. They are generated from enabled autonomous or timeout component transitions that would leave the current state's allowed semantics.
 
 Incoming controller transitions are handled separately: destination constraints do not create exit zones and do not filter the reached semantics. Constraint-violating arrivals remain visible in `SS` as red rows.
 
@@ -983,7 +1066,7 @@ The source/target component transition is shown explicitly (`m:S→T`).
 
 ### How Exit Zones Are Computed
 
-Classical autonomous exit-zone candidates are computed from enabled autonomous component transitions:
+Classical exit-zone candidates are computed from enabled autonomous or timeout component transitions:
 
 ```
 1. Source proposition intersects current state semantics (reachable source)
@@ -1080,7 +1163,7 @@ Exit zones serve two purposes:
 
 The new typology changes behavior in a few important ways:
 - **State semantics keep violating arrivals visible**: incoming transition results outside destination constraints remain in computed semantics and are highlighted as constraint violations.
-- **Exit-zone analysis stays autonomous**: exit zones remain tied to autonomous component evolution.
+- **Exit-zone analysis stays tied to component evolution**: exit zones remain tied to autonomous and timeout component evolution.
 - **Constraint diagnostics stay separate**: incompatible incoming or internal configurations are shown in the configuration list rather than being folded into exit-zone analysis.
 - **Extended Dashboard keeps the exit-zone focus**: `EXIT ZONES ANALYSIS` reports origin category and coverage for classical/provisional exit zones.
 
@@ -1096,7 +1179,7 @@ The dashboard uses this scheme for exit-zone rows:
 | **Gray** | Internal exit zone (target already in semantics) — not selectable for autonomous guards |
 | **Amber** | Coverage not required (fail state) |
 
-Internal exit zones (gray) represent autonomous component evolution that stays within the current state's semantics. They are **not selectable** as guards for autonomous PWS transitions. Provisional (blue) exit zones **are selectable** and indicate constraints-only boundaries.
+Internal exit zones (gray) represent autonomous or timeout component evolution that stays within the current state's semantics. They are **not selectable** as guards for autonomous PWS transitions. Provisional (blue) exit zones **are selectable** and indicate constraints-only boundaries.
 
 **Provisional indicator:** A small **blue triangle** next to the “exit zones” label indicates that provisional (CS-only) exit zones are present.
 
@@ -1175,6 +1258,7 @@ PWSEditor saves documents in `.pws` format, which includes:
 - Annotation positions (guards, actions, semantics dashboards) and exit-zone label toggle
 - **View settings**: dashboard visibility, grid visibility, snap-to-grid, grid size, edit mode, state size, state border thickness, and state font size
 - **Pseudo-state aliases and per-transition alias anchoring** (controller, assembly machines, and library entries)
+- **Timed-state data**: timed markers, time labels, badge positions, and timeout-transition flags
 - **Window size, panel split positions, and Assembly/Library panel selection** (layout restoration)
 
 Single machine files (`.sm`) and library files (`.mlib`) also preserve pseudo-state aliases and transition anchoring.
@@ -1183,6 +1267,15 @@ Single machine files (`.sm`) and library files (`.mlib`) also preserve pseudo-st
 
 The current UI supports `.pws` workspaces, `.sm` single-machine files, and `.mlib` library files.
 Legacy `.bin` workspace loading is not exposed in the current UI.
+
+### Importing
+
+PWSEditor currently imports its native model formats:
+- `.pws`: full PWS workspace, opened from **File -> Open...**
+- `.sm`: single state-machine file, used by the standalone component-machine editor
+- `.mlib`: machine-library file, used by the library panel
+
+PLCopen XML import is not currently implemented. PLCopen XML is an export target for PLC tools.
 
 ### Exporting
 
@@ -1198,6 +1291,25 @@ Legacy `.bin` workspace loading is not exposed in the current UI.
 3. If saving to file, choose location and filename in the standard save dialog
 4. A **PNG snapshot** of the current diagram is created or copied to clipboard
 
+**Export as ST:**
+1. Go to **File -> Export as ST**
+2. Choose a `.st` destination
+3. PWSEditor writes IEC 61131-3 Structured Text containing the controller function block and the simple assembly component function blocks
+
+**Export as PLCOpen XML:**
+1. Go to **File -> Export as PLCOpen XML**
+2. Choose a `.xml` destination; the default file name uses `.plcopen.xml`
+3. PWSEditor writes a PLCopen XML project containing the same data types and function blocks generated for ST export
+
+ST and PLCopen export currently support simple assembly component machines. If the assembly contains nested PWS machines, export is rejected with an explanatory message.
+
+Code-generation conventions:
+- Each exported state set becomes a `Stati_<Name>` enumeration.
+- Each controller or component machine becomes a `FUNCTION_BLOCK`.
+- Controller actions `<m.e>` are emitted as `m.e_ev := TRUE;`.
+- Component event inputs are named with the `_ev` suffix and initialized to `FALSE`.
+- Timed states use a `TON` timer and timeout transitions test `timer.Q`.
+
 ---
 
 ## Menu Reference
@@ -1211,6 +1323,8 @@ Legacy `.bin` workspace loading is not exposed in the current UI.
 | **Save** | Save current document (prompts for location if new) |
 | **Save As...** | Save current document to a new location |
 | **Close** | Replace the current document with a new untitled workspace |
+| **Export as ST** | Export controller and simple assembly components as IEC 61131-3 Structured Text |
+| **Export as PLCOpen XML** | Export controller and simple assembly components as PLCopen XML |
 | **Export as PDF** | Export current diagram as a vector PDF |
 | **Export as PNG** | Export current diagram as a PNG image |
 | **Exit** | Close the editor |
@@ -1324,7 +1438,7 @@ Lists configurations with **no escape path to an outgoing controller transition*
 #### Secondary (Internal) Deadlock Configurations
 Lists configurations that are both:
 - with no escape path to outgoing transitions, and
-- unable to evolve internally via autonomous component transitions.
+- unable to evolve internally via autonomous or timeout component transitions.
 
 These are stricter deadlocks and are shown with red underlines in dashboards.
 
@@ -1386,7 +1500,7 @@ Use the report to get a comprehensive overview, then use the diagram to locate a
 #### "Red text or red underline appears"
 - **Cause**: Constraint violations (red text) or secondary deadlocks (red underline)
 - **Solution**: 
-  - Add autonomous transitions in component machines
+  - Add autonomous or timeout transitions in component machines
   - Add PWS transitions with guards covering the deadlock
   - Review if the configuration should be excluded via constraints
 
@@ -1564,6 +1678,12 @@ All model changes now automatically trigger semantics recalculation:
 
 #### PDF Export
 - Export diagrams as **vector PDF** documents for documentation and sharing
+
+#### ST and PLCopen Export
+- Export the controller and simple assembly component machines as IEC 61131-3 function blocks
+- Generate enumerated state data types (`Stati_*`) for each exported machine
+- Preserve timed states as `TON` timer logic and timeout transitions as `timer.Q` branches
+- Map controller actions `<m.e>` to component event inputs named `m.e_ev`
 
 #### UI Improvements
 - Window title shows document name and dirty status

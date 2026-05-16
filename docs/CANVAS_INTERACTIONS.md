@@ -27,6 +27,7 @@ This guide summarizes the core canvas interactions shared by the controller edit
 - `Cmd/Ctrl + Left drag` from a state creates a guard-triggered transition.
 - `Cmd/Ctrl + Shift + Left drag` from a non-pseudostate creates an event-triggered transition (default event `ev`).
 - `Cmd/Ctrl + Left drag` from the pseudostate (or one of its aliases) creates an initial `_init` transition.
+- Right-click a timed state and choose `Create timeout transition: choose arrival state` to create its timeout transition.
 
 These commands are intentionally separate from `Shift + Left` selection gestures to avoid shortcut conflicts.
 
@@ -45,14 +46,27 @@ For PWS controller exports: if exactly one endpoint is selected (only the state
 or only its dashboard), the dashed connector between state and dashboard is not
 exported. The connector is exported only when both endpoints are selected.
 
-## 5. Notes
+Controller workspaces also expose code-generation exports:
+- `File -> Export as ST` writes an IEC 61131-3 Structured Text file.
+- `File -> Export as PLCOpen XML` writes a PLCopen XML file for PLC tools.
+- These exports include the controller function block and simple assembly component function blocks.
+
+## 5. Timed States
+
+- Right-click a normal state and toggle `Timed state` to attach a time badge.
+- Use `Edit timed label...` to change the badge text, for example `10s` or `T#10s`.
+- Drag or edit the badge position directly from the canvas.
+- Each timed state may have one timeout transition.
+- Removing the timed marker also removes the state's timeout transition after confirmation.
+
+## 6. Notes
 
 - Pseudostate origin selection is supported the same way as alias selection (`Shift + Left click`).
 - Right-click context menus and existing link-mode workflows remain available.
 - `Cmd/Ctrl + E` toggles `Edit mode` in the active canvas.
 - In `PWSEditor`, `Cmd/Ctrl + A` and `Cmd/Ctrl + E` apply to the active state-machine panel (controller or embedded machine editor), based on focus/last interaction.
 
-## 6. File Menu Shortcuts
+## 7. File Menu Shortcuts
 
 Controller editor (`PWSEditor`):
 - `Cmd/Ctrl + N`: New
@@ -71,7 +85,7 @@ Controlled editor (`StateMachineEditor`):
 - `Cmd/Ctrl + Shift + E`: Export as PDF
 - `Cmd/Ctrl + P`: Export as PNG
 
-## 7. Assembly Components Preview Panel
+## 8. Assembly Components Preview Panel
 
 - The assembly components preview panel is in the **left side**, under the controller editor.
 - It is **hidden by default**.

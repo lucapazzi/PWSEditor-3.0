@@ -43,32 +43,47 @@ public final class STExporter {
 
     /** Generates Structured Text for the provided controller and its simple assembly machines. */
     public static String generate(PWSStateMachine controller) {
-        return new BundleGenerator(controller).generate();
+        return generate(controller, null);
+    }
+
+    /** Generates Structured Text for the provided controller using a preferred controller FB name. */
+    public static String generate(PWSStateMachine controller, String preferredControllerName) {
+        return new BundleGenerator(controller, preferredControllerName).generate();
     }
 
     /** Writes Structured Text for the provided controller to the given file. */
     public static void exportToFile(PWSStateMachine controller, File file) throws IOException {
+        exportToFile(controller, file, null);
+    }
+
+    /** Writes Structured Text for the provided controller using a preferred controller FB name. */
+    public static void exportToFile(PWSStateMachine controller, File file, String preferredControllerName) throws IOException {
         if (file == null) {
             throw new IllegalArgumentException("Target file cannot be null.");
         }
-        Files.writeString(file.toPath(), generate(controller), StandardCharsets.UTF_8);
+        Files.writeString(file.toPath(), generate(controller, preferredControllerName), StandardCharsets.UTF_8);
     }
 
     private static final class BundleGenerator {
         private final PWSStateMachine controller;
+        private final String preferredControllerName;
         private final LinkedHashMap<String, String> blockBodiesByName = new LinkedHashMap<>();
         private final List<String> orderedBodies = new ArrayList<>();
+        private final LinkedHashMap<String, BasicMachineGenerator> basicGeneratorsByMachineId = new LinkedHashMap<>();
+        private ControllerGenerator controllerGenerator;
 
-        private BundleGenerator(PWSStateMachine controller) {
+        private BundleGenerator(PWSStateMachine controller, String preferredControllerName) {
             if (controller == null) {
                 throw new IllegalArgumentException("Controller cannot be null.");
             }
             this.controller = controller;
+            this.preferredControllerName = preferredControllerName;
         }
 
         private String generate() {
             appendSimpleAssemblyMachines();
             appendController();
+            appendProgram();
             return String.join("\n\n", orderedBodies);
         }
 
@@ -88,13 +103,22 @@ public final class STExporter {
                             "Assembly machine '" + machineId + "' is not a simple machine and cannot be exported in this mode.");
                 }
                 BasicMachineGenerator generator = new BasicMachineGenerator(machine, machineId);
+                basicGeneratorsByMachineId.put(machineId, generator);
                 registerBlock(generator.getFunctionBlockName(), generator.generateSection());
             }
         }
 
         private void appendController() {
-            ControllerGenerator generator = new ControllerGenerator(controller);
-            registerBlock(generator.getFunctionBlockName(), generator.generateSection());
+            controllerGenerator = new ControllerGenerator(controller, preferredControllerName);
+            registerBlock(controllerGenerator.getFunctionBlockName(), controllerGenerator.generateSection());
+        }
+
+        private void appendProgram() {
+            if (controllerGenerator == null) {
+                throw new IllegalStateException("Controller export must be generated before PLC_PRG.");
+            }
+            ProgramGenerator generator = new ProgramGenerator(controllerGenerator, basicGeneratorsByMachineId);
+            registerBlock(generator.getProgramName(), generator.generateSection());
         }
 
         private void registerBlock(String blockName, String body) {
@@ -109,6 +133,74 @@ public final class STExporter {
                         "Multiple exported blocks resolve to the same ST name '" + blockName + "' but have different contents.");
             }
         }
+    }
+
+    private static final class ProgramGenerator {
+        private static final String PROGRAM_NAME = "PLC_PRG";
+
+        private final ControllerGenerator controllerGenerator;
+        private final LinkedHashMap<String, BasicMachineGenerator> basicGeneratorsByMachineId;
+        private final String controllerInstanceName;
+
+        private ProgramGenerator(ControllerGenerator controllerGenerator,
+                                 LinkedHashMap<String, BasicMachineGenerator> basicGeneratorsByMachineId) {
+            this.controllerGenerator = controllerGenerator;
+            this.basicGeneratorsByMachineId = basicGeneratorsByMachineId;
+
+            Set<String> usedIdentifiers = new LinkedHashSet<>();
+            usedIdentifiers.addAll(controllerGenerator.getMachineInstanceNames().values());
+            this.controllerInstanceName = uniqueIdentifier(
+                    sanitizeIdentifier(controllerGenerator.getFunctionBlockName() + "_inst", "controller_inst"),
+                    usedIdentifiers
+            );
+        }
+
+        private String getProgramName() {
+            return PROGRAM_NAME;
+        }
+
+        private String generateSection() {
+            StringBuilder out = new StringBuilder();
+            appendSeparator(out, "PROGRAM " + PROGRAM_NAME);
+            out.append("PROGRAM ").append(PROGRAM_NAME).append("\n");
+            out.append("VAR\n");
+            for (Map.Entry<String, String> entry : controllerGenerator.getMachineInstanceNames().entrySet()) {
+                BasicMachineGenerator generator = basicGeneratorsByMachineId.get(entry.getKey());
+                if (generator == null) {
+                    throw new IllegalArgumentException(
+                            "Missing function block generator for assembly machine '" + entry.getKey() + "'.");
+                }
+                out.append("    ").append(entry.getValue()).append(" : ")
+                        .append(generator.getFunctionBlockName()).append(";\n");
+            }
+            out.append("    ").append(controllerInstanceName).append(" : ")
+                    .append(controllerGenerator.getFunctionBlockName()).append(";\n");
+            out.append("END_VAR\n\n");
+
+            for (Map.Entry<String, String> entry : controllerGenerator.getMachineInstanceNames().entrySet()) {
+                String instanceName = entry.getValue();
+                out.append(instanceName).append("();\n");
+            }
+            out.append(controllerInstanceName).append("(")
+                    .append(String.join(", ", buildControllerCallArguments()))
+                    .append(");\n");
+            out.append("END_PROGRAM");
+            return out.toString();
+        }
+
+        private List<String> buildControllerCallArguments() {
+            List<String> arguments = new ArrayList<>();
+            for (Map.Entry<String, String> entry : controllerGenerator.getMachineInstanceNames().entrySet()) {
+                String formalName = controllerGenerator.getMachineFormalName(entry.getKey());
+                if (formalName == null) {
+                    throw new IllegalArgumentException(
+                            "Missing formal IN_OUT name for assembly machine '" + entry.getKey() + "'.");
+                }
+                arguments.add(formalName + " := " + entry.getValue());
+            }
+            return arguments;
+        }
+
     }
 
     private static final class ControllerGenerator {
@@ -126,12 +218,12 @@ public final class STExporter {
         private final Set<String> usedIdentifiers = new LinkedHashSet<>();
         private final Set<String> usedTriggerIdentifiers = new LinkedHashSet<>();
 
-        private PWSTransition initialTransition;
+        private final List<PWSTransition> initialTransitions = new ArrayList<>();
         private final String functionBlockName;
         private final String enumTypeName;
         private boolean usesTimer;
 
-        private ControllerGenerator(PWSStateMachine controller) {
+        private ControllerGenerator(PWSStateMachine controller, String preferredControllerName) {
             if (controller == null) {
                 throw new IllegalArgumentException("Controller cannot be null.");
             }
@@ -140,12 +232,35 @@ public final class STExporter {
             if (assembly == null) {
                 throw new IllegalArgumentException("Controller assembly is not available.");
             }
-            this.functionBlockName = sanitizeIdentifier(controller.getName(), "Controller");
+            String controllerName = chooseControllerName(controller, preferredControllerName);
+            this.functionBlockName = sanitizeIdentifier(controllerName, "Controller");
             this.enumTypeName = sanitizeIdentifier("Stati_" + functionBlockName, "Stati_Controller");
         }
 
         private String getFunctionBlockName() {
             return functionBlockName;
+        }
+
+        private LinkedHashMap<String, String> getMachineInstanceNames() {
+            LinkedHashMap<String, String> names = new LinkedHashMap<>();
+            Set<String> used = new LinkedHashSet<>();
+            for (String machineId : assemblyMachines.keySet()) {
+                String formalName = machineVarNames.get(machineId);
+                if (formalName == null) {
+                    throw new IllegalArgumentException(
+                            "Missing controller variable name for assembly machine '" + machineId + "'.");
+                }
+                names.put(machineId, uniqueIdentifier(formalName + "_inst", used));
+            }
+            return names;
+        }
+
+        private String getMachineFormalName(String machineId) {
+            return machineVarNames.get(machineId);
+        }
+
+        private LinkedHashMap<String, String> getTriggerInputNames() {
+            return new LinkedHashMap<>(triggerInputNames);
         }
 
         private String generateSection() {
@@ -183,12 +298,8 @@ public final class STExporter {
                     continue;
                 }
                 enabledTransitions.add(pt);
-                if (pt.isInitialTransition()) {
-                    if (initialTransition != null) {
-                        throw new IllegalArgumentException(
-                                "ST export requires exactly one enabled initial transition.");
-                    }
-                    initialTransition = pt;
+                if (isControllerInitialTransition(pt)) {
+                    initialTransitions.add(pt);
                     continue;
                 }
                 if (pt.getSource() instanceof PWSState source && !source.isPseudoState()) {
@@ -201,8 +312,8 @@ public final class STExporter {
             if (controllerStates.isEmpty()) {
                 throw new IllegalArgumentException("The controller has no logical states to export.");
             }
-            if (initialTransition == null) {
-                throw new IllegalArgumentException("ST export requires one enabled initial transition.");
+            if (initialTransitions.isEmpty()) {
+                throw new IllegalArgumentException("ST export requires at least one enabled initial transition.");
             }
             for (StateMachine machine : assemblyMachines.values()) {
                 if (machine instanceof PWSStateMachine) {
@@ -246,7 +357,7 @@ public final class STExporter {
         private void collectTriggerInputs() {
             Set<String> usedTriggerNames = new LinkedHashSet<>();
             for (PWSTransition transition : enabledTransitions) {
-                if (!transition.isTriggerable() || transition.isInitialTransition()) {
+                if (!transition.isTriggerable() || isControllerInitialTransition(transition)) {
                     continue;
                 }
                 String trigger = transition.getTriggerEvent();
@@ -404,7 +515,9 @@ public final class STExporter {
 
         private void appendInitialBranch(StringBuilder out) {
             out.append("    ").append(enumTypeName).append(".").append(INITIAL_STATE_NAME).append(":\n");
-            appendTransitionBody(out, initialTransition, false, "        ");
+            for (PWSTransition transition : initialTransitions) {
+                appendConditionalTransition(out, toCondition(transition), transition, false, "        ", "            ", false);
+            }
             out.append("\n");
         }
 
@@ -422,11 +535,25 @@ public final class STExporter {
                 return;
             }
             for (PWSTransition transition : outgoing) {
-                out.append("        IF ").append(toCondition(transition)).append(" THEN\n");
-                appendTransitionBody(out, transition, state.isTimedState(), "            ");
-                out.append("        END_IF\n");
+                appendConditionalTransition(out, toCondition(transition), transition, state.isTimedState(), "        ", "            ", false);
             }
             out.append("\n");
+        }
+
+        private void appendConditionalTransition(StringBuilder out,
+                                                 String condition,
+                                                 PWSTransition transition,
+                                                 boolean resetTimerAfterTransition,
+                                                 String baseIndent,
+                                                 String bodyIndent,
+                                                 boolean terminateIf) {
+            if ("TRUE".equals(condition)) {
+                appendTransitionBody(out, transition, resetTimerAfterTransition, baseIndent);
+                return;
+            }
+            out.append(baseIndent).append("IF ").append(condition).append(" THEN\n");
+            appendTransitionBody(out, transition, resetTimerAfterTransition, bodyIndent);
+            out.append(baseIndent).append(terminateIf ? "END_IF;\n" : "END_IF\n");
         }
 
         private void appendTransitionBody(StringBuilder out,
@@ -456,6 +583,13 @@ public final class STExporter {
         }
 
         private String toCondition(PWSTransition transition) {
+            if (isControllerInitialTransition(transition)) {
+                String guard = toGuardCondition(transition.getGuardProposition());
+                if (isTrueGuard(transition.getGuardProposition())) {
+                    return "TRUE";
+                }
+                return guard;
+            }
             if (transition.isTimeoutTransition()) {
                 return "timer.Q";
             }
@@ -538,7 +672,7 @@ public final class STExporter {
         }
 
         private String toConsumedTriggerReference(PWSTransition transition) {
-            if (transition == null || !transition.isTriggerable()) {
+            if (transition == null || isControllerInitialTransition(transition) || !transition.isTriggerable()) {
                 return null;
             }
             String trigger = triggerInputNames.get(transition.getTriggerEvent());
@@ -546,6 +680,19 @@ public final class STExporter {
                 return null;
             }
             return trigger;
+        }
+
+        private boolean isControllerInitialTransition(PWSTransition transition) {
+            if (transition == null) {
+                return false;
+            }
+            if (transition.isInitialTransition()) {
+                return true;
+            }
+            if (transition.getSource() instanceof PWSState source && source.isPseudoState()) {
+                return true;
+            }
+            return "_init".equals(transition.getTriggerEvent());
         }
 
         private List<PWSTransition> getEnabledTimeoutTransitions(PWSState state) {
@@ -569,13 +716,14 @@ public final class STExporter {
         private final List<TransitionInterface> enabledTransitions = new ArrayList<>();
         private final LinkedHashMap<StateInterface, List<TransitionInterface>> outgoingByState = new LinkedHashMap<>();
         private final LinkedHashMap<String, String> triggerInputNames = new LinkedHashMap<>();
+        private final LinkedHashMap<TransitionInterface, String> simulationInputNames = new LinkedHashMap<>();
         private final LinkedHashMap<StateInterface, String> stateNames = new LinkedHashMap<>();
         private final Set<String> usedIdentifiers = new LinkedHashSet<>();
         private final Set<String> usedTriggerIdentifiers = new LinkedHashSet<>();
 
         private final String functionBlockName;
         private final String enumTypeName;
-        private TransitionInterface initialTransition;
+        private final List<TransitionInterface> initialTransitions = new ArrayList<>();
         private boolean usesTimer;
 
         private BasicMachineGenerator(StateMachine machine, String fallbackName) {
@@ -589,6 +737,10 @@ public final class STExporter {
 
         private String getFunctionBlockName() {
             return functionBlockName;
+        }
+
+        private LinkedHashMap<String, String> getTriggerInputNames() {
+            return new LinkedHashMap<>(triggerInputNames);
         }
 
         private String generateSection() {
@@ -622,11 +774,7 @@ public final class STExporter {
                 }
                 enabledTransitions.add(transition);
                 if (isInitialTransition(machine, transition)) {
-                    if (initialTransition != null) {
-                        throw new IllegalArgumentException(
-                                "Machine '" + machine.getName() + "' requires exactly one enabled initial transition.");
-                    }
-                    initialTransition = transition;
+                    initialTransitions.add(transition);
                     continue;
                 }
                 StateInterface source = transition.getSource();
@@ -641,7 +789,7 @@ public final class STExporter {
                 throw new IllegalArgumentException(
                         "Machine '" + machine.getName() + "' has no logical states to export.");
             }
-            if (initialTransition == null) {
+            if (initialTransitions.isEmpty()) {
                 throw new IllegalArgumentException(
                         "Machine '" + machine.getName() + "' requires one enabled initial transition.");
             }
@@ -689,7 +837,18 @@ public final class STExporter {
         private void collectTriggerInputs() {
             Set<String> usedTriggerNames = new LinkedHashSet<>();
             for (TransitionInterface transition : enabledTransitions) {
-                if (!transition.isTriggerable() || isInitialTransition(machine, transition)) {
+                if (isSimulationInitialTransition(transition)) {
+                    simulationInputNames.put(transition, buildSimulationEventName(transition));
+                    continue;
+                }
+                if (isInitialTransition(machine, transition)) {
+                    continue;
+                }
+                if (isSimulationAutonomousTransition(transition)) {
+                    simulationInputNames.put(transition, buildSimulationEventName(transition));
+                    continue;
+                }
+                if (!transition.isTriggerable()) {
                     continue;
                 }
                 String trigger = transition.getTriggerEvent();
@@ -719,10 +878,19 @@ public final class STExporter {
         private String buildFunctionBlock() {
             StringBuilder out = new StringBuilder();
             out.append("FUNCTION_BLOCK ").append(functionBlockName).append("\n");
-            if (!triggerInputNames.isEmpty()) {
+            if (!triggerInputNames.isEmpty() || !simulationInputNames.isEmpty()) {
                 out.append("VAR_INPUT\n");
                 for (String trigger : triggerInputNames.keySet()) {
                     out.append("    ").append(triggerInputNames.get(trigger)).append(" : BOOL := FALSE;\n");
+                }
+                for (Map.Entry<TransitionInterface, String> entry : simulationInputNames.entrySet()) {
+                    TransitionInterface transition = entry.getKey();
+                    out.append("    ").append(entry.getValue()).append(" : BOOL := FALSE; ")
+                            .append("(* simulation event from ")
+                            .append(transition.getSource().getName())
+                            .append(" to ")
+                            .append(transition.getTarget().getName())
+                            .append(" *)\n");
                 }
                 out.append("END_VAR\n");
             }
@@ -748,7 +916,16 @@ public final class STExporter {
 
         private void appendInitialBranch(StringBuilder out) {
             out.append("    ").append(enumTypeName).append(".").append(INITIAL_STATE_NAME).append(":\n");
-            appendTransitionBody(out, initialTransition, false, "        ");
+            for (TransitionInterface transition : initialTransitions) {
+                appendConditionalTransition(
+                        out,
+                        toInitialCondition(transition),
+                        transition,
+                        false,
+                        "        ",
+                        "            "
+                );
+            }
             out.append("\n");
         }
 
@@ -766,11 +943,31 @@ public final class STExporter {
                 return;
             }
             for (TransitionInterface transition : outgoing) {
-                out.append("        IF ").append(toCondition(transition)).append(" THEN\n");
-                appendTransitionBody(out, transition, state instanceof State concreteState && concreteState.isTimedState(), "            ");
-                out.append("        END_IF;\n");
+                appendConditionalTransition(
+                        out,
+                        toCondition(transition),
+                        transition,
+                        state instanceof State concreteState && concreteState.isTimedState(),
+                        "        ",
+                        "            "
+                );
             }
             out.append("\n");
+        }
+
+        private void appendConditionalTransition(StringBuilder out,
+                                                 String condition,
+                                                 TransitionInterface transition,
+                                                 boolean resetTimerAfterTransition,
+                                                 String baseIndent,
+                                                 String bodyIndent) {
+            if ("TRUE".equals(condition)) {
+                appendTransitionBody(out, transition, resetTimerAfterTransition, baseIndent);
+                return;
+            }
+            out.append(baseIndent).append("IF ").append(condition).append(" THEN\n");
+            appendTransitionBody(out, transition, resetTimerAfterTransition, bodyIndent);
+            out.append(baseIndent).append("END_IF;\n");
         }
 
         private void appendTransitionBody(StringBuilder out,
@@ -797,6 +994,13 @@ public final class STExporter {
             if (transition instanceof Transition concrete && concrete.isTimeoutTransition()) {
                 return "timer.Q";
             }
+            if (isSimulationAutonomousTransition(transition)) {
+                String simulationInput = simulationInputNames.get(transition);
+                if (simulationInput == null) {
+                    throw new IllegalArgumentException("Missing ST simulation input name for autonomous transition.");
+                }
+                return simulationInput;
+            }
             if (!transition.isTriggerable()) {
                 return "TRUE";
             }
@@ -808,8 +1012,29 @@ public final class STExporter {
             return triggerName;
         }
 
+        private String toInitialCondition(TransitionInterface transition) {
+            if (isSimulationInitialTransition(transition)) {
+                String simulationInput = simulationInputNames.get(transition);
+                if (simulationInput == null) {
+                    throw new IllegalArgumentException("Missing ST simulation input name for initial transition.");
+                }
+                return simulationInput;
+            }
+            return "TRUE";
+        }
+
         private String toConsumedTriggerReference(TransitionInterface transition) {
-            if (transition == null || !transition.isTriggerable()) {
+            if (transition == null) {
+                return null;
+            }
+            if (isInitialTransition(machine, transition)) {
+                return null;
+            }
+            if (isSimulationAutonomousTransition(transition)) {
+                String simulationInput = simulationInputNames.get(transition);
+                return simulationInput == null || simulationInput.isBlank() ? null : simulationInput;
+            }
+            if (!transition.isTriggerable()) {
                 return null;
             }
             String triggerName = triggerInputNames.get(transition.getTriggerEvent());
@@ -817,6 +1042,35 @@ public final class STExporter {
                 return null;
             }
             return triggerName;
+        }
+
+        private boolean isSimulationAutonomousTransition(TransitionInterface transition) {
+            if (transition == null || transition.isTriggerable()) {
+                return false;
+            }
+            if (isInitialTransition(machine, transition)) {
+                return false;
+            }
+            return !(transition instanceof Transition concrete) || !concrete.isTimeoutTransition();
+        }
+
+        private boolean isSimulationInitialTransition(TransitionInterface transition) {
+            if (transition == null || !isInitialTransition(machine, transition)) {
+                return false;
+            }
+            if (initialTransitions.size() <= 1) {
+                return false;
+            }
+            return !transition.isTriggerable();
+        }
+
+        private String buildSimulationEventName(TransitionInterface transition) {
+            String sourceName = isInitialTransition(machine, transition)
+                    ? INITIAL_STATE_NAME
+                    : transition.getSource() != null ? transition.getSource().getName() : "source";
+            String targetName = transition.getTarget() != null ? transition.getTarget().getName() : "target";
+            String base = "sim_event_" + sanitizeIdentifier(sourceName, "source") + "_" + sanitizeIdentifier(targetName, "target");
+            return uniqueIdentifier(base, usedTriggerIdentifiers);
         }
 
         private List<TransitionInterface> getEnabledTimeoutTransitions(State state) {
@@ -883,6 +1137,29 @@ public final class STExporter {
     private static String toEventVariableName(String event) {
         String sanitized = sanitizeIdentifier(event, "event");
         return sanitized.endsWith("_ev") ? sanitized : sanitized + "_ev";
+    }
+
+    private static String chooseControllerName(PWSStateMachine controller, String preferredControllerName) {
+        String preferred = normalizeControllerName(preferredControllerName);
+        if (preferred != null) {
+            return preferred;
+        }
+        String current = normalizeControllerName(controller != null ? controller.getName() : null);
+        if (current != null) {
+            return current;
+        }
+        return "Controller";
+    }
+
+    private static String normalizeControllerName(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty() || "Untitled".equalsIgnoreCase(trimmed)) {
+            return null;
+        }
+        return trimmed;
     }
 
     private static void appendSeparator(StringBuilder out, String title) {

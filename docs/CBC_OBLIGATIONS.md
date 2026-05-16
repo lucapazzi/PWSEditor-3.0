@@ -286,7 +286,7 @@ A primary deadlock configuration has no escape path to any enabled outgoing cont
 Escape path may be:
 
 - direct transition coverage
-- or internal autonomous evolution to another configuration that is directly covered
+- or internal component evolution to another configuration that is directly covered
 
 Enforcement surfaces:
 
@@ -308,7 +308,7 @@ Enforcement surfaces:
 - detailed listing in Extended Details
 - Controller Report section for **Secondary (Internal) Deadlock Configurations**
 
-In other words, deadlock avoidance is enforced as a per-configuration CBC obligation. After each semantics recomputation, the editor checks whether every computed configuration still has an escape path to some enabled outgoing non-self controller transition, either directly or after internal autonomous evolution. Configurations that lose every escape path violate the primary-deadlock obligation; configurations that also cannot evolve internally violate the secondary-deadlock obligation. This is enforced incrementally by immediate diagnosis and reporting rather than by blocking the edit itself.
+In other words, deadlock avoidance is enforced as a per-configuration CBC obligation. After each semantics recomputation, the editor checks whether every computed configuration still has an escape path to some enabled outgoing non-self controller transition, either directly or after internal component evolution. Configurations that lose every escape path violate the primary-deadlock obligation; configurations that also cannot evolve internally violate the secondary-deadlock obligation. This is enforced incrementally by immediate diagnosis and reporting rather than by blocking the edit itself.
 
 ## Fail-state masking
 

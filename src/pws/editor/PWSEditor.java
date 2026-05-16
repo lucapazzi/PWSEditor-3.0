@@ -1838,7 +1838,7 @@ public class PWSEditor extends JFrame {
         }
 
         try {
-            utility.STExporter.exportToFile(pwsStateMachine, file);
+            utility.STExporter.exportToFile(pwsStateMachine, file, resolveControllerExportName(file));
             JOptionPane.showMessageDialog(this,
                     "Structured Text file saved successfully.");
         } catch (IllegalArgumentException ex) {
@@ -1880,7 +1880,7 @@ public class PWSEditor extends JFrame {
         }
 
         try {
-            utility.PLCOpenExporter.exportToFile(pwsStateMachine, file);
+            utility.PLCOpenExporter.exportToFile(pwsStateMachine, file, resolveControllerExportName(file));
             JOptionPane.showMessageDialog(this,
                     "PLCOpen XML file saved successfully.");
         } catch (IllegalArgumentException ex) {
@@ -1912,6 +1912,32 @@ public class PWSEditor extends JFrame {
             baseName = pwsStateMachine.getName().trim();
         }
         return new File(baseName + ".st");
+    }
+
+    private String resolveControllerExportName(File file) {
+        if (file != null) {
+            String fileName = file.getName();
+            if (fileName != null && !fileName.isBlank()) {
+                String baseName = fileName;
+                if (baseName.toLowerCase().endsWith(".plcopen.xml")) {
+                    baseName = baseName.substring(0, baseName.length() - ".plcopen.xml".length());
+                } else {
+                    int dot = baseName.indexOf('.');
+                    if (dot > 0) {
+                        baseName = baseName.substring(0, dot);
+                    }
+                }
+                if (!baseName.isBlank()) {
+                    return baseName;
+                }
+            }
+        }
+        if (currentDocument != null && currentDocument.getFile() != null) {
+            String fileName = currentDocument.getFile().getName();
+            int dot = fileName.lastIndexOf('.');
+            return (dot > 0) ? fileName.substring(0, dot) : fileName;
+        }
+        return pwsStateMachine != null ? pwsStateMachine.getName() : null;
     }
 
     private File buildDefaultPLCOpenExportFile() {
