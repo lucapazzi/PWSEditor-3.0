@@ -3,6 +3,7 @@ package editor;
 import machinery.*;
 import pws.PWSTransition;
 import utility.DraggableTriggerLabel;
+import utility.SnapUtils;
 
 import javax.swing.*;
 import java.awt.*;
@@ -651,15 +652,10 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
                     } else if (this.isSnapToGrid()) {
                         int grid = this.getGridSize();
                         if (grid > 0) {
-                            int w = size.width;
-                            int h = size.height;
-                            int centerX = defaultX + w / 2;
-                            int centerY = defaultY + h / 2;
-                            float half = grid / 2f;
-                            int snappedCenterX = Math.round(centerX / half) * Math.round(half);
-                            int snappedCenterY = Math.round(centerY / half) * Math.round(half);
-                            placedX = snappedCenterX - w / 2;
-                            placedY = snappedCenterY - h / 2;
+                            Point snapped = SnapUtils.snapComponentTopLeftToHalfGrid(
+                                    defaultX, defaultY, size.width, size.height, grid);
+                            placedX = snapped.x;
+                            placedY = snapped.y;
                         }
                     }
 
@@ -1636,7 +1632,6 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         }
         boolean moved = false;
         int grid = getGridSize();
-        int half = Math.max(1, grid / 2);
 
         for (StateInterface state : selectedStates) {
             if (!(state instanceof State st)) continue;
@@ -1669,12 +1664,10 @@ public class StateMachinePanel extends JPanel implements MouseListener, MouseMot
         for (Component c : selectedComponents) {
             if (c == null || c.getParent() != this || !c.isVisible()) continue;
             Rectangle b = c.getBounds();
-            int centerX = b.x + b.width / 2;
-            int centerY = b.y + b.height / 2;
-            int snappedCenterX = Math.round((float) centerX / half) * half;
-            int snappedCenterY = Math.round((float) centerY / half) * half;
-            int snappedX = snappedCenterX - b.width / 2;
-            int snappedY = snappedCenterY - b.height / 2;
+            Point snapped = SnapUtils.snapComponentTopLeftToHalfGrid(
+                    b.x, b.y, b.width, b.height, grid);
+            int snappedX = snapped.x;
+            int snappedY = snapped.y;
             if (snappedX != b.x || snappedY != b.y) {
                 c.setBounds(snappedX, snappedY, b.width, b.height);
                 if (c instanceof DraggableTriggerLabel label && label.getAssociatedTransition() != null) {

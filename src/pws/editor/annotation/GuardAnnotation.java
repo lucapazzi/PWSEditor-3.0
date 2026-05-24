@@ -28,6 +28,7 @@ import pws.editor.semantics.ExitZone;
 import pws.editor.semantics.Semantics;
 import machinery.StateMachine;
 import machinery.TransitionInterface;
+import utility.SnapUtils;
 
 /** Annotation widget for editing guard propositions. */
 @SuppressWarnings("this-escape")
@@ -94,21 +95,9 @@ public class GuardAnnotation extends Annotation<SMProposition> {
                 if (parent instanceof editor.StateMachinePanel panel && panel.isSnapToGrid()) {
                     int grid = panel.getGridSize();
                     if (grid <= 0) return;
-
-                    int x = getX();
-                    int y = getY();
-                    int w = getWidth();
-                    int h = getHeight();
-                    int centerX = x + w / 2;
-                    int centerY = y + h / 2;
-
-                    float half = grid / 2f;
-                    int snappedCenterX = Math.round(centerX / half) * Math.round(half);
-                    int snappedCenterY = Math.round(centerY / half) * Math.round(half);
-
-                    int snappedX = snappedCenterX - w / 2;
-                    int snappedY = snappedCenterY - h / 2;
-                    setLocation(snappedX, snappedY);
+                    Point snapped = SnapUtils.snapComponentTopLeftToHalfGrid(
+                            getX(), getY(), getWidth(), getHeight(), grid);
+                    setLocation(snapped);
                     if (getParent() != null) getParent().repaint();
                 }
             }

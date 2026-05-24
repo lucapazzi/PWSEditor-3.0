@@ -93,20 +93,11 @@ public class DraggableTriggerLabel extends JLabel {
                     if (panel.isSnapToGrid()) {
                         int grid = panel.getGridSize();
                         if (grid > 0) {
-                            int x = getX();
-                            int y = getY();
-                            int w = getWidth();
-                            int h = getHeight();
-                            int centerX = x + w / 2;
-                            int centerY = y + h / 2;
-                            int half = Math.max(1, grid / 2);
-                            int snappedCenterX = Math.round((float) centerX / half) * half;
-                            int snappedCenterY = Math.round((float) centerY / half) * half;
-                            int snappedX = snappedCenterX - w / 2;
-                            int snappedY = snappedCenterY - h / 2;
-                            setLocation(snappedX, snappedY);
+                            Point snapped = SnapUtils.snapComponentTopLeftToHalfGrid(
+                                    getX(), getY(), getWidth(), getHeight(), grid);
+                            setLocation(snapped);
                             if (associatedTransition != null) {
-                                associatedTransition.setTriggerOffset(new Point(snappedX, snappedY));
+                                associatedTransition.setTriggerOffset(new Point(snapped));
                             }
                             if (getParent() != null) getParent().repaint();
                         }
@@ -135,18 +126,11 @@ public class DraggableTriggerLabel extends JLabel {
                     if (panel.isSnapToGrid()) {
                         int grid = panel.getGridSize();
                         if (grid > 0) {
-                            int w = getWidth();
-                            int h = getHeight();
-                            int centerX = newX + w / 2;
-                            int centerY = newY + h / 2;
-                            int half = Math.max(1, grid / 2);
-                            int snappedCenterX = Math.round((float) centerX / half) * half;
-                            int snappedCenterY = Math.round((float) centerY / half) * half;
-                            int snappedX = snappedCenterX - w / 2;
-                            int snappedY = snappedCenterY - h / 2;
-                            setLocation(snappedX, snappedY);
-                            newX = snappedX;
-                            newY = snappedY;
+                            Point snapped = SnapUtils.snapComponentTopLeftToHalfGrid(
+                                    newX, newY, getWidth(), getHeight(), grid);
+                            setLocation(snapped);
+                            newX = snapped.x;
+                            newY = snapped.y;
                         } else {
                             setLocation(newX, newY);
                         }

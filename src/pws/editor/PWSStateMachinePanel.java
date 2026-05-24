@@ -22,6 +22,7 @@ import smalgebra.BasicStateProposition;
 import smalgebra.SMProposition;
 import smalgebra.TrueProposition;
 import utility.DraggableTriggerLabel;
+import utility.SnapUtils;
 
 import javax.swing.*;
 import java.awt.*;
@@ -2402,7 +2403,6 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         }
         boolean moved = false;
         int grid = getGridSize();
-        int half = Math.max(1, grid / 2);
 
         for (StateInterface state : selectedStates) {
             if (!(state instanceof machinery.State st)) continue;
@@ -2435,12 +2435,10 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         for (Component c : selectedComponents) {
             if (c == null || c.getParent() != this || !c.isVisible()) continue;
             Rectangle b = c.getBounds();
-            int centerX = b.x + b.width / 2;
-            int centerY = b.y + b.height / 2;
-            int snappedCenterX = Math.round((float) centerX / half) * half;
-            int snappedCenterY = Math.round((float) centerY / half) * half;
-            int snappedX = snappedCenterX - b.width / 2;
-            int snappedY = snappedCenterY - b.height / 2;
+            Point snapped = SnapUtils.snapComponentTopLeftToHalfGrid(
+                    b.x, b.y, b.width, b.height, grid);
+            int snappedX = snapped.x;
+            int snappedY = snapped.y;
             if (snappedX != b.x || snappedY != b.y) {
                 c.setBounds(snappedX, snappedY, b.width, b.height);
                 if (c instanceof DraggableTriggerLabel label && label.getAssociatedTransition() != null) {

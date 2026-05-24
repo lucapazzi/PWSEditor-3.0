@@ -7,6 +7,7 @@ import java.awt.event.MouseEvent;
 import java.io.Serializable;
 
 import editor.StateMachinePanel;
+import utility.SnapUtils;
 
 /**
  * Base draggable annotation component bound to a piece of model content.
@@ -68,25 +69,9 @@ public class Annotation<T> extends JComponent implements Serializable {
                 if (parent instanceof StateMachinePanel panel && panel.isSnapToGrid()) {
                     int grid = panel.getGridSize();
                     if (grid > 0) {
-                        int x = getX();
-                        int y = getY();
-                        int width = getWidth();
-                        int height = getHeight();
-
-                        // Calculate center position
-                        int centerX = x + width / 2;
-                        int centerY = y + height / 2;
-
-                        // Snap center to half-grid (grid/2) increments
-                        int half = Math.max(1, grid / 2);
-                        int snappedCenterX = Math.round((float) centerX / half) * half;
-                        int snappedCenterY = Math.round((float) centerY / half) * half;
-
-                        // Calculate new top-left position from snapped center
-                        int snappedX = snappedCenterX - width / 2;
-                        int snappedY = snappedCenterY - height / 2;
-
-                        setLocation(snappedX, snappedY);
+                        Point snapped = SnapUtils.snapComponentTopLeftToHalfGrid(
+                                getX(), getY(), getWidth(), getHeight(), grid);
+                        setLocation(snapped);
                         if (getParent() != null) {
                             getParent().repaint();
                         }
