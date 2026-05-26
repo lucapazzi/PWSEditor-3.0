@@ -135,12 +135,44 @@ public class PWSStateMachine extends StateMachine {
         return cs != null && !cs.getConfigurations().isEmpty();
     }
 
+    private boolean useConstraintBoundary(PWSState ps) {
+        return constraintAwareExitZoneInternalityEnabled && hasExplicitConstraints(ps);
+    }
+
+    private Semantics clipSemanticsToExplicitConstraints(PWSState ps, Semantics sem) {
+        if (!useConstraintBoundary(ps) || sem == null || sem.ISEMPTY()) {
+            return sem;
+        }
+        Semantics cs = ps.getConstraintsSemantics();
+        if (cs == null || cs.ISEMPTY()) {
+            return sem;
+        }
+        return sem.AND(cs);
+    }
+
+    private HashSet<ExitZone> findReactiveExitZonesForState(PWSState ps, Semantics baseSemantics) {
+        HashSet<ExitZone> zones = new HashSet<>();
+        if (!exitZoneComputationEnabled || ps == null || baseSemantics == null || baseSemantics.ISEMPTY()) {
+            return zones;
+        }
+        zones.addAll(findExitZones(baseSemantics));
+        if (!useConstraintBoundary(ps)) {
+            return zones;
+        }
+        Semantics cs = ps.getConstraintsSemantics();
+        if (cs == null || cs.ISEMPTY()) {
+            return zones;
+        }
+        zones.removeIf(ez -> isInternalAgainstConstraints(cs, ez));
+        return zones;
+    }
+
     /**
      * Testing mode: closes a state's semantics under internal autonomous exit-zones.
      *
      * When constraint-aware internality is enabled, a zone is considered internal
-     * against SS ∪ explicit CS. Internal codomain is OR-ed into state semantics;
-     * explicit constraints remain diagnostic and do not clip the absorbed codomain.
+     * against SS ∪ explicit CS. Internal codomain is clipped to explicit constraints
+     * before being OR-ed into state semantics.
      */
     public Semantics closeStateSemanticsWithInternalExitZones(PWSState state, Semantics initial) {
         if (!constraintAwareExitZoneInternalityEnabled
@@ -153,7 +185,11 @@ public class PWSStateMachine extends StateMachine {
             return initial;
         }
 
-        Semantics closure = initial.clone();
+        Semantics clippedInitial = clipSemanticsToExplicitConstraints(state, initial);
+        if (clippedInitial == null || clippedInitial.ISEMPTY()) {
+            return clippedInitial;
+        }
+        Semantics closure = clippedInitial.clone();
         Semantics cs = hasExplicitConstraints(state) ? state.getConstraintsSemantics() : null;
         int maxIterations = 1000;
         for (int i = 0; i < maxIterations; i++) {
@@ -193,10 +229,12 @@ public class PWSStateMachine extends StateMachine {
                 if (codomain == null || codomain.ISEMPTY()) {
                     continue;
                 }
-                if (codomain != null && !codomain.ISEMPTY()) {
-                    recordInternalClosureDerivations(state, closure, codomain, machineId, sourceState, targetState);
-                    next = next.OR(codomain);
+                codomain = clipSemanticsToExplicitConstraints(state, codomain);
+                if (codomain == null || codomain.ISEMPTY()) {
+                    continue;
                 }
+                recordInternalClosureDerivations(state, closure, codomain, machineId, sourceState, targetState);
+                next = next.OR(codomain);
             }
 
             if (next.equals(closure)) {
@@ -296,13 +334,12 @@ public class PWSStateMachine extends StateMachine {
         // REACTIVE SEMANTICS: Compute exit zones from SS only, keep CS-only as warnings
         // - CS-only (blue): exit zones present in CS but not in SS (informational)
         // - SS-only (red): exit zones present in SS but not in CS
-        // - Reactive semantics used for autonomy is SS-only
+        // - When constraint-aware internality is enabled, reactive semantics contain
+        //   only SS zones whose targets violate explicit constraints.
         // ----------------------------------------------------------------------
         for (StateInterface si : getStates()) {
             if (si instanceof PWSState ps && si != pseudoState) {
-                HashSet<ExitZone> ssZones = exitZoneComputationEnabled
-                        ? new HashSet<>(this.findExitZones(ps.getStateSemantics()))
-                        : new HashSet<>();
+                HashSet<ExitZone> ssZones = findReactiveExitZonesForState(ps, ps.getStateSemantics());
                 HashSet<ExitZone> csZones = new HashSet<>();
                 if (exitZoneComputationEnabled && hasExplicitConstraints(ps)) {
                     csZones.addAll(this.findProvisionalExitZones(ps));
@@ -380,9 +417,7 @@ public class PWSStateMachine extends StateMachine {
     public void updateExitZonesForState(PWSState ps) {
         if (ps == null || ps == pseudoState) return;
 
-        HashSet<ExitZone> ssZones = exitZoneComputationEnabled
-                ? new HashSet<>(this.findExitZones(ps.getStateSemantics()))
-                : new HashSet<>();
+        HashSet<ExitZone> ssZones = findReactiveExitZonesForState(ps, ps.getStateSemantics());
         HashSet<ExitZone> csZones = new HashSet<>();
         if (exitZoneComputationEnabled && hasExplicitConstraints(ps)) {
             csZones.addAll(this.findProvisionalExitZones(ps));
@@ -811,7 +846,7 @@ public class PWSStateMachine extends StateMachine {
         // Initialize accumulator to ⊥ for reactive contributions
         Semantics result = Semantics.bottom(assembly.getAssemblyId());
         // Iterate over all exit zones of the source state
-        for (ExitZone ez : src.getReactiveSemantics()) {
+        for (ExitZone ez : findReactiveExitZonesForState(src, stateSem)) {
             // Check if this exit zone's target proposition matches the transition guard
             if (guardProp instanceof TrueProposition
                     || ez.getTarget().equals(guardProp)) {
@@ -853,10 +888,8 @@ public class PWSStateMachine extends StateMachine {
         Semantics result = Semantics.bottom(assembly.getAssemblyId());
         // Compute exit zones on the fly from the current base semantics (SS only).
         // This avoids relying on cached reactiveSemantics that may be stale after load.
-        HashSet<ExitZone> reactiveZones = new HashSet<>();
-        if (base != null) {
-            reactiveZones.addAll(findExitZones(base));
-        }
+        PWSState src = (PWSState) t.getSource();
+        HashSet<ExitZone> reactiveZones = findReactiveExitZonesForState(src, base);
         for (ExitZone ez : reactiveZones) {
             if (t.getGuardProposition() instanceof TrueProposition
                     || ez.getTarget().equals(t.getGuardProposition())) {
