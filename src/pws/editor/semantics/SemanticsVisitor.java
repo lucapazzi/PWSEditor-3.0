@@ -43,7 +43,7 @@ public class SemanticsVisitor {
             PWSState ps = (PWSState) si;
             semMap.put(ps, Semantics.bottom(asmId));
         }
-        // Seed pseudostate with assembly closure (initial semantics closed under exit zones)
+        // Seed pseudostate with initial assembly semantics, optionally closed under exit zones.
         PWSState pseudo = null;
         for (PWSState s : semMap.keySet()) {
             if (s.isPseudoState()) {
@@ -54,8 +54,7 @@ public class SemanticsVisitor {
         if (pseudo == null) {
             throw new IllegalStateException("No pseudostate found in machine.");
         }
-        // seed pseudostate with assembly closure
-        Semantics closure = machine.calculateAssemblyClosure();
+        Semantics closure = machine.computeInitialAssemblySemantics();
         if (closure == null) {
             closure = asm.calculateInitialStateSemantics();
         }
@@ -94,7 +93,6 @@ public class SemanticsVisitor {
 
                 Semantics oldSem = semMap.get(tgt);
                 Semantics combined = oldSem.OR(contrib);
-                combined = machine.closeStateSemanticsWithInternalExitZones(tgt, combined);
                 if (!combined.equals(oldSem)) {
                     semMap.put(tgt, combined);
                     worklist.add(tgt);

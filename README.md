@@ -15,8 +15,10 @@ computed semantics and reactive spaces.
 
 - **Semantic annotation:**  
   For each control state, PWSEditor computes and displays its declared
-  *constraint* (\Sem), its *computed semantics* (\Comp), and its *reactive
-  space*.  Semantic violations (misaligned configurations) and uncovered
+  *constraint domain* (`Sem`), its *accumulated reachable configurations*
+  (`Acc`), and its *reactive space* (`RS`). `RS` highlights autonomous
+  component evolutions that leave the domain permitted by the state's
+  constraints. Semantic violations (misaligned configurations) and uncovered
   reactive successors are highlighted.
 
 - **State status cues:**  

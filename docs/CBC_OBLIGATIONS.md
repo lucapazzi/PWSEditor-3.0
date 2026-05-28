@@ -8,7 +8,7 @@ CBC obligations matter because a controller can be syntactically editable and st
 
 Here, correctness means semantic correctness with respect to the properties explicitly modeled in PWSEditor: the controller remains coherent with the current assembly model, the declared state constraints, the available exit zones, and the transitions/actions that are supposed to react to them.
 
-This includes safety whenever safety is encoded in the model itself. In particular, if constrained semantics (`CS`) exclude unsafe configurations, then keeping computed semantics inside `CS` is already a safety obligation, and reacting correctly to boundary conditions that would leave `CS` is safety-relevant as well.
+This includes safety whenever safety is encoded in the model itself. In particular, if constrained semantics (`CS`) exclude unsafe configurations, then keeping computed semantics inside `CS` is already a safety obligation, and reacting correctly to autonomous boundary conditions that would leave `CS` is safety-relevant as well.
 
 More concretely, a controller is "correct" in this sense when:
 
@@ -62,7 +62,7 @@ This note covers:
 - controller deadlocks
 - fail-state masking rules
 
-It does not try to restate the full semantics model. For drift, internal configurations, and constraint-aware internal exit zones, see `docs/INTERNAL_CONFIGURATIONS.md`.
+It does not try to restate the full semantics model. For drift, internal configurations, and the constraint-domain meaning of exit-zones, see `docs/INTERNAL_CONFIGURATIONS.md`.
 
 ## What "enforcement" means here
 
@@ -233,6 +233,10 @@ If a computed configuration does not imply `CS`:
 ### 2. Uncovered exit zone
 
 An uncovered exit zone is an external exit zone that has no enabled autonomous PWS transition covering its target.
+
+Here "external" means: an autonomous component evolution starts from a
+currently reachable configuration that satisfies the state's explicit
+constraints and reaches a target outside the constraint domain.
 
 For this check:
 

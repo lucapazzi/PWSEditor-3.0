@@ -828,8 +828,8 @@ public final class JsonModelSerializer {
         if (data.showConfigurationUnderlines != null) {
             map.put("showConfigurationUnderlines", data.showConfigurationUnderlines);
         }
-        if (data.constraintAwareExitZoneInternality != null) {
-            map.put("constraintAwareExitZoneInternality", data.constraintAwareExitZoneInternality);
+        if (data.initialSemanticsClosureEnabled != null) {
+            map.put("initialSemanticsClosureEnabled", data.initialSemanticsClosureEnabled);
         }
         if (data.stateDiameter != null) {
             map.put("stateDiameter", data.stateDiameter);
@@ -934,8 +934,9 @@ public final class JsonModelSerializer {
         if (map != null && map.containsKey("showConfigurationUnderlines")) {
             data.showConfigurationUnderlines = getBoolean(map, "showConfigurationUnderlines", true);
         }
-        // Default OFF for documents that don't store this setting.
-        data.constraintAwareExitZoneInternality = getBoolean(map, "constraintAwareExitZoneInternality", false);
+        if (map != null && map.containsKey("initialSemanticsClosureEnabled")) {
+            data.initialSemanticsClosureEnabled = getBoolean(map, "initialSemanticsClosureEnabled", true);
+        }
         if (map != null) {
             Integer diam = getNullableInt(map, "stateDiameter");
             Double border = getNullableDouble(map, "stateBorderThickness");

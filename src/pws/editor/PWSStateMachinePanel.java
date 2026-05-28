@@ -4006,7 +4006,7 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         public final java.util.Map<String, Integer> pseudoAliasByTransition = new java.util.LinkedHashMap<>();
         public Boolean showExitZoneMachineIds;
         public Boolean showConfigurationUnderlines;
-        public Boolean constraintAwareExitZoneInternality;
+        public Boolean initialSemanticsClosureEnabled;
         public Integer stateDiameter;
         public Float stateBorderThickness;
         public Float stateFontSize;
@@ -4040,8 +4040,9 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         AnnotationData data = new AnnotationData();
         data.showExitZoneMachineIds = StateSemanticsAnnotation.isShowExitZoneMachineIds();
         data.showConfigurationUnderlines = StateSemanticsAnnotation.isShowConfigurationUnderlines();
-        data.constraintAwareExitZoneInternality =
-                PWSStateMachine.isConstraintAwareExitZoneInternalityEnabled();
+        if (stateMachine instanceof PWSStateMachine pwsMachine) {
+            data.initialSemanticsClosureEnabled = pwsMachine.isInitialSemanticsClosureEnabled();
+        }
         data.stateDiameter = getStateDiameter();
         data.stateBorderThickness = getStateBorderThickness();
         data.stateFontSize = getStateFontSize();
@@ -4143,9 +4144,8 @@ public class PWSStateMachinePanel extends StateMachinePanel {
         if (data.showConfigurationUnderlines != null) {
             StateSemanticsAnnotation.setShowConfigurationUnderlines(data.showConfigurationUnderlines);
         }
-        if (data.constraintAwareExitZoneInternality != null) {
-            PWSStateMachine.setConstraintAwareExitZoneInternalityEnabled(
-                    data.constraintAwareExitZoneInternality);
+        if (data.initialSemanticsClosureEnabled != null && stateMachine instanceof PWSStateMachine pwsMachine) {
+            pwsMachine.setInitialSemanticsClosureEnabled(data.initialSemanticsClosureEnabled);
         }
         if (data.stateDiameter != null) {
             setStateDiameter(data.stateDiameter);

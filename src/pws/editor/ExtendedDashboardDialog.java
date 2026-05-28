@@ -399,7 +399,7 @@ public class ExtendedDashboardDialog extends JDialog {
         appendText("  Exit zones:\n", STYLE_GRAY);
         appendText("  Legend: ", STYLE_GRAY);
         appendText("GRAY", STYLE_GRAY);
-        appendText(" = internal (target already in semantics), ", STYLE_GRAY);
+        appendText(" = internal (target already in accumulated semantics), ", STYLE_GRAY);
         if (coverageRequired) {
             appendText("GREEN", STYLE_GREEN);
             appendText(" = covered (handled by PWS transition), ", STYLE_GRAY);
@@ -497,7 +497,7 @@ public class ExtendedDashboardDialog extends JDialog {
             if (isOrphan) {
                 appendText("orphan exit zone — no matching source state\n", STYLE_RED);
             } else if (isInternal) {
-                appendText("internal (target already in semantics)\n", STYLE_GRAY);
+                appendText("internal (target already in accumulated semantics)\n", STYLE_GRAY);
             } else if (!coverageRequired) {
                 appendText("coverage not required for fail state\n", STYLE_ORANGE);
             } else if (isCovered) {

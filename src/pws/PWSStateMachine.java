@@ -33,9 +33,7 @@ public class PWSStateMachine extends StateMachine {
 
     private static final long serialVersionUID = 1L;
     private boolean exitZoneComputationEnabled = true;
-    // Testing option: when true, treat targets covered by explicit constraints as internal.
-    private static boolean constraintAwareExitZoneInternalityEnabled = false;
-
+    private boolean initialSemanticsClosureEnabled = true;
     // Constructor that accepts a name.
     public PWSStateMachine(String name) {
         super(name);
@@ -69,24 +67,25 @@ public class PWSStateMachine extends StateMachine {
     }
 
     /**
-     * Returns whether exit-zone internality also considers explicit constraints (SS ∪ CS).
+     * Returns whether initial assembly semantics should be closed under autonomous transitions.
      */
-    public static boolean isConstraintAwareExitZoneInternalityEnabled() {
-        return constraintAwareExitZoneInternalityEnabled;
+    public boolean isInitialSemanticsClosureEnabled() {
+        return initialSemanticsClosureEnabled;
     }
 
     /**
-     * Enables or disables SS ∪ CS internality checks for exit-zones.
+     * Enables or disables transitive closure for the initial assembly semantics seed.
      */
-    public static void setConstraintAwareExitZoneInternalityEnabled(boolean enabled) {
-        constraintAwareExitZoneInternalityEnabled = enabled;
+    public void setInitialSemanticsClosureEnabled(boolean enabled) {
+        this.initialSemanticsClosureEnabled = enabled;
     }
 
     /**
      * Returns true if an exit-zone target should be considered internal for the given state.
      *
-     * Default behavior checks against State Semantics only.
-     * Testing mode optionally checks against SS ∪ explicit CS.
+     * Internality is checked against State Semantics only. This is a rendering and
+     * diagnostic helper; reactive-space generation itself is based on leaving the
+     * explicit constraint domain when constraints are present.
      */
     public boolean isExitZoneInternal(PWSState state, ExitZone ez) {
         return isExitZoneInternal(state, ez, assembly);
@@ -100,14 +99,7 @@ public class PWSStateMachine extends StateMachine {
             return false;
         }
 
-        Semantics internalBase = state.getStateSemantics();
-        if (constraintAwareExitZoneInternalityEnabled && hasExplicitConstraintsForInternality(state)) {
-            Semantics cs = state.getConstraintsSemantics();
-            if (cs != null) {
-                internalBase = internalBase == null ? cs : internalBase.OR(cs);
-            }
-        }
-        return isExitZoneInternal(ez, internalBase, asm);
+        return isExitZoneInternal(ez, state.getStateSemantics(), asm);
     }
 
     /**
@@ -125,29 +117,26 @@ public class PWSStateMachine extends StateMachine {
         }
     }
 
-    private static boolean hasExplicitConstraintsForInternality(PWSState ps) {
-        if (ps == null || ps.isPseudoState()) return false;
-        String raw = ps.getRawConstraintText();
-        if (raw != null && !raw.isBlank()) {
-            return !"ANY".equalsIgnoreCase(raw.trim());
+    private Semantics getConstraintDomain(PWSState ps) {
+        if (assembly == null) {
+            return null;
+        }
+        if (ps == null || ps.isPseudoState() || !hasExplicitConstraints(ps)) {
+            return Semantics.top(assembly);
         }
         Semantics cs = ps.getConstraintsSemantics();
-        return cs != null && !cs.getConfigurations().isEmpty();
+        return cs != null ? cs : Semantics.top(assembly);
     }
 
-    private boolean useConstraintBoundary(PWSState ps) {
-        return constraintAwareExitZoneInternalityEnabled && hasExplicitConstraints(ps);
-    }
-
-    private Semantics clipSemanticsToExplicitConstraints(PWSState ps, Semantics sem) {
-        if (!useConstraintBoundary(ps) || sem == null || sem.ISEMPTY()) {
-            return sem;
+    private Semantics constrainToAllowedDomain(PWSState ps, Semantics baseSemantics) {
+        if (baseSemantics == null || baseSemantics.ISEMPTY()) {
+            return baseSemantics;
         }
-        Semantics cs = ps.getConstraintsSemantics();
-        if (cs == null || cs.ISEMPTY()) {
-            return sem;
+        Semantics allowedDomain = getConstraintDomain(ps);
+        if (allowedDomain == null) {
+            return baseSemantics;
         }
-        return sem.AND(cs);
+        return baseSemantics.AND(allowedDomain);
     }
 
     private HashSet<ExitZone> findReactiveExitZonesForState(PWSState ps, Semantics baseSemantics) {
@@ -155,123 +144,13 @@ public class PWSStateMachine extends StateMachine {
         if (!exitZoneComputationEnabled || ps == null || baseSemantics == null || baseSemantics.ISEMPTY()) {
             return zones;
         }
-        zones.addAll(findExitZones(baseSemantics));
-        if (!useConstraintBoundary(ps)) {
+        Semantics allowedSource = constrainToAllowedDomain(ps, baseSemantics);
+        Semantics allowedDomain = getConstraintDomain(ps);
+        if (allowedSource == null || allowedSource.ISEMPTY() || allowedDomain == null || allowedDomain.ISEMPTY()) {
             return zones;
         }
-        Semantics cs = ps.getConstraintsSemantics();
-        if (cs == null || cs.ISEMPTY()) {
-            return zones;
-        }
-        zones.removeIf(ez -> isInternalAgainstConstraints(cs, ez));
+        zones.addAll(findExitZones(allowedSource, allowedDomain));
         return zones;
-    }
-
-    /**
-     * Testing mode: closes a state's semantics under internal autonomous exit-zones.
-     *
-     * When constraint-aware internality is enabled, a zone is considered internal
-     * against SS ∪ explicit CS. Internal codomain is clipped to explicit constraints
-     * before being OR-ed into state semantics.
-     */
-    public Semantics closeStateSemanticsWithInternalExitZones(PWSState state, Semantics initial) {
-        if (!constraintAwareExitZoneInternalityEnabled
-                || !exitZoneComputationEnabled
-                || state == null
-                || state.isPseudoState()
-                || initial == null
-                || initial.ISEMPTY()
-                || assembly == null) {
-            return initial;
-        }
-
-        Semantics clippedInitial = clipSemanticsToExplicitConstraints(state, initial);
-        if (clippedInitial == null || clippedInitial.ISEMPTY()) {
-            return clippedInitial;
-        }
-        Semantics closure = clippedInitial.clone();
-        Semantics cs = hasExplicitConstraints(state) ? state.getConstraintsSemantics() : null;
-        int maxIterations = 1000;
-        for (int i = 0; i < maxIterations; i++) {
-            java.util.Set<ExitZone> zones = findExitZones(closure);
-            if (zones == null || zones.isEmpty()) {
-                break;
-            }
-
-            Semantics internalBase = closure;
-            if (cs != null) {
-                internalBase = internalBase.OR(cs);
-            }
-
-            Semantics next = closure;
-            for (ExitZone ez : zones) {
-                if (ez == null || ez.getSource() == null || ez.getTarget() == null || ez.getTransition() == null) {
-                    continue;
-                }
-                if (!isExitZoneInternal(ez, internalBase, assembly)) {
-                    continue;
-                }
-
-                String machineId = ez.getStateMachineId();
-                if (machineId == null || machineId.isBlank()) {
-                    machineId = ez.getSource().getMachineId();
-                }
-                if (machineId == null || machineId.isBlank()) {
-                    continue;
-                }
-                String sourceState = ez.getSource().getStateName();
-                String targetState = ez.getTarget().getStateName();
-                if (sourceState == null || targetState == null) {
-                    continue;
-                }
-
-                Semantics codomain = closure.computeCodomain(machineId, assembly, sourceState, targetState);
-                if (codomain == null || codomain.ISEMPTY()) {
-                    continue;
-                }
-                codomain = clipSemanticsToExplicitConstraints(state, codomain);
-                if (codomain == null || codomain.ISEMPTY()) {
-                    continue;
-                }
-                recordInternalClosureDerivations(state, closure, codomain, machineId, sourceState, targetState);
-                next = next.OR(codomain);
-            }
-
-            if (next.equals(closure)) {
-                break;
-            }
-            closure = next;
-        }
-
-        return closure;
-    }
-
-    private void recordInternalClosureDerivations(PWSState state,
-                                                  Semantics closure,
-                                                  Semantics acceptedCodomain,
-                                                  String machineId,
-                                                  String sourceState,
-                                                  String targetState) {
-        if (state == null || closure == null || acceptedCodomain == null || acceptedCodomain.ISEMPTY()) {
-            return;
-        }
-        java.util.Set<Configuration> existing = closure.getConfigurations();
-        java.util.Set<Configuration> accepted = acceptedCodomain.getConfigurations();
-        if (existing == null || accepted == null || accepted.isEmpty()) {
-            return;
-        }
-        for (Configuration cfg : existing) {
-            if (cfg == null || !cfg.contains(machineId) || !sourceState.equals(cfg.getStateName(machineId))) {
-                continue;
-            }
-            Configuration derived = cfg.replaceConstraint(machineId, targetState);
-            if (derived == null || existing.contains(derived) || !accepted.contains(derived)) {
-                continue;
-            }
-            state.addInternalClosureDerivation(
-                    derived,
-                    "Derived from " + cfg + " via internal exit-zone closure " + machineId + ":" + sourceState + "→" + targetState + ".");
-        }
     }
 
     /**
@@ -301,7 +180,7 @@ public class PWSStateMachine extends StateMachine {
         // Initialize pseudostate semantics
         if (pseudoState instanceof PWSState) {
             PWSState pseudo = (PWSState) pseudoState;
-            Semantics closure = calculateAssemblyClosure();
+            Semantics closure = computeInitialAssemblySemantics();
             if (closure == null && assembly != null) {
                 closure = assembly.calculateInitialStateSemantics();
             }
@@ -331,11 +210,9 @@ public class PWSStateMachine extends StateMachine {
         }
 
         // ----------------------------------------------------------------------
-        // REACTIVE SEMANTICS: Compute exit zones from SS only, keep CS-only as warnings
-        // - CS-only (blue): exit zones present in CS but not in SS (informational)
-        // - SS-only (red): exit zones present in SS but not in CS
-        // - When constraint-aware internality is enabled, reactive semantics contain
-        //   only SS zones whose targets violate explicit constraints.
+        // REACTIVE SEMANTICS: Compute exit zones from the portion of SS that is
+        // currently allowed by the state constraints. A reactive exit-zone marks
+        // an autonomous step that leaves the allowed constraint domain.
         // ----------------------------------------------------------------------
         for (StateInterface si : getStates()) {
             if (si instanceof PWSState ps && si != pseudoState) {
@@ -886,14 +763,16 @@ public class PWSStateMachine extends StateMachine {
             return result;
         }
         Semantics result = Semantics.bottom(assembly.getAssemblyId());
-        // Compute exit zones on the fly from the current base semantics (SS only).
-        // This avoids relying on cached reactiveSemantics that may be stale after load.
+        // Compute exit zones on the fly from the current base semantics constrained
+        // by the allowed domain. This avoids relying on cached reactiveSemantics
+        // that may be stale after load.
         PWSState src = (PWSState) t.getSource();
         HashSet<ExitZone> reactiveZones = findReactiveExitZonesForState(src, base);
+        Semantics eligibleBase = constrainToAllowedDomain(src, base);
         for (ExitZone ez : reactiveZones) {
             if (t.getGuardProposition() instanceof TrueProposition
                     || ez.getTarget().equals(t.getGuardProposition())) {
-                Semantics frag = base.transformByMachineTransition(
+                Semantics frag = eligibleBase.transformByMachineTransition(
                         ez.getStateMachineId(), ez.getTransition(), assembly);
                 result = result.OR(frag);
             }
@@ -1074,6 +953,15 @@ public class PWSStateMachine extends StateMachine {
         return calculateAssemblyClosure(assembly.calculateInitialStateSemantics());
     }
 
+    public Semantics computeInitialAssemblySemantics() {
+        if (assembly == null) return null;
+        Semantics initial = assembly.calculateInitialStateSemantics();
+        if (!initialSemanticsClosureEnabled) {
+            return initial;
+        }
+        return calculateAssemblyClosure(initial);
+    }
+
     public Semantics calculateAssemblyClosure(Semantics initial) {
         if (initial == null || assembly == null) return null;
         Semantics closure = initial.clone();
@@ -1200,28 +1088,44 @@ public class PWSStateMachine extends StateMachine {
     }
 
     /**
-     * Computes the reactive exit-zones for this state machine given a base semantics.
+     * Computes reactive exit-zones using the same semantics as the dashboard's `RS` section.
      *
-     * <p>The <b>base semantics</b> is typically associated with a PWSState and denotes its
-     * current set of configurations.</p>
+     * <p>The provided semantics is used both as the current source semantics and as the
+     * allowed domain. This overload is appropriate when callers want the classic
+     * "source inside / target outside" test against a single domain.</p>
      *
-     * <p>An <b>exit-zone</b> represents a configuration under which an autonomous
-     * (trigger-free) transition in one of the component machines can fire.</p>
-     *
-     * <p>Concretely, for each autonomous transition:</p>
-     * <ol>
-     *   <li>The transition’s <i>source state</i> must be included in the provided base semantics.</li>
-     * </ol>
-     * <p>If the source condition holds, an ExitZone is recorded for the autonomous transition.
-     * The target may already be part of the semantics (internal evolution) or may extend it.</p>
-     *
-     * @param baseSemantics the current fixed-point semantics of a source state
-     * @return a set of ExitZone objects indicating configurations that immediately trigger
-     *         autonomous transitions not yet reflected in the base semantics
+     * @param baseSemantics the semantics used for both source membership and allowed-domain checks
+     * @return exit-zones whose source is inside {@code baseSemantics} and whose target is outside it
      */
     public HashSet<ExitZone> findExitZones(Semantics baseSemantics) {
+        return findExitZones(baseSemantics, baseSemantics);
+    }
+
+    /**
+     * Computes reactive exit-zones relative to a reachable source semantics and an allowed domain.
+     *
+     * <p>An exit-zone is recorded when an autonomous component transition:
+     * <ol>
+     *   <li>starts from a machine state that intersects the reachable source semantics, and</li>
+     *   <li>lands in a machine state that does not intersect the allowed domain.</li>
+     * </ol>
+     *
+     * <p>For controller-state dashboards, callers typically pass {@code SS ∩ CS} as the
+     * source semantics and {@code CS} as the allowed domain, so `RS` means
+     * "autonomous evolution leaving the state's constraint domain".</p>
+     *
+     * @param sourceSemantics reachable configurations eligible to produce exits
+     * @param allowedDomainSemantics semantics treated as the allowed domain boundary
+     * @return exit-zones that leave {@code allowedDomainSemantics}
+     */
+    public HashSet<ExitZone> findExitZones(Semantics sourceSemantics, Semantics allowedDomainSemantics) {
         HashSet<ExitZone> reactiveSem = new HashSet<>();
-        if (!exitZoneComputationEnabled || baseSemantics == null || assembly == null || baseSemantics.ISEMPTY()) {
+        if (!exitZoneComputationEnabled
+                || sourceSemantics == null
+                || allowedDomainSemantics == null
+                || assembly == null
+                || sourceSemantics.ISEMPTY()
+                || allowedDomainSemantics.ISEMPTY()) {
             return reactiveSem;
         }
         Map<String, StateMachine> stateMachines = assembly.getStateMachines();
@@ -1240,18 +1144,22 @@ public class PWSStateMachine extends StateMachine {
                                 State targetState = (State) transition.getTarget();
                                 BasicStateProposition bs_source = new BasicStateProposition(machineId, sourceState.getName());
                                 BasicStateProposition bs_target = null;
-                                // An autonomous transition yields an exit-zone when its source
-                                // intersects the current semantics (target may or may not be included).
-                                Semantics sourceAndSem = bs_source.toSemantics( assembly ).AND(baseSemantics);
+                                // An autonomous transition yields an exit-zone only when its source
+                                // is currently reachable and allowed by the constraints, and its
+                                // target falls outside the allowed constraint domain.
+                                Semantics sourceAndSem = bs_source.toSemantics(assembly).AND(sourceSemantics);
                                 if (!sourceAndSem.ISEMPTY()) {
                                     bs_target = new BasicStateProposition(machineId, targetState.getName());
-                                    ExitZone ez = new ExitZone(
-                                            machineId,
-                                            transition,
-                                            bs_source,
-                                            bs_target
-                                    );
-                                    reactiveSem.add(ez);
+                                    Semantics targetAndAllowed = bs_target.toSemantics(assembly).AND(allowedDomainSemantics);
+                                    if (targetAndAllowed.ISEMPTY()) {
+                                        ExitZone ez = new ExitZone(
+                                                machineId,
+                                                transition,
+                                                bs_source,
+                                                bs_target
+                                        );
+                                        reactiveSem.add(ez);
+                                    }
                                 }
                             }
                         }

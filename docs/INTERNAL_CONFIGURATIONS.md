@@ -110,26 +110,15 @@ internal if target ∩ SS != empty
 
 So the target is internal only if it already intersects the currently computed state semantics.
 
-### Constraint-Aware Rule
+### Constraints
 
-With:
+Explicit constraints remain informative. They can be compared against accumulated
+state semantics and can generate provisional CS-only exit-zones, but they do not
+change the internality rule and do not clip accumulated semantics during the
+fixed-point.
 
-```text
-View -> Treat CS-covered targets as internal exit zones
-```
-
-the test becomes:
-
-```text
-internal if target ∩ (SS ∪ explicit CS) != empty
-```
-
-This is a broader rule:
-
-- a target already in `SS` is internal
-- a target not yet in `SS` but explicitly allowed by `CS` is also treated as internal
-
-If a zone is internal, PWSEditor tries to absorb the corresponding codomain into `SS`.
+Internality is now used for analysis and coverage classification. It does not
+trigger extra fixed-point absorption of the corresponding codomain into `SS`.
 
 ## The Important Contrast: Target-Level Internality vs Configuration-Level Absorption
 
@@ -234,21 +223,24 @@ For internal drift closure:
 the full codomain is absorbed into SS
 ```
 
-`CS` remains relevant as a diagnostic and as an aid to internality/provisional exit-zone analysis, but it no longer clips the absorbed codomain.
+`CS` remains relevant as a diagnostic and as an aid to exit-zone analysis, but it no longer clips the absorbed codomain.
 
-### 2. CS Can Make A Target Count As Internal
+### 2. CS Defines The Exit-Zone Boundary
 
-With the View-menu option enabled, explicit `CS` participates in the internality test:
+For reactive-space (`RS`) computation, explicit `CS` defines the allowed
+domain boundary:
 
 ```text
-internal if target ∩ (SS ∪ explicit CS) != empty
+source must intersect (SS ∩ explicit CS)
+target must not intersect explicit CS
 ```
 
-This is what lets a not-yet-reached target be treated as internally admissible.
+So `RS` means "autonomous evolution leaving the allowed constraint domain",
+not merely "autonomous evolution leaving the currently accumulated `SS`".
 
 ### 3. CS Also Produces Provisional Exit-Zones
 
-PWSEditor also computes **CS-only provisional exit-zones** from explicit constraints. These are not the same as absorbed internal configurations:
+PWSEditor also computes **CS-only provisional exit-zones** from explicit constraints. These are not the same as accumulated configurations in `SS`:
 
 - they are derived from explicit constraints
 - they are shown in blue

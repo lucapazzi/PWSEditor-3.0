@@ -10,7 +10,8 @@ import java.io.Serializable;
 import java.util.Objects;
 
 /**
- * An ExitZone represents one autonomous‐transition “exit” from a PWSState’s reactive semantics.
+ * An ExitZone represents one autonomous-transition boundary crossing from a
+ * PWSState's reactive semantics.
  *
  * <p>Each ExitZone records:
  * <ul>
@@ -19,14 +20,15 @@ import java.util.Objects;
  *   <li><b>source</b>: a BasicStateProposition naming the machine and source state, indicating
  *       the condition under which the autonomous transition fires;</li>
  *   <li><b>target</b>: a BasicStateProposition naming the machine and target state, indicating
- *       the outcome state and thus the “deviation” from the PWSState’s own semantics.</li>
+ *       the machine-level destination that would take the current configuration
+ *       outside the state's allowed constraint domain.</li>
  * </ul>
  *
  * <p>In computing reactive transitions, we match an ExitZone’s target proposition against
  * the guard proposition of a PWSTransition.  Whenever they coincide, we apply an
- * <i>internal transformation</i> of the PWSState’s reactive semantics by invoking
+ * transformation of the eligible source semantics by invoking
  * {@code stateSemantics.transformByMachineTransition(...)} with the zone’s machineId
- * and transition.  Multiple matching zones are OR‑ed together to yield the transition’s
+ * and transition. Multiple matching zones are OR-ed together to yield the transition’s
  * contribution to the target state’s overall semantics.
  */
 

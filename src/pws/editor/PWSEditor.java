@@ -90,7 +90,7 @@ public class PWSEditor extends JFrame {
     private JCheckBoxMenuItem showAssemblyComponentsItem;
     private JCheckBoxMenuItem showExitZoneMachineIdsItem;
     private JCheckBoxMenuItem showConfigurationUnderlinesItem;
-    private JCheckBoxMenuItem constraintAwareExitZoneInternalityItem;
+    private JCheckBoxMenuItem initialSemanticsClosureItem;
     private JCheckBoxMenuItem showGridItem;
     private JCheckBoxMenuItem snapToGridItem;
     private JMenuItem gridSizeItem;
@@ -1422,6 +1422,19 @@ public class PWSEditor extends JFrame {
         });
         viewMenu.add(showConfigurationUnderlinesItem);
 
+        initialSemanticsClosureItem = new JCheckBoxMenuItem(
+            "Close initial component semantics transitively",
+            pwsStateMachine != null && pwsStateMachine.isInitialSemanticsClosureEnabled()
+        );
+        initialSemanticsClosureItem.addActionListener(e -> {
+            if (pwsStateMachine == null) return;
+            pwsStateMachine.setInitialSemanticsClosureEnabled(initialSemanticsClosureItem.isSelected());
+            refreshInitialConfigurationsPanel();
+            markDocumentDirty();
+            scheduleSemanticsRecalculation(false);
+        });
+        viewMenu.add(initialSemanticsClosureItem);
+
         // Ensure dashboards are visible at startup (preserve per-state visibility)
         try {
             applyDashboardVisibility();
@@ -1584,18 +1597,6 @@ public class PWSEditor extends JFrame {
         updateMenuItemsEnabledState();
         updateUndoRedoMenuItems();
 
-        viewMenu.addSeparator();
-        constraintAwareExitZoneInternalityItem = new JCheckBoxMenuItem(
-                "Treat CS-covered targets as internal exit zones",
-                PWSStateMachine.isConstraintAwareExitZoneInternalityEnabled());
-        constraintAwareExitZoneInternalityItem.addActionListener(e -> {
-            PWSStateMachine.setConstraintAwareExitZoneInternalityEnabled(
-                    constraintAwareExitZoneInternalityItem.isSelected());
-            markDocumentDirty();
-            scheduleSemanticsRecalculation(false);
-        });
-        constraintAwareExitZoneInternalityItem.setEnabled(controllerEditorVisible && baseEditor != null);
-        viewMenu.add(constraintAwareExitZoneInternalityItem);
         menuBar.add(viewMenu);
         JMenu infoMenu = new JMenu("Info");
         JMenuItem showInfoItem = new JMenuItem("Show Info");
@@ -1797,7 +1798,7 @@ public class PWSEditor extends JFrame {
         if (showAssemblyComponentsItem != null) showAssemblyComponentsItem.setEnabled(ctrl);
         if (showExitZoneMachineIdsItem != null) showExitZoneMachineIdsItem.setEnabled(ctrl);
         if (showConfigurationUnderlinesItem != null) showConfigurationUnderlinesItem.setEnabled(ctrl);
-        if (constraintAwareExitZoneInternalityItem != null) constraintAwareExitZoneInternalityItem.setEnabled(ctrl);
+        if (initialSemanticsClosureItem != null) initialSemanticsClosureItem.setEnabled(ctrl);
         if (showGridItem != null) showGridItem.setEnabled(ctrl);
         if (snapToGridItem != null) snapToGridItem.setEnabled(ctrl);
         if (gridSizeItem != null) gridSizeItem.setEnabled(ctrl);
@@ -1982,11 +1983,10 @@ public class PWSEditor extends JFrame {
             showConfigurationUnderlinesItem.setSelected(
                     StateSemanticsAnnotation.isShowConfigurationUnderlines());
         }
-        if (constraintAwareExitZoneInternalityItem != null) {
-            constraintAwareExitZoneInternalityItem.setSelected(
-                    PWSStateMachine.isConstraintAwareExitZoneInternalityEnabled());
+        if (initialSemanticsClosureItem != null && pwsStateMachine != null) {
+            initialSemanticsClosureItem.setSelected(
+                    pwsStateMachine.isInitialSemanticsClosureEnabled());
         }
-
         if (stateSizeMenu != null) {
             int[] sizes = new int[] {40, 50, 60};
             int current = panel.getStateDiameter();
@@ -2517,6 +2517,9 @@ public class PWSEditor extends JFrame {
     private Semantics computeExitZoneClosure(PWSStateMachine machine, Semantics initial) {
         if (machine == null || initial == null) {
             return null;
+        }
+        if (!machine.isInitialSemanticsClosureEnabled()) {
+            return initial;
         }
         return machine.calculateAssemblyClosure(initial);
     }
